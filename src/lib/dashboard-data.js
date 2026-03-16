@@ -1,6 +1,24 @@
+import { getPreWarBaseline } from "@/lib/prewar-baselines";
+
 function toNumber(value) {
   const parsedValue = Number(value);
   return Number.isFinite(parsedValue) ? parsedValue : null;
+}
+
+function hasBaselineData(listing) {
+  return (
+    typeof listing.baselineDiffPercent === "number" &&
+    typeof listing.baselineDiffAmount === "number"
+  );
+}
+
+export function getSignalMetrics(listing) {
+  return {
+    amount: listing.baselineDiffAmount,
+    percent: listing.baselineDiffPercent,
+    comparisonPrice: listing.baselinePrice,
+    hasData: hasBaselineData(listing),
+  };
 }
 
 function getDaysOnMarket(listedDate) {
@@ -40,6 +58,22 @@ export function normalizePropertyFinderListing(rawListing, observedAt) {
     rawListing.address?.full_name
   );
 
+  const sqft = toNumber(rawListing.size?.value) ?? 0;
+  const currentPrice = toNumber(rawListing.price?.value);
+  const baselineListing = {
+    area,
+    type: rawListing.property_type?.toLowerCase() ?? "coming soon",
+    bedrooms: toNumber(rawListing.bedrooms) ?? 0,
+    sqft,
+  };
+  const baselinePrice = currentPrice ? getPreWarBaseline(baselineListing) : null;
+  const baselineDiffAmount =
+    baselinePrice && currentPrice ? baselinePrice - currentPrice : null;
+  const baselineDiffPercent =
+    baselineDiffAmount !== null && baselinePrice
+      ? Number(((baselineDiffAmount / baselinePrice) * 100).toFixed(1))
+      : null;
+
   return {
     id: rawListing.property_id,
     sourceId: rawListing.property_id,
@@ -47,22 +81,20 @@ export function normalizePropertyFinderListing(rawListing, observedAt) {
     title: rawListing.title ?? "COMING SOON.",
     area,
     community,
-    type: rawListing.property_type?.toLowerCase() ?? "coming soon",
+    type: baselineListing.type,
     bedrooms: toNumber(rawListing.bedrooms) ?? 0,
     bathrooms: toNumber(rawListing.bathrooms),
-    sqft: toNumber(rawListing.size?.value) ?? 0,
-    originalPrice: null,
-    currentPrice: toNumber(rawListing.price?.value),
-    dropAmount: null,
-    dropPercent: null,
+    sqft,
+    currentPrice,
+    baselinePrice,
+    baselineDiffAmount,
+    baselineDiffPercent,
     daysOnMarket: getDaysOnMarket(rawListing.listed_date),
-    droppedYesterday: null,
     validated: rawListing.is_verified ?? false,
     expatArea: null,
     familyFriendly: null,
     lat: rawListing.address?.coordinates?.lat ?? null,
     lng: rawListing.address?.coordinates?.lon ?? null,
-    priceHistory: [],
     listedDate: rawListing.listed_date ?? null,
     lastScanned: observedAt,
     imageUrl: rawListing.images?.[0] ?? null,
@@ -91,18 +123,19 @@ export function getAreaSummaries(inputListings = []) {
 
   return Object.entries(groupedListings)
     .map(([area, listings]) => {
-      const listingsWithDropData = listings.filter(
-        (listing) =>
-          typeof listing.dropPercent === "number" && typeof listing.dropAmount === "number"
-      );
+      const listingsWithData = listings.filter((listing) => hasBaselineData(listing));
       const firstListing = listings[0];
-      const avgDropPercent = listingsWithDropData.length
-        ? listingsWithDropData.reduce((sum, listing) => sum + listing.dropPercent, 0) /
-          listingsWithDropData.length
+      const avgDropPercent = listingsWithData.length
+        ? listingsWithData.reduce(
+            (sum, listing) => sum + listing.baselineDiffPercent,
+            0
+          ) / listingsWithData.length
         : null;
-      const avgDropAmount = listingsWithDropData.length
-        ? listingsWithDropData.reduce((sum, listing) => sum + listing.dropAmount, 0) /
-          listingsWithDropData.length
+      const avgDropAmount = listingsWithData.length
+        ? listingsWithData.reduce(
+            (sum, listing) => sum + listing.baselineDiffAmount,
+            0
+          ) / listingsWithData.length
         : null;
 
       return {
@@ -111,8 +144,9 @@ export function getAreaSummaries(inputListings = []) {
         community: firstListing?.community ?? area,
         lat: firstListing?.lat ?? 25.2048,
         lng: firstListing?.lng ?? 55.2708,
-        sparkline: buildAreaSparkline(listings.length),
-        dropCount: listings.length,
+        sparkline: buildAreaSparkline(listingsWithData.length || listings.length),
+        listingCount: listings.length,
+        dropCount: listingsWithData.length,
         avgDropPercent:
           avgDropPercent === null ? null : Number(avgDropPercent.toFixed(1)),
         avgDropAmount:
@@ -120,8 +154,11 @@ export function getAreaSummaries(inputListings = []) {
       };
     })
     .sort((left, right) => {
-      if (right.dropCount !== left.dropCount) {
-        return right.dropCount - left.dropCount;
+      const leftCount = left.dropCount || left.listingCount;
+      const rightCount = right.dropCount || right.listingCount;
+
+      if (rightCount !== leftCount) {
+        return rightCount - leftCount;
       }
 
       return left.area.localeCompare(right.area);
@@ -129,27 +166,30 @@ export function getAreaSummaries(inputListings = []) {
 }
 
 export function getDashboardStats(inputListings = []) {
-  const listingsWithDropData = inputListings.filter(
-    (listing) => typeof listing.dropPercent === "number" && typeof listing.dropAmount === "number"
+  const listingsWithData = inputListings.filter((listing) => hasBaselineData(listing));
+  const sortedByPercent = [...listingsWithData].sort(
+    (left, right) => right.baselineDiffPercent - left.baselineDiffPercent
   );
-  const sortedByPercent = [...listingsWithDropData].sort(
-    (left, right) => right.dropPercent - left.dropPercent
-  );
-  const sortedByAmount = [...listingsWithDropData].sort(
-    (left, right) => right.dropAmount - left.dropAmount
+  const sortedByAmount = [...listingsWithData].sort(
+    (left, right) => right.baselineDiffAmount - left.baselineDiffAmount
   );
 
   return {
-    totalDrops: inputListings.length,
+    totalDrops: listingsWithData.length,
     totalListings: inputListings.length,
     biggestDrop: sortedByPercent[0] ?? null,
     biggestAmountDrop: sortedByAmount[0] ?? null,
-    totalSavings: listingsWithDropData.length
-      ? listingsWithDropData.reduce((sum, listing) => sum + listing.dropAmount, 0)
+    totalSavings: listingsWithData.length
+      ? listingsWithData.reduce(
+          (sum, listing) => sum + listing.baselineDiffAmount,
+          0
+        )
       : null,
-    averageDrop: listingsWithDropData.length
-      ? listingsWithDropData.reduce((sum, listing) => sum + listing.dropPercent, 0) /
-        listingsWithDropData.length
+    averageDrop: listingsWithData.length
+      ? listingsWithData.reduce(
+          (sum, listing) => sum + listing.baselineDiffPercent,
+          0
+        ) / listingsWithData.length
       : null,
   };
 }

@@ -3,6 +3,7 @@ import { normalizePropertyFinderListing } from "@/lib/dashboard-data";
 const PROPERTY_FINDER_API_BASE_URL = "https://propertyfinder-uae-data.p.rapidapi.com";
 const DEFAULT_LOCATION_ID = "1";
 const DEFAULT_PROPERTY_TYPES = ["apartment", "villa"];
+const DEFAULT_LOCATION_IDS = [DEFAULT_LOCATION_ID, "2", "3"];
 
 function getRapidApiHeaders() {
   const apiKey = process.env.RAPIDAPI_KEY;
@@ -49,26 +50,40 @@ async function fetchSearchRentPage({ locationId, propertyType, page }) {
 
 export async function fetchPropertyFinderDashboardData({
   locationId = DEFAULT_LOCATION_ID,
+  locationIds = DEFAULT_LOCATION_IDS,
   propertyTypes = DEFAULT_PROPERTY_TYPES,
-  pages = 1,
+  pages = 3,
 } = {}) {
   const observedAt = new Date().toISOString();
   const requests = [];
+  const safeLocationIds = Array.isArray(locationIds) && locationIds.length
+    ? locationIds
+    : [locationId];
 
-  propertyTypes.forEach((propertyType) => {
-    for (let page = 1; page <= pages; page += 1) {
-      requests.push(fetchSearchRentPage({ locationId, propertyType, page }));
-    }
+  safeLocationIds.forEach((currentLocationId) => {
+    propertyTypes.forEach((propertyType) => {
+      for (let page = 1; page <= pages; page += 1) {
+        requests.push(fetchSearchRentPage({ locationId: currentLocationId, propertyType, page }));
+      }
+    });
   });
 
-  const results = await Promise.all(requests);
-  const rawListings = results.flat();
+  const settledResults = await Promise.allSettled(requests);
+  const successfulResults = settledResults
+    .filter((result) => result.status === "fulfilled")
+    .map((result) => result.value);
+
+  if (!successfulResults.length) {
+    const firstFailure = settledResults.find((result) => result.status === "rejected");
+    throw new Error(firstFailure?.reason?.message ?? "All PropertyFinder requests failed");
+  }
+
+  const rawListings = successfulResults.flat();
   const dedupedListings = Array.from(
     new Map(
-      rawListings.map((listing) => [
-        listing.property_id,
-        normalizePropertyFinderListing(listing, observedAt),
-      ])
+      rawListings
+        .filter((listing) => listing?.property_id)
+        .map((listing) => [listing.property_id, normalizePropertyFinderListing(listing, observedAt)])
     ).values()
   ).sort((left, right) => new Date(right.listedDate ?? 0) - new Date(left.listedDate ?? 0));
 
@@ -78,9 +93,11 @@ export async function fetchPropertyFinderDashboardData({
       updatedAt: observedAt,
       listingScanVolume: dedupedListings.length,
       liveWatchers: null,
-      snapshotDataAvailable: false,
       sourceLabel: "PropertyFinder UAE Data",
       locationId: String(locationId),
+      locationIds: safeLocationIds,
+      requestCount: requests.length,
+      successfulRequestCount: successfulResults.length,
     },
   };
 }
