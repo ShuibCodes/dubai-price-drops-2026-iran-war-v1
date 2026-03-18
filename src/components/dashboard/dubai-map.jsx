@@ -134,15 +134,15 @@ export default function DubaiMap({
         })}
       </MapContainer>
 
-      <div className="pointer-events-none absolute inset-x-4 top-4 flex items-start justify-between gap-3">
-        <div className="pointer-events-auto rounded-full border border-white/10 bg-black/70 px-4 py-2 text-[11px] uppercase tracking-[0.28em] text-[#00e5ff] backdrop-blur">
+      <div className="pointer-events-none absolute inset-x-3 top-3 flex items-start justify-between gap-2 sm:inset-x-4 sm:top-4 sm:gap-3">
+        <div className="pointer-events-auto rounded-full border border-white/10 bg-black/70 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-[#00e5ff] backdrop-blur sm:px-4 sm:text-[11px] sm:tracking-[0.28em]">
           Dubai live map
         </div>
 
         {activeArea && (
           <button
             onClick={clearActiveArea}
-            className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/70 px-4 py-2 text-[11px] uppercase tracking-[0.24em] text-white/70 backdrop-blur"
+            className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/70 px-3 py-2 text-[10px] uppercase tracking-[0.16em] text-white/70 backdrop-blur sm:px-4 sm:text-[11px] sm:tracking-[0.24em]"
           >
             <X className="h-3.5 w-3.5" />
             Clear {activeArea}
@@ -150,7 +150,7 @@ export default function DubaiMap({
         )}
       </div>
 
-      <div className="pointer-events-none absolute bottom-4 right-4 w-full max-w-[250px] rounded-[24px] border border-white/10 bg-black/75 p-4 backdrop-blur">
+      <div className="pointer-events-none absolute bottom-4 right-4 hidden w-full max-w-[250px] rounded-[24px] border border-white/10 bg-black/75 p-4 backdrop-blur md:block">
         <div className="flex items-center gap-2 text-xs uppercase tracking-[0.28em] text-white/38">
           <Radar className="h-4 w-4 text-[#00e5ff]" />
           Top 3 Areas Right Now

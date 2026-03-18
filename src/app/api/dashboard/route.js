@@ -4,7 +4,7 @@ import { fetchPropertyFinderDashboardData } from "@/lib/propertyfinder";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const DASHBOARD_CACHE_TTL_MS = 15 * 1000;
+const DASHBOARD_CACHE_TTL_MS = 60 * 1000;
 
 let cachedDashboardPayload = null;
 let cachedDashboardAt = 0;

@@ -9,10 +9,10 @@ import {
 } from "@/lib/format";
 
 const cardMeta = [
-  { key: "biggestPercent", label: "Biggest Avg Gap", emoji: "🔥", accent: "border-[#ff2d55]" },
-  { key: "biggestAmount", label: "Biggest AED Gap", emoji: "💰", accent: "border-[#ffd60a]" },
-  { key: "scanVolume", label: "Listings Scanned", emoji: "📊", accent: "border-white/25" },
-  { key: "totalSavings", label: "Total Gap To Avg", emoji: "🦋", accent: "border-[#ff2d55]" },
+  { key: "biggestPercent", label: "Top Gap", emoji: "🔥", accent: "border-[#ff2d55]" },
+  { key: "biggestAmount", label: "Top AED", emoji: "💰", accent: "border-[#ffd60a]" },
+  { key: "scanVolume", label: "Scanned", emoji: "📊", accent: "border-white/25" },
+  { key: "totalSavings", label: "Total Gap", emoji: "🦋", accent: "border-[#ff2d55]" },
 ];
 
 export default function StatsCards({ stats, lastUpdatedSeconds, listingScanVolume }) {
@@ -33,8 +33,8 @@ export default function StatsCards({ stats, lastUpdatedSeconds, listingScanVolum
       value: formatNumber(listingScanVolume),
       subtitle:
         lastUpdatedSeconds === null
-          ? "Last updated: --"
-          : `Last updated: ${lastUpdatedSeconds}s ago`,
+          ? "Updated: --"
+          : `Updated: ${lastUpdatedSeconds}s ago`,
       color: "text-white",
     },
     totalSavings: {
@@ -45,7 +45,7 @@ export default function StatsCards({ stats, lastUpdatedSeconds, listingScanVolum
   };
 
   return (
-    <section className="grid gap-4 lg:grid-cols-4">
+    <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       {cardMeta.map((card, index) => {
         const content = values[card.key];
 
@@ -55,7 +55,7 @@ export default function StatsCards({ stats, lastUpdatedSeconds, listingScanVolum
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35, delay: index * 0.06 }}
-            className={`rounded-[28px] border border-white/10 border-t-2 ${card.accent} bg-white/[0.03] p-5`}
+            className={`rounded-[24px] border border-white/10 border-t-2 ${card.accent} bg-white/[0.03] p-4 sm:p-5`}
           >
             <div className="flex items-center justify-between">
               <div className="mono text-[11px] uppercase tracking-[0.28em] text-white/40">
@@ -63,8 +63,10 @@ export default function StatsCards({ stats, lastUpdatedSeconds, listingScanVolum
               </div>
               <div className="text-lg leading-none">{card.emoji}</div>
             </div>
-            <div className={`mono mt-6 text-3xl font-semibold ${content.color}`}>{content.value}</div>
-            <div className="mt-3 text-sm text-white/45">{content.subtitle}</div>
+            <div className={`mono mt-4 text-xl font-semibold sm:mt-6 sm:text-3xl ${content.color}`}>
+              {content.value}
+            </div>
+            <div className="mt-2 text-xs text-white/45 sm:mt-3 sm:text-sm">{content.subtitle}</div>
           </motion.div>
         );
       })}

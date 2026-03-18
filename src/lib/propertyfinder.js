@@ -20,6 +20,8 @@ function getRapidApiHeaders() {
   };
 }
 
+const FETCH_TIMEOUT_MS = 10_000;
+
 async function fetchSearchRentPage({ locationId, propertyType, page }) {
   const searchParams = new URLSearchParams({
     location_id: String(locationId),
@@ -27,13 +29,22 @@ async function fetchSearchRentPage({ locationId, propertyType, page }) {
     page: String(page),
   });
 
-  const response = await fetch(
-    `${PROPERTY_FINDER_API_BASE_URL}/search-rent?${searchParams.toString()}`,
-    {
-      headers: getRapidApiHeaders(),
-      cache: "no-store",
-    }
-  );
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+  let response;
+  try {
+    response = await fetch(
+      `${PROPERTY_FINDER_API_BASE_URL}/search-rent?${searchParams.toString()}`,
+      {
+        headers: getRapidApiHeaders(),
+        cache: "no-store",
+        signal: controller.signal,
+      }
+    );
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
     throw new Error(`PropertyFinder request failed with ${response.status}`);

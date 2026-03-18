@@ -87,7 +87,7 @@ export default function LandingPage() {
             </div>
           </div>
           <Link
-            href="/thedxpdip"
+            href="/live-updates"
             className="rounded-full border border-white/10 px-4 py-2 text-sm text-white/75 transition hover:text-white"
           >
             Try for free
@@ -101,14 +101,14 @@ export default function LandingPage() {
             Sellers. Buyers. Agents.
           </div>
           <h1 className="mt-8 text-4xl font-semibold leading-tight sm:text-6xl">
-            The DXB Dip gives the full market picture, not filtered narratives.
+          While others panic, you'll know <span className="underline decoration-[#f3cc0f] text-[#f3cc0f]">exactly where</span> to move.
           </h1>
           <p className="mt-6 max-w-3xl text-base leading-8 text-white/60 sm:text-lg">
-            Get direct transparency into live price drops, pre-war versus post-war context, and where pressure is building across Dubai. Built by someone on the ground, for people making real decisions.
+          Track live price drops, drone-hit areas, and distressed listings...cross-referenced with verified Al Jazeera updates
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Link
-              href="/thedxpdip"
+              href="/live-updates"
               className="rounded-full bg-[#ff2d55] px-6 py-3 text-sm font-semibold text-white transition hover:opacity-90"
             >
               Try for free
@@ -131,7 +131,7 @@ export default function LandingPage() {
             Live map view
           </div>
           <h2 className="mt-4 text-3xl font-semibold text-white">
-            Same map intelligence, right on the landing page.
+            Get live updates on latest drone hits, affecting panic sells/buys.
           </h2>
         </div>
 
@@ -184,7 +184,7 @@ export default function LandingPage() {
             </ul>
             <div className="mt-8">
               <Link
-                href="/thedxpdip"
+                href="/live-updates"
                 className="inline-flex rounded-full bg-[#ff2d55] px-6 py-3 text-sm font-semibold text-white transition hover:opacity-90"
               >
                 Try for free

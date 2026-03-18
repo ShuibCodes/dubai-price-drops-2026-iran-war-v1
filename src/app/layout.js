@@ -15,9 +15,22 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata = {
-  title: "Dubai Real Estate AI",
+  title: "DXB Dip",
   description:
-    "Dubai real estate intelligence with pre-war vs current pricing signals, gated dashboard access, and business enquiry flow.",
+    "Track Dubai rental price drops below pre-war averages. Real-time listings ranked by biggest savings — free WhatsApp alerts when deals appear.",
+  keywords: ["Dubai real estate", "Dubai rent drops", "Dubai price deals", "DXB property", "Dubai rental market 2026"],
+  openGraph: {
+    title: "DXB Dip",
+    description: "Track Dubai rental price drops below pre-war averages. Real-time listings ranked by biggest savings.",
+    siteName: "DXB Dip",
+    locale: "en_AE",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "DXB Dip",
+    description: "Track Dubai rental price drops below pre-war averages. Real-time listings ranked by biggest savings.",
+  },
 };
 
 export default function RootLayout({ children }) {

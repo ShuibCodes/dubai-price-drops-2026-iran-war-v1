@@ -69,7 +69,7 @@ export default function AccessSuccessPage({ email }) {
         </p>
         <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <Link
-            href="/thedxpdip"
+            href="/live-updates"
             className="rounded-full bg-[#ff2d55] px-6 py-3 text-sm font-semibold text-white transition hover:opacity-90"
           >
             Open dashboard

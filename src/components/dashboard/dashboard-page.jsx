@@ -3,25 +3,23 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import TopBanner from "@/components/dashboard/top-banner";
 import NavBar from "@/components/dashboard/nav-bar";
-import AudienceBadges from "@/components/dashboard/audience-badges";
 import Hero from "@/components/dashboard/hero";
 import FilterBar from "@/components/dashboard/filter-bar";
 import StatsCards from "@/components/dashboard/stats-cards";
-import TimestampDivider from "@/components/dashboard/timestamp-divider";
 import ListingsFeed from "@/components/dashboard/listings-feed";
 import { getAreaSummaries, getDashboardStats, getSignalMetrics } from "@/lib/dashboard-data";
 import { useDashboardStore } from "@/lib/store";
+import AlertButton from "@/components/dashboard/alert-button";
 
 const emptyDashboardData = {
   listings: [],
   meta: {
     updatedAt: null,
     listingScanVolume: 0,
-    liveWatchers: null,
     sourceLabel: "PropertyFinder UAE Data",
   },
 };
-const AUTO_REFRESH_MS = 20 * 1000;
+const AUTO_REFRESH_MS = 60 * 1000;
 const DEFAULT_PAGES = 3;
 const DEFAULT_LOCATION_IDS = "1,2,3";
 
@@ -188,17 +186,16 @@ export default function DashboardPage() {
   }, [dashboardData.meta.updatedAt, clockMs]);
 
   return (
-    <main className="dashboard-shell min-h-screen pb-14 text-white">
+    <main className="dashboard-shell min-h-screen pb-10 text-white sm:pb-14">
+      <AlertButton />
       <TopBanner listingScanVolume={dashboardData.meta.listingScanVolume} />
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-5 sm:px-6 lg:px-8">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-4 sm:gap-6 sm:px-6 sm:py-5 lg:px-8">
         <NavBar
           stats={stats}
           lastUpdatedSeconds={lastUpdatedSeconds}
           onRefresh={() => loadDashboardData({ force: true })}
           isRefreshing={isRefreshing}
-          liveWatchers={dashboardData.meta.liveWatchers}
         />
-        <AudienceBadges />
         <FilterBar
           propertyType={propertyType}
           pricePeriod={pricePeriod}
@@ -214,7 +211,6 @@ export default function DashboardPage() {
           lastUpdatedSeconds={lastUpdatedSeconds}
           listingScanVolume={dashboardData.meta.listingScanVolume}
         />
-        <TimestampDivider count={filteredListings.length} />
         <ListingsFeed
           listings={filteredListings}
           pricePeriod={pricePeriod}

@@ -24,9 +24,9 @@ export default function Hero({
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.45 }}
-        className="rounded-[32px] border border-white/10 bg-white/[0.03] p-3 sm:p-4"
+        className="rounded-[24px] border border-white/10 bg-white/[0.03] p-2 sm:rounded-[32px] sm:p-4"
       >
-        <div className="h-[420px] overflow-hidden rounded-[28px] border border-white/10 bg-black/50 shadow-[0_30px_90px_rgba(0,0,0,0.42)] sm:h-[520px]">
+        <div className="h-[280px] overflow-hidden rounded-[20px] border border-white/10 bg-black/50 shadow-[0_30px_90px_rgba(0,0,0,0.42)] sm:h-[420px] sm:rounded-[28px] lg:h-[520px]">
           <DubaiMap
             activeArea={activeArea}
             clearActiveArea={clearActiveArea}
