@@ -5,10 +5,63 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const DASHBOARD_CACHE_TTL_MS = 60 * 1000;
+const ANOMALOUS_MIN_LISTINGS = 12;
+const ANOMALOUS_DROP_RATIO = 0.35;
 
 let cachedDashboardPayload = null;
 let cachedDashboardAt = 0;
 let inFlightDashboardPromise = null;
+
+function getPayloadSignals(payload) {
+  const listings = Array.isArray(payload?.listings) ? payload.listings : [];
+  const baselineCount = listings.filter(
+    (listing) =>
+      typeof listing?.baselineDiffAmount === "number" &&
+      typeof listing?.baselineDiffPercent === "number"
+  ).length;
+
+  return {
+    listingsCount: listings.length,
+    baselineCount,
+  };
+}
+
+function isAnomalousPayload(nextPayload, previousPayload) {
+  if (!previousPayload) {
+    return false;
+  }
+
+  const next = getPayloadSignals(nextPayload);
+  const previous = getPayloadSignals(previousPayload);
+
+  if (previous.listingsCount === 0) {
+    return false;
+  }
+
+  if (next.listingsCount === 0) {
+    return true;
+  }
+
+  const listingFloor = Math.max(
+    ANOMALOUS_MIN_LISTINGS,
+    Math.floor(previous.listingsCount * ANOMALOUS_DROP_RATIO)
+  );
+  if (next.listingsCount < listingFloor) {
+    return true;
+  }
+
+  if (previous.baselineCount > 0) {
+    const baselineFloor = Math.max(
+      ANOMALOUS_MIN_LISTINGS,
+      Math.floor(previous.baselineCount * ANOMALOUS_DROP_RATIO)
+    );
+    if (next.baselineCount < baselineFloor) {
+      return true;
+    }
+  }
+
+  return false;
+}
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
@@ -47,6 +100,17 @@ export async function GET(request) {
           listings: dashboardData.listings,
           meta: dashboardData.meta,
         };
+
+        if (isAnomalousPayload(payload, cachedDashboardPayload)) {
+          return {
+            ...cachedDashboardPayload,
+            meta: {
+              ...cachedDashboardPayload.meta,
+              fallbackToLastGoodData: true,
+              fallbackReason: "anomalous-fresh-payload",
+            },
+          };
+        }
 
         cachedDashboardPayload = payload;
         cachedDashboardAt = Date.now();
