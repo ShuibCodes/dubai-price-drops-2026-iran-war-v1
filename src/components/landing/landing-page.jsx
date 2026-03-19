@@ -101,7 +101,7 @@ export default function LandingPage() {
             Sellers. Buyers. Agents.
           </div>
           <h1 className="mt-8 text-4xl font-semibold leading-tight sm:text-6xl">
-          While others panic, you'll know <span className="underline decoration-[#f3cc0f] text-[#f3cc0f]">exactly where</span> to move.
+          While others panic, you&apos;ll know <span className="underline decoration-[#f3cc0f] text-[#f3cc0f]">exactly where</span> to move.
           </h1>
           <p className="mt-6 max-w-3xl text-base leading-8 text-white/60 sm:text-lg">
           Track live price drops, drone-hit areas, and distressed listings...cross-referenced with verified Al Jazeera updates

@@ -66,6 +66,7 @@ export function normalizePropertyFinderListing(rawListing, observedAt) {
     bedrooms: toNumber(rawListing.bedrooms) ?? 0,
     sqft,
   };
+
   const baselinePrice = currentPrice ? getPreWarBaseline(baselineListing) : null;
   const baselineDiffAmount =
     baselinePrice && currentPrice ? baselinePrice - currentPrice : null;
