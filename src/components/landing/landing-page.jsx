@@ -1,9 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import Hero from "@/components/dashboard/hero";
-import { getAreaSummaries } from "@/lib/dashboard-data";
+import reviewShotBrokerages from "@/app/images/IMG_0979.jpg";
+import reviewShotAgents from "@/app/images/IMG_0990.jpg";
+import reviewShotOffPlan from "@/app/images/IMG_0991.jpg";
+import reviewShotClients from "@/app/images/IMG_0992.jpg";
+import { getSalesAreaSummaries } from "@/lib/uae-sales-data";
 
 const BASIC_FEATURES = [
   "Live price drops",
@@ -20,13 +25,33 @@ const PRO_FEATURES = [
 ];
 
 const ENQUIRE_NOW_URL = "https://tally.so/r/dWAJPr";
-const MAP_PAGES = 3;
-const MAP_LOCATION_IDS = "1,2,3";
 const emptyMapState = {
   listings: [],
   loading: true,
   error: null,
 };
+const REVIEW_SHOTS = [
+  {
+    src: reviewShotBrokerages,
+    alt: "WhatsApp message from dormant buyers",
+    label: "Dormant buyers",
+  },
+  {
+    src: reviewShotAgents,
+    alt: "WhatsApp review from a Dubai agent",
+    label: "Agents",
+  },
+  {
+    src: reviewShotOffPlan,
+    alt: "WhatsApp message from international investors",
+    label: "International investors",
+  },
+  {
+    src: reviewShotClients,
+    alt: "WhatsApp review from a Dubai property professional",
+    label: "",
+  },
+];
 
 export default function LandingPage() {
   const [activeArea, setActiveArea] = useState(null);
@@ -37,10 +62,7 @@ export default function LandingPage() {
 
     async function loadLandingMap() {
       try {
-        const response = await fetch(
-          `/api/dashboard?pages=${MAP_PAGES}&locationIds=${encodeURIComponent(MAP_LOCATION_IDS)}`,
-          { cache: "no-store" }
-        );
+        const response = await fetch("/api/sales-search?pages=1", { cache: "no-store" });
         const payload = await response.json();
 
         if (!response.ok || payload?.error) {
@@ -72,7 +94,10 @@ export default function LandingPage() {
     };
   }, []);
 
-  const areaSummaries = useMemo(() => getAreaSummaries(mapState.listings), [mapState.listings]);
+  const areaSummaries = useMemo(
+    () => getSalesAreaSummaries(mapState.listings),
+    [mapState.listings]
+  );
 
   return (
     <main className="min-h-screen bg-black text-white">
@@ -122,6 +147,33 @@ export default function LandingPage() {
               Enquire now
             </a>
           </div>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-4 pb-20 sm:px-6 lg:px-8">
+        <div className="mb-8 max-w-3xl">
+          <h2 className="text-3xl font-semibold text-white">Word on the streets:</h2>
+        </div>
+
+        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+          {REVIEW_SHOTS.map((shot) => (
+            <figure
+              key={shot.label}
+              className="overflow-hidden rounded-[28px] border border-white/10 bg-white/[0.03]"
+            >
+              <div className="border-b border-white/8 px-5 py-4">
+                {shot.label ? <div className="text-sm font-medium text-white">{shot.label}</div> : null}
+              </div>
+              <div className="p-3">
+                <Image
+                  src={shot.src}
+                  alt={shot.alt}
+                  className="h-auto w-full rounded-[20px]"
+                  placeholder="blur"
+                />
+              </div>
+            </figure>
+          ))}
         </div>
       </section>
 
@@ -197,7 +249,7 @@ export default function LandingPage() {
               Pro
             </div>
             <div className="mt-4 text-3xl font-semibold">
-              AED 380 lifetime access
+              AED 499 lifetime access
             </div>
             <div className="mt-2 text-white/65">
               No monthly fee. Yours forever.
