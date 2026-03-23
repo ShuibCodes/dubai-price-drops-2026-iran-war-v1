@@ -1,7 +1,6 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useSearchParams } from "next/navigation";
 import AlertButton from "@/components/dashboard/alert-button";
 
 const SalesMainDashboard = dynamic(
@@ -28,11 +27,7 @@ const SalesDashboard = dynamic(
   }
 );
 
-export default function DashboardPage() {
-  const searchParams = useSearchParams();
-  const view = searchParams.get("view");
-  const isDeveloperView = view === "developers";
-
+export default function DashboardPage({ isDeveloperView = false }) {
   return (
     <main className="dashboard-shell min-h-screen pb-10 text-white sm:pb-14">
       <AlertButton />

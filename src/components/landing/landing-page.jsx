@@ -249,7 +249,7 @@ export default function LandingPage() {
               Pro
             </div>
             <div className="mt-4 text-3xl font-semibold">
-              AED 499 lifetime access
+              CUSTOM
             </div>
             <div className="mt-2 text-white/65">
               No monthly fee. Yours forever.
