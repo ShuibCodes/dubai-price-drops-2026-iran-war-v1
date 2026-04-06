@@ -9,6 +9,37 @@ function toNumber(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function normalizePhone(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const digitsOnly = value.replace(/[^\d+]/g, "");
+  return digitsOnly.length >= 7 ? digitsOnly : null;
+}
+
+function normalizeCompletionStatus(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const normalized = trimmed.toLowerCase();
+  if (
+    normalized === "under-construction" ||
+    normalized === "under construction" ||
+    normalized === "under_construction"
+  ) {
+    return "Off-plan";
+  }
+
+  return trimmed;
+}
+
 function getDaysOnMarket(timestamp) {
   if (!timestamp) {
     return null;
@@ -59,6 +90,22 @@ export function normalizeSalesListing(raw) {
       ? Number(((baselineDiffAmount / baselinePrice) * 100).toFixed(1))
       : null;
   const coordinates = raw.location?.coordinates ?? raw.location?.geo ?? {};
+  const agentName =
+    raw.agent?.name ??
+    raw.agent_details?.name ??
+    raw.contact?.name ??
+    raw.broker?.name ??
+    null;
+  const agentPhone =
+    normalizePhone(raw.agent?.phone) ??
+    normalizePhone(raw.agent?.mobile) ??
+    normalizePhone(raw.agent_details?.phone) ??
+    normalizePhone(raw.agent_details?.mobile) ??
+    normalizePhone(raw.contact?.phone) ??
+    normalizePhone(raw.contact?.mobile) ??
+    normalizePhone(raw.broker?.phone) ??
+    normalizePhone(raw.broker?.mobile) ??
+    null;
 
   return {
     id: String(raw.id ?? ""),
@@ -78,13 +125,17 @@ export function normalizeSalesListing(raw) {
     verified: Boolean(raw.verification?.is_verified),
     validated: Boolean(raw.verification?.is_verified),
     verifiedAt: raw.verification?.verified_at ?? null,
-    completionStatus: raw.details?.completion_status ?? raw.project?.completion_status ?? null,
+    completionStatus: normalizeCompletionStatus(
+      raw.details?.completion_status ?? raw.project?.completion_status ?? null
+    ),
     propertyUrl: raw.meta?.url ?? null,
     coverPhoto:
       raw.media?.cover_photo ??
       (Array.isArray(raw.media?.photos) ? raw.media.photos[0] : null) ??
       null,
     agencyName: raw.agency?.name ?? null,
+    agentName,
+    agentPhone,
     listedUpdatedAt: raw.meta?.updated_at ?? null,
     listedDate: raw.meta?.updated_at ?? null,
     lastScanned: raw.meta?.updated_at ?? null,

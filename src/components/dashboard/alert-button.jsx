@@ -36,6 +36,7 @@ const CITY_OPTIONS = [
 
 export default function AlertButton() {
   const [isOpen, setIsOpen] = useState(false);
+  const [dealBrief, setDealBrief] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [countryCode, setCountryCode] = useState("+971");
@@ -56,6 +57,7 @@ export default function AlertButton() {
     if (status === "loading") return;
     setIsOpen(false);
     setTimeout(() => {
+      setDealBrief("");
       setName("");
       setEmail("");
       setWhatsapp("");
@@ -70,14 +72,43 @@ export default function AlertButton() {
 
   async function handleSubmit(e) {
     e.preventDefault();
+    const trimmedDealBrief = dealBrief.trim();
+    if (!trimmedDealBrief) {
+      setStatus("error");
+      setErrorMsg("Please describe what kind of deals you want.");
+      return;
+    }
+
     setStatus("loading");
     setErrorMsg("");
 
     try {
+      let dealFilters = null;
+      let dealParsed = false;
+
+      try {
+        const parseResponse = await fetch("/api/agent-brief", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: trimmedDealBrief }),
+        });
+        const parsePayload = await parseResponse.json();
+
+        if (parseResponse.ok) {
+          dealParsed = Boolean(parsePayload?.parsed);
+          dealFilters = parsePayload?.filters ?? null;
+        }
+      } catch {
+        // Keep subscription flow resilient even if parsing is unavailable.
+      }
+
       const res = await fetch("/api/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          dealBrief: trimmedDealBrief,
+          dealParsed,
+          dealFilters,
           name,
           email,
           whatsapp: `${countryCode}${whatsapp}`,
@@ -185,6 +216,15 @@ export default function AlertButton() {
 
                   {/* Form */}
                   <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+                    <textarea
+                      value={dealBrief}
+                      onChange={(e) => setDealBrief(e.target.value)}
+                      placeholder="Describe the deals you want (e.g. 2BR Marina under 2M below market) *"
+                      required
+                      disabled={status === "loading"}
+                      className="min-h-[96px] rounded-xl border border-white/10 bg-white/[0.06] px-4 py-3 text-sm text-white placeholder-white/30 outline-none transition-colors focus:border-[#d4a017]/60 focus:bg-white/[0.09] disabled:opacity-50"
+                    />
+
                     {/* Row 1: Name + Email */}
                     <div className="grid grid-cols-2 gap-3">
                       <input

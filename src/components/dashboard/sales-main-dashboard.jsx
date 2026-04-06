@@ -7,6 +7,8 @@ import Hero from "@/components/dashboard/hero";
 import FilterBar from "@/components/dashboard/filter-bar";
 import StatsCards from "@/components/dashboard/stats-cards";
 import ListingsFeed from "@/components/dashboard/listings-feed";
+import AgentBrief from "@/components/dashboard/AgentBrief";
+import TransactionsExplorer from "@/components/dashboard/transactions-explorer";
 import { getSignalMetrics } from "@/lib/dashboard-data";
 import { useDashboardStore } from "@/lib/store";
 import { getSalesAreaSummaries } from "@/lib/uae-sales-data";
@@ -243,6 +245,7 @@ export default function SalesMainDashboard({
           lastUpdatedSeconds={lastUpdatedSeconds}
           listingScanVolume={dashboardData.meta.resultCount}
         />
+        <AgentBrief />
         <ListingsFeed
           listings={filteredListings}
           pricePeriod={pricePeriod}
@@ -255,6 +258,7 @@ export default function SalesMainDashboard({
           onAreaSelect={setActiveArea}
           areaSummaries={areaSummaries}
         />
+        <TransactionsExplorer />
       </div>
     </>
   );

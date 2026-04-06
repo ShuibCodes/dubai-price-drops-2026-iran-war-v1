@@ -14,7 +14,6 @@ const DEFAULT_SEARCH_BODY = {
   categories: ["apartments", "villas"],
   locations_ids: [2],
   index: "popular",
-  is_completed: false,
   rooms: [0, 1, 2, 3, 4, 5],
   baths: [0, 1, 2, 3, 4],
   price_min: 400_000,

@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { name, email, whatsapp, area, budget, city } = body;
+    const { name, email, whatsapp, area, budget, city, dealBrief, dealParsed, dealFilters } = body;
 
     if (!name || typeof name !== "string" || name.trim().length < 1) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
@@ -14,6 +14,10 @@ export async function POST(request) {
 
     if (!whatsapp || typeof whatsapp !== "string" || whatsapp.trim().length < 5) {
       return NextResponse.json({ error: "WhatsApp number is required" }, { status: 400 });
+    }
+
+    if (!dealBrief || typeof dealBrief !== "string" || dealBrief.trim().length < 3) {
+      return NextResponse.json({ error: "Deal description is required" }, { status: 400 });
     }
 
     const zapierWebhookUrl = process.env.ZAPIER_WEBHOOK_URL;
@@ -24,6 +28,9 @@ export async function POST(request) {
     }
 
     const payload = {
+      dealBrief: dealBrief.trim(),
+      dealParsed: Boolean(dealParsed),
+      dealFilters: dealFilters && typeof dealFilters === "object" ? dealFilters : null,
       name: name.trim(),
       email: (email ?? "").trim(),
       whatsapp: whatsapp.trim(),
