@@ -13,15 +13,16 @@ import { getSalesAreaSummaries } from "@/lib/uae-sales-data";
 const BASIC_FEATURES = [
   "Live price drops",
   "Pre-war averages vs post-war",
-  "Which areas are most likely being hit by drones",
   "Map view",
 ];
 
 const PRO_FEATURES = [
   "All from Basic",
-  "Custom brokerage view",
-  "Your logos, data and customisable",
-  "Email updates",
+  "Custom brokerage view — your logo, data and fully white-labelled",
+  "Instant distress deal alerts — AI-verified before they hit your inbox",
+  "AI calls up to 90 listings per day to verify availability and price flexibility",
+  "One chat to rule them all — find leads from 3+ years back, auto-call, qualify and send custom listings. Seconds, not hours.",
+  "3-hour hands-on AI workshop for your team",
 ];
 
 const ENQUIRE_NOW_URL = "https://tally.so/r/dWAJPr";
