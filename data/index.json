@@ -1,0 +1,385 @@
+[
+  {
+    "id": "whatsapp-01-jvc-2bed-riyadh-relocation",
+    "file": "data/whatsapp/01-jvc-2bed-riyadh-relocation.txt",
+    "type": "whatsapp",
+    "summary": "[15/01/2025, 09:42:18] Faisal Al-Rashid: Assalamu alaikum, I found your listing for the 2-bedroom in JVC — Belgravia Heights. Is it still available? [15/01/2025, 09:55:03] Nadia Hasan (Sterling Boulevard): Wa alaikum assalam Faisal! Yes it is — 2BR, 1,050 sqft, mid floor, open kitchen layout. Would ",
+    "participants": [
+      "Faisal Al-Rashid",
+      "Nadia Hasan"
+    ],
+    "areas": [
+      "JVC"
+    ],
+    "lastActivity": "29/01/2025",
+    "messageCount": 29
+  },
+  {
+    "id": "whatsapp-02-marina-negotiator-april-callback",
+    "file": "data/whatsapp/02-marina-negotiator-april-callback.txt",
+    "type": "whatsapp",
+    "summary": "[03/02/2025, 16:20:05] James Whitfield: Hi, I'm looking at the 1-bed in Marina — the one in Damac Heights, 42nd floor. What's the best price you can do? [03/02/2025, 16:25:33] Omar Kazmi (Sterling Boulevard): Hey James! Thanks for reaching out. That unit is listed at AED 1,750,000. It's a premium un",
+    "participants": [
+      "James Whitfield",
+      "Omar Kazmi"
+    ],
+    "areas": [
+      "Marina",
+      "JBR"
+    ],
+    "lastActivity": "18/02/2025",
+    "messageCount": 23
+  },
+  {
+    "id": "whatsapp-03-uk-seller-meydan-villa-price-sensitive",
+    "file": "data/whatsapp/03-uk-seller-meydan-villa-price-sensitive.txt",
+    "type": "whatsapp",
+    "summary": "[08/01/2025, 18:30:12] Richard Pemberton: Hello, I was given your number by a friend — David Ames. I'm looking to buy a villa in Meydan. Are you able to help? [08/01/2025, 18:45:33] Layla Ibrahim (Sterling Boulevard): Hi Richard! Yes, David is a valued client. Happy to help you with Meydan — it's on",
+    "participants": [
+      "Richard Pemberton",
+      "Layla Ibrahim"
+    ],
+    "areas": [
+      "Meydan"
+    ],
+    "lastActivity": "28/02/2025",
+    "messageCount": 27
+  },
+  {
+    "id": "whatsapp-04-cold-lead-3-followups",
+    "file": "data/whatsapp/04-cold-lead-3-followups.txt",
+    "type": "whatsapp",
+    "summary": "[10/01/2025, 11:30:45] Khalid Mansouri: Hi, I'm looking for a 1-bed apartment in Business Bay. Something modern, high floor. Budget around 1.2M. [10/01/2025, 11:35:22] Nadia Hasan (Sterling Boulevard): Hi Khalid! Thanks for reaching out. 1.2M is a good budget for Business Bay — plenty of options. An",
+    "participants": [
+      "Khalid Mansouri",
+      "Nadia Hasan"
+    ],
+    "areas": [
+      "Business Bay"
+    ],
+    "lastActivity": "02/02/2025",
+    "messageCount": 11
+  },
+  {
+    "id": "whatsapp-05-lebanon-cash-buyer-business-bay",
+    "file": "data/whatsapp/05-lebanon-cash-buyer-business-bay.txt",
+    "type": "whatsapp",
+    "summary": "[20/01/2025, 13:10:22] Hassan Khoury: Hello, I'm looking to buy an apartment in Business Bay or Downtown. Cash buyer. Budget 2.8 million. [20/01/2025, 13:15:40] Omar Kazmi (Sterling Boulevard): Hi Hassan! Great to hear from you. 2.8M cash puts you in a strong position — sellers love cash deals becau",
+    "participants": [
+      "Hassan Khoury",
+      "Omar Kazmi"
+    ],
+    "areas": [
+      "Business Bay",
+      "Downtown"
+    ],
+    "lastActivity": "23/01/2025",
+    "messageCount": 20
+  },
+  {
+    "id": "whatsapp-06-viewing-booked-then-ghosted",
+    "file": "data/whatsapp/06-viewing-booked-then-ghosted.txt",
+    "type": "whatsapp",
+    "summary": "[05/02/2025, 09:18:33] Priya Menon: Hi! I saw the 2-bed in Creek Harbour on Property Finder. Can I book a viewing? [05/02/2025, 09:22:15] Layla Ibrahim (Sterling Boulevard): Hi Priya! Absolutely — it's a lovely unit. Creek views, 1,150 sqft, AED 2,100,000. When would you like to come? [05/02/2025, 0",
+    "participants": [
+      "Priya Menon",
+      "Layla Ibrahim"
+    ],
+    "areas": [
+      "Creek Harbour"
+    ],
+    "lastActivity": "27/02/2025",
+    "messageCount": 13
+  },
+  {
+    "id": "whatsapp-07-indian-investor-dubai-hills",
+    "file": "data/whatsapp/07-indian-investor-dubai-hills.txt",
+    "type": "whatsapp",
+    "summary": "[12/01/2025, 17:05:22] Arjun Mehta: Hi, I was referred to you by Ravi Kapoor. I'm looking to add another property to my portfolio. Interested in Dubai Hills. [12/01/2025, 17:10:45] Omar Kazmi (Sterling Boulevard): Hi Arjun! Ravi is a great client. Happy to help. Can you tell me a bit about what you ",
+    "participants": [
+      "Arjun Mehta",
+      "Omar Kazmi"
+    ],
+    "areas": [
+      "Marina",
+      "Dubai Hills",
+      "JLT"
+    ],
+    "lastActivity": "17/01/2025",
+    "messageCount": 19
+  },
+  {
+    "id": "whatsapp-08-jlt-tenant-3bed-dog",
+    "file": "data/whatsapp/08-jlt-tenant-3bed-dog.txt",
+    "type": "whatsapp",
+    "summary": "[25/01/2025, 12:30:18] Sophie Clarke: Hi there! I'm looking for a 3-bedroom apartment to rent in JLT. Are you able to help with rentals? [25/01/2025, 12:35:02] Nadia Hasan (Sterling Boulevard): Hi Sophie! Yes we do rentals as well. JLT is a great area — lots of 3-bed options. What's your budget? [25",
+    "participants": [
+      "Sophie Clarke",
+      "Nadia Hasan"
+    ],
+    "areas": [
+      "JLT"
+    ],
+    "lastActivity": "01/02/2025",
+    "messageCount": 18
+  },
+  {
+    "id": "whatsapp-09-damac-vs-arabian-ranches-comparison",
+    "file": "data/whatsapp/09-damac-vs-arabian-ranches-comparison.txt",
+    "type": "whatsapp",
+    "summary": "[18/01/2025, 10:05:15] Ahmed Al-Farsi: Good morning, I need help deciding between two properties. I've been looking at a villa in Damac Hills 2 and one in Arabian Ranches 3. Can you help me compare? [18/01/2025, 10:10:33] Layla Ibrahim (Sterling Boulevard): Morning Ahmed! Happy to help. Can you shar",
+    "participants": [
+      "Ahmed Al-Farsi",
+      "Layla Ibrahim"
+    ],
+    "areas": [
+      "Downtown",
+      "Damac Hills 2",
+      "Damac Hills",
+      "Arabian Ranches",
+      "Arabian Ranches 3"
+    ],
+    "lastActivity": "23/01/2025",
+    "messageCount": 18
+  },
+  {
+    "id": "whatsapp-10-female-professional-london-marina",
+    "file": "data/whatsapp/10-female-professional-london-marina.txt",
+    "type": "whatsapp",
+    "summary": "[02/02/2025, 19:15:22] Charlotte Evans: Hi, I found your agency through Google. I'm relocating from London to Dubai and looking for a 1-bed to rent in Dubai Marina or JBR. Preferably somewhere safe and well-managed. [02/02/2025, 19:20:45] Nadia Hasan (Sterling Boulevard): Hi Charlotte! Welcome — exc",
+    "participants": [
+      "Charlotte Evans",
+      "Nadia Hasan"
+    ],
+    "areas": [
+      "Dubai Marina",
+      "Marina",
+      "JBR"
+    ],
+    "lastActivity": "06/02/2025",
+    "messageCount": 16
+  },
+  {
+    "id": "whatsapp-11-pakistani-family-jumeirah-villa-rental",
+    "file": "data/whatsapp/11-pakistani-family-jumeirah-villa-rental.txt",
+    "type": "whatsapp",
+    "summary": "[28/01/2025, 08:45:18] Tariq Hussain: Assalamu alaikum. We are a family of 5 looking to rent a villa in Jumeirah. We need 4 bedrooms minimum. Budget is 250,000 AED per year. Can you help? [28/01/2025, 08:50:33] Layla Ibrahim (Sterling Boulevard): Wa alaikum assalam Tariq! Absolutely, Jumeirah is one",
+    "participants": [
+      "Tariq Hussain",
+      "Layla Ibrahim"
+    ],
+    "areas": [
+      "Jumeirah",
+      "Umm Suqeim"
+    ],
+    "lastActivity": "03/02/2025",
+    "messageCount": 21
+  },
+  {
+    "id": "whatsapp-12-offer-rejected-buyer-quiet",
+    "file": "data/whatsapp/12-offer-rejected-buyer-quiet.txt",
+    "type": "whatsapp",
+    "summary": "[05/02/2025, 14:20:33] Daniel Reeves: Hi, I'd like to make an offer on the 2-bed in JBR — Shams 4, unit 1807. I viewed it last week with your colleague. [05/02/2025, 14:25:18] Omar Kazmi (Sterling Boulevard): Hi Daniel! Yes, I have the details from Nadia's viewing notes. Great unit — 1,100 sqft, ful",
+    "participants": [
+      "Daniel Reeves",
+      "Omar Kazmi"
+    ],
+    "areas": [
+      "JBR"
+    ],
+    "lastActivity": "20/02/2025",
+    "messageCount": 13
+  },
+  {
+    "id": "whatsapp-13-russian-investor-creek-harbour",
+    "file": "data/whatsapp/13-russian-investor-creek-harbour.txt",
+    "type": "whatsapp",
+    "summary": "[30/01/2025, 20:15:10] Dmitri Volkov: Hello. Off-plan Creek Harbour. What do you have? [30/01/2025, 20:20:33] Omar Kazmi (Sterling Boulevard): Hi Dmitri! We have a few off-plan options in Creek Harbour. Are you looking at apartments or townhouses? Any specific size? [30/01/2025, 20:21:55] Dmitri Vol",
+    "participants": [
+      "Dmitri Volkov",
+      "Omar Kazmi"
+    ],
+    "areas": [
+      "Marina",
+      "Creek Harbour"
+    ],
+    "lastActivity": "08/02/2025",
+    "messageCount": 19
+  },
+  {
+    "id": "whatsapp-14-mortgage-referral-no-followup",
+    "file": "data/whatsapp/14-mortgage-referral-no-followup.txt",
+    "type": "whatsapp",
+    "summary": "[14/01/2025, 11:30:22] Maria Santos: Hi, I'm interested in buying a 2-bed in Sports City. Budget around 900K. But I need a mortgage — can you help with that? [14/01/2025, 11:35:45] Nadia Hasan (Sterling Boulevard): Hi Maria! Sports City is great value right now. 900K for a 2-bed is definitely achiev",
+    "participants": [
+      "Maria Santos",
+      "Nadia Hasan"
+    ],
+    "areas": [
+      "Sports City"
+    ],
+    "lastActivity": "15/02/2025",
+    "messageCount": 15
+  },
+  {
+    "id": "whatsapp-15-nigerian-buyer-remote-process",
+    "file": "data/whatsapp/15-nigerian-buyer-remote-process.txt",
+    "type": "whatsapp",
+    "summary": "[22/01/2025, 15:40:18] Chukwuemeka Obi: Good afternoon. I'm based in Lagos and interested in buying property in Dubai. I want to understand the process for buying remotely. Is it possible? [22/01/2025, 15:45:33] Layla Ibrahim (Sterling Boulevard): Good afternoon! Absolutely, many of our clients buy ",
+    "participants": [
+      "Chukwuemeka Obi",
+      "Layla Ibrahim"
+    ],
+    "areas": [
+      "JVC",
+      "Business Bay",
+      "Creek Harbour"
+    ],
+    "lastActivity": "23/01/2025",
+    "messageCount": 17
+  },
+  {
+    "id": "whatsapp-16-referral-palm-2bed",
+    "file": "data/whatsapp/16-referral-palm-2bed.txt",
+    "type": "whatsapp",
+    "summary": "[10/02/2025, 09:05:18] Nadia Hasan (Sterling Boulevard): Hi Omar — Leila from the Horizon team just referred a client to us. Her name is Sarah Al-Mansoori. She's looking for a 2-bed on Palm Jumeirah, budget 3.5M. Leila says she's serious and ready to move quickly. Can you call her directly? [10/02/2",
+    "participants": [
+      "Nadia Hasan",
+      "Omar Kazmi",
+      "Sarah Al-Mansoori"
+    ],
+    "areas": [
+      "Palm Jumeirah",
+      "Palm",
+      "Jumeirah"
+    ],
+    "lastActivity": "11/02/2025",
+    "messageCount": 16
+  },
+  {
+    "id": "whatsapp-17-abu-dhabi-commuter-studio",
+    "file": "data/whatsapp/17-abu-dhabi-commuter-studio.txt",
+    "type": "whatsapp",
+    "summary": "[03/02/2025, 07:15:22] Mike D'Souza: Hey, I work in Abu Dhabi on a construction project — weekdays only. I need a small place near the Abu Dhabi-Dubai border so I can commute. Studio or 1-bed. Budget around 70K per year rent. [03/02/2025, 07:20:45] Nadia Hasan (Sterling Boulevard): Morning Mike! So ",
+    "participants": [
+      "Mike D'Souza",
+      "Nadia Hasan"
+    ],
+    "areas": [
+      "Dubai Marina",
+      "Marina",
+      "Meydan",
+      "Al Raha",
+      "Jebel Ali",
+      "Discovery Gardens",
+      "Abu Dhabi"
+    ],
+    "lastActivity": "08/02/2025",
+    "messageCount": 14
+  },
+  {
+    "id": "whatsapp-18-family-upgrade-springs-to-villa",
+    "file": "data/whatsapp/18-family-upgrade-springs-to-villa.txt",
+    "type": "whatsapp",
+    "summary": "[15/01/2025, 16:30:22] Samira Patel: Hi Layla, we spoke at the community event last month. We're the family in Springs 3 looking to upgrade. Ready to start looking now. [15/01/2025, 16:35:45] Layla Ibrahim (Sterling Boulevard): Hi Samira! Of course I remember — you and Raj with the two kids. You men",
+    "participants": [
+      "Samira Patel",
+      "Layla Ibrahim"
+    ],
+    "areas": [
+      "Dubai Hills",
+      "Arabian Ranches",
+      "Springs",
+      "Meadows",
+      "Emirates Hills",
+      "Arabian Ranches 3"
+    ],
+    "lastActivity": "18/01/2025",
+    "messageCount": 17
+  },
+  {
+    "id": "whatsapp-19-distressed-sales-instagram-follower",
+    "file": "data/whatsapp/19-distressed-sales-instagram-follower.txt",
+    "type": "whatsapp",
+    "summary": "[08/02/2025, 21:15:33] Youssef Hamdan: Hey, I've been following you guys on Instagram. I saw you posted about price drops in some areas. I'm specifically looking for distressed sales or below market listings. Any deals right now? [08/02/2025, 21:20:18] Omar Kazmi (Sterling Boulevard): Hey Youssef! G",
+    "participants": [
+      "Youssef Hamdan",
+      "Omar Kazmi"
+    ],
+    "areas": [
+      "JVC",
+      "Business Bay"
+    ],
+    "lastActivity": "09/02/2025",
+    "messageCount": 15
+  },
+  {
+    "id": "whatsapp-20-keen-buyer-paused-conflict",
+    "file": "data/whatsapp/20-keen-buyer-paused-conflict.txt",
+    "type": "whatsapp",
+    "summary": "[08/01/2025, 10:30:18] George Andreou: Morning! I'm the guy who viewed the 3-bed in Town Square with you a couple of weeks ago. I'm very interested. Can we talk? [08/01/2025, 10:35:33] Layla Ibrahim (Sterling Boulevard): Morning George! Of course — the Hayat Boulevard unit, right? 3BR, 1,550 sqft, A",
+    "participants": [
+      "George Andreou",
+      "Layla Ibrahim"
+    ],
+    "areas": [
+      "Town Square"
+    ],
+    "lastActivity": "15/01/2025",
+    "messageCount": 22
+  },
+  {
+    "id": "webinar-dubai-real-estate-2025-buying-in-uncertainty",
+    "file": "data/webinar/dubai-real-estate-2025-buying-in-uncertainty.md",
+    "type": "webinar",
+    "summary": "**Webinar Recording Transcript** **Date:** Thursday, 6 February 2025 **Duration:** 1 hour 22 minutes",
+    "participants": [],
+    "areas": [],
+    "lastActivity": null
+  },
+  {
+    "id": "email-01-corporate-relocation-singapore",
+    "file": "data/emails/01-corporate-relocation-singapore.md",
+    "type": "email",
+    "summary": "**From:** Jennifer Tan <jennifer.tan@meridiancapital.sg> **To:** Nadia Hasan <nadia@sterlingboulevard.ae> **Date:** Monday, 13 January 2025, 09:15 AM",
+    "participants": [],
+    "areas": [],
+    "lastActivity": null
+  },
+  {
+    "id": "email-02-service-charges-breakdown",
+    "file": "data/emails/02-service-charges-breakdown.md",
+    "type": "email",
+    "summary": "**From:** Andrew Fletcher <andrew.fletcher@gmail.com> **To:** Omar Kazmi <omar@sterlingboulevard.ae> **Date:** Wednesday, 22 January 2025, 11:30 AM",
+    "participants": [],
+    "areas": [],
+    "lastActivity": null
+  },
+  {
+    "id": "email-03-seller-valuation-downtown-3bed",
+    "file": "data/emails/03-seller-valuation-downtown-3bed.md",
+    "type": "email",
+    "summary": "**From:** Karen Mitchell <karen.m@outlook.com> **To:** Layla Ibrahim <layla@sterlingboulevard.ae> **Date:** Friday, 17 January 2025, 10:00 AM",
+    "participants": [],
+    "areas": [],
+    "lastActivity": null
+  },
+  {
+    "id": "email-04-followup-sequence-cold-buyer",
+    "file": "data/emails/04-followup-sequence-cold-buyer.md",
+    "type": "email",
+    "summary": "**From:** Omar Kazmi <omar@sterlingboulevard.ae> **To:** Steven Park <steven.park@protonmail.com> **Date:** Monday, 17 February 2025, 09:00 AM",
+    "participants": [],
+    "areas": [],
+    "lastActivity": null
+  },
+  {
+    "id": "email-05-investor-portfolio-review",
+    "file": "data/emails/05-investor-portfolio-review.md",
+    "type": "email",
+    "summary": "**From:** Raj Kapoor <raj.kapoor@investwise.in> **To:** Omar Kazmi <omar@sterlingboulevard.ae> **Date:** Tuesday, 28 January 2025, 08:30 AM",
+    "participants": [],
+    "areas": [],
+    "lastActivity": null
+  }
+]
