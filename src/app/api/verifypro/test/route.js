@@ -38,6 +38,9 @@ export async function GET() {
     VAPI_ASSISTANT_ID: Boolean(process.env.VAPI_ASSISTANT_ID),
     VAPI_PHONE_NUMBER_ID: Boolean(process.env.VAPI_PHONE_NUMBER_ID),
     OPENAI_API_KEY: Boolean(process.env.OPENAI_API_KEY),
+    ANTHROPIC_API_KEY: Boolean(process.env.ANTHROPIC_API_KEY),
+    RESEND_API_KEY: Boolean(process.env.RESEND_API_KEY),
+    RESEND_FROM_EMAIL: Boolean(process.env.RESEND_FROM_EMAIL),
     RAPIDAPI_KEY: Boolean(process.env.RAPIDAPI_KEY),
   };
 
