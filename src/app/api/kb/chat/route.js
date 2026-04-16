@@ -1,10 +1,13 @@
 import { buildSystemPrompt } from "@/lib/kb/loader";
 import { buildEmailDraftFromRequest } from "@/lib/email/draft-workflow";
 import { sendLeadEmail } from "@/lib/email/resend-client";
+import { fireVapiCall } from "@/lib/vapi";
+import { resolveLeadByName } from "@/lib/kb/leads";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_MODEL = "claude-sonnet-4-20250514";
 let pendingEmailDraft = null;
+let pendingCallRequest = null;
 
 function limitWords(text, maxWords = 75) {
   const words = text.trim().split(/\s+/);
@@ -65,9 +68,34 @@ function isAffirmative(text) {
   return affirmativePhrases.some((phrase) => normalized.includes(phrase));
 }
 
+function extractNameForCall(text) {
+  const raw = String(text ?? "");
+  const match = raw.match(/\b(?:call|ring|phone)\s+([a-z][a-z\s'-]{1,60})/i);
+  if (!match) return null;
+  return match[1]
+    .replace(/\b(?:to|about|regarding|re|for|and)\b[\s\S]*$/i, "")
+    .trim();
+}
+
+function parsePendingCallFromAssistantMessage(messageText = "") {
+  const text = String(messageText || "");
+  const match = text.match(/ready to call\s+(.+?)\s+at\s+([+0-9][0-9+\-\s]{6,})/i);
+  if (!match) return null;
+  return {
+    name: match[1].trim(),
+    phone: match[2].trim().replace(/\s+/g, " "),
+  };
+}
+
 async function handleCommand(lastUserMessage, messages = []) {
   const text = String(lastUserMessage || "").trim().toLowerCase();
   const normalized = text.replace(/\s+/g, " ");
+  const lastAssistantMessage = [...messages]
+    .reverse()
+    .find((m) => m?.role === "assistant")?.content;
+  const pendingCallFromHistory = parsePendingCallFromAssistantMessage(lastAssistantMessage);
+  const isCallIntent =
+    normalized.includes("call ") || normalized.startsWith("call") || normalized.includes("ring ");
   const isEmailIntent =
     normalized.includes("email ") ||
     normalized.startsWith("email") ||
@@ -75,14 +103,44 @@ async function handleCommand(lastUserMessage, messages = []) {
     normalized.includes("send email");
 
   const hasPendingEmailApproval = Boolean(pendingEmailDraft);
+  const hasPendingCallApproval = Boolean(pendingCallRequest || pendingCallFromHistory);
+  const wantsToSendCall = isAffirmative(normalized) && hasPendingCallApproval;
   const wantsToSendEmail = isAffirmative(normalized) && hasPendingEmailApproval;
   const wantsToCancelEmail =
-    hasPendingEmailApproval &&
+    (hasPendingEmailApproval || hasPendingCallApproval) &&
     (normalized.includes("cancel") || normalized.includes("stop") || normalized.includes("no"));
 
   if (wantsToCancelEmail) {
     pendingEmailDraft = null;
-    return "Email draft cancelled.";
+    pendingCallRequest = null;
+    return "Pending action cancelled.";
+  }
+
+  if (wantsToSendCall) {
+    try {
+      let callLead = pendingCallRequest;
+      if (!callLead && pendingCallFromHistory) {
+        callLead = {
+          ...pendingCallFromHistory,
+          area: "Dubai",
+        };
+      }
+      const result = await fireVapiCall({
+        overridePhone: callLead.phone,
+        listing: {
+          area: callLead.area || "Dubai",
+          title: "follow-up listing update",
+          price: null,
+          type: "property",
+          bedrooms: null,
+          agentName: "Alex",
+        },
+      });
+      pendingCallRequest = null;
+      return `Calling ${callLead.name} now at ${callLead.phone}. Call ID: ${result?.id || "pending"}.`;
+    } catch (error) {
+      return `I could not place the call yet. ${error.message}`;
+    }
   }
 
   if (wantsToSendEmail) {
@@ -99,10 +157,28 @@ async function handleCommand(lastUserMessage, messages = []) {
       });
       const sentTo = pendingEmailDraft.to;
       pendingEmailDraft = null;
-      return `Email sent to ${sentTo}. Resend message ID: ${result?.id || "n/a"}.`;
+      return `Email sent to ${sentTo}.`;
     } catch (error) {
       return `I could not send the email yet. ${error.message}`;
     }
+  }
+
+  if (isCallIntent) {
+    const targetName = extractNameForCall(lastUserMessage);
+    if (!targetName) {
+      return "Who should I call? Say call followed by the lead name.";
+    }
+    const { matches } = resolveLeadByName(targetName);
+    if (!matches.length) {
+      return `I could not find a lead named ${targetName}. Please check the name and try again.`;
+    }
+    if (matches.length > 1) {
+      const options = matches.slice(0, 3).map((lead) => `${lead.name} (${lead.phone})`).join(", ");
+      return `I found multiple leads for ${targetName}: ${options}. Which one should I call?`;
+    }
+    const lead = matches[0];
+    pendingCallRequest = lead;
+    return `Ready to call ${lead.name} at ${lead.phone}. Should I place the call now?`;
   }
 
   if (isEmailIntent) {
