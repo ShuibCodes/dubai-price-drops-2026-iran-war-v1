@@ -21,9 +21,9 @@ const PRODUCT_STACK = [
     ctaHref: "/live-updates",
   },
   {
-    name: "AgentZero",
+    name: "Data ownership",
     description:
-      "Auto-qualify and re-engage old leads while you sleep. AI calls, handles objections, and books meetings, with human oversight.",
+      "Your data stays on-site, encrypted, and fully under your control. Not in someone else's cloud.",
   },
   {
     name: "3-Hour AI Workshop",
@@ -143,6 +143,43 @@ export default function AgentZeroLandingPage() {
               ) : null}
             </article>
           ))}
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-4 pb-20 sm:px-6 lg:px-8">
+        <div className="grid gap-10 lg:grid-cols-2 lg:items-center">
+          <div>
+            <div className="mono text-[11px] uppercase tracking-[0.32em] text-white/35">
+              How it works
+            </div>
+            <h2 className="mt-4 text-3xl font-semibold text-white sm:text-4xl">
+              ✅ AgentZero
+            </h2>
+            <p className="mt-5 text-base leading-8 text-white/75 sm:text-lg">
+              Auto-qualify and re-engage old leads while you sleep. AI calls, handles
+              objections, and books meetings — with human oversight.
+            </p>
+            <p className="mt-5 text-base leading-8 text-white sm:text-lg">
+              And your data{" "}
+              <span className="font-semibold text-white">never leaves your brokerage</span>{" "}
+              — every call, message, and lead stays{" "}
+              <span className="font-semibold text-white">on-site, encrypted, and fully under your control</span>.
+              Not in someone else&apos;s cloud.
+            </p>
+            <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-[#00e5ff]/30 bg-[#00e5ff]/[0.06] px-4 py-2 text-[11px] uppercase tracking-[0.24em] text-[#7dd3fc]">
+              <span aria-hidden>🔒</span> Self-hosted · Encrypted · Your data, your control
+            </div>
+          </div>
+          <div className="overflow-hidden rounded-[28px] border border-white/10 bg-black">
+            <iframe
+              src="/agentzero-chat.html"
+              title="AgentZero animated demo"
+              loading="lazy"
+              scrolling="no"
+              sandbox="allow-scripts allow-same-origin"
+              className="h-[420px] w-full lg:h-[520px]"
+            />
+          </div>
         </div>
       </section>
 
