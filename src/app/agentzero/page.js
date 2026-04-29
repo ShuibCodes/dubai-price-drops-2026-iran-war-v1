@@ -1,5 +1,5 @@
-import AgentZeroLandingPage from "@/components/landing/agentzero-landing-page";
+import { redirect } from "next/navigation";
 
-export default function AgentZeroPage() {
-  return <AgentZeroLandingPage />;
+export default function AgentZeroRedirectPage() {
+  redirect("/");
 }

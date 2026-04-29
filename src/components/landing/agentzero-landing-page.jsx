@@ -107,7 +107,7 @@ export default function AgentZeroLandingPage() {
               key={shot.label}
               className="overflow-hidden rounded-[28px] border border-white/10 bg-white/[0.03]"
             >
-              <div className="border-b border-white/8 px-5 py-4 text-sm font-medium text-white">{shot.label}</div>
+              <div className="border-b border-white/[0.08] px-5 py-4 text-sm font-medium text-white">{shot.label}</div>
               <div className="p-3">
                 <Image src={shot.src} alt={shot.alt} className="h-auto w-full rounded-[20px]" placeholder="blur" />
               </div>
