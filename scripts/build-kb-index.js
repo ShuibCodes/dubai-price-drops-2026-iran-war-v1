@@ -68,6 +68,63 @@ function extractSummary(content, type) {
   return lines.slice(0, 3).join(" ").substring(0, 300);
 }
 
+/**
+ * Brief: `<agentId>_<leadName>_<timestamp>.txt` — parse from the right
+ * (agentId may contain underscores). Timestamp must be plausible ms (new uploads).
+ *
+ * @returns {{ agentId: string, leadName: string, dateAdded: string } | null}
+ */
+function parseBriefWhatsappFilename(basename) {
+  const base = String(basename).replace(/\.txt$/i, "");
+  if (base.includes("__")) return null;
+  const parts = base.split("_");
+  if (parts.length < 3) return null;
+  const tsStr = parts[parts.length - 1];
+  if (!/^\d+$/.test(tsStr)) return null;
+  const dateMs = Number(tsStr);
+  if (!Number.isFinite(dateMs) || dateMs < 1e12) return null;
+  const leadName = parts[parts.length - 2];
+  if (!leadName) return null;
+  const agentId = parts.slice(0, -2).join("_");
+  if (!agentId) return null;
+  return {
+    agentId,
+    leadName,
+    dateAdded: new Date(dateMs).toISOString(),
+  };
+}
+
+/**
+ * Legacy: `<agentSlug>__<leadSlug>_<timestampMs>_<index>.txt`
+ * @returns {{ agentId: string, dateAdded: string, leadName: null } | null}
+ */
+function parseLegacyDoubleUnderscoreFilename(basename) {
+  const m = String(basename).match(/^(.+?)__(.+)_(\d+)_(\d+)\.txt$/i);
+  if (!m) return null;
+  const agentId = m[1];
+  const dateMs = Number(m[3]);
+  if (!Number.isFinite(dateMs)) return null;
+  return {
+    agentId,
+    dateAdded: new Date(dateMs).toISOString(),
+    leadName: null,
+  };
+}
+
+/**
+ * @returns {{ agentId: string, dateAdded: string, leadName: string | null } | null}
+ */
+function parseWhatsappUploadBasename(basename) {
+  const b = String(basename);
+  if (b.includes("__")) {
+    const leg = parseLegacyDoubleUnderscoreFilename(basename);
+    if (leg) return leg;
+  }
+  const brief = parseBriefWhatsappFilename(basename);
+  if (brief) return brief;
+  return parseLegacyDoubleUnderscoreFilename(basename);
+}
+
 function buildIndex() {
   const index = [];
 
@@ -76,13 +133,20 @@ function buildIndex() {
     const files = fs.readdirSync(whatsappDir).filter((f) => f.endsWith(".txt")).sort();
     for (const file of files) {
       const filePath = path.join("data", "whatsapp", file);
-      const content = fs.readFileSync(path.join(DATA_DIR, "whatsapp", file), "utf-8");
+      const absTxt = path.join(DATA_DIR, "whatsapp", file);
+      const st = fs.statSync(absTxt);
+      const content = fs.readFileSync(absTxt, "utf-8");
       const meta = parseWhatsAppMeta(content, file);
       const id = "whatsapp-" + file.replace(".txt", "");
+      const parsed = parseWhatsappUploadBasename(file);
       index.push({
         id,
         file: filePath,
+        path: filePath,
         type: "whatsapp",
+        agentId: parsed ? parsed.agentId : null,
+        leadName: parsed && parsed.leadName != null ? parsed.leadName : null,
+        dateAdded: parsed ? parsed.dateAdded : st.mtime.toISOString(),
         summary: extractSummary(content, "whatsapp"),
         ...meta,
       });
