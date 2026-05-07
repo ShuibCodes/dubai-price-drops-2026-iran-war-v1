@@ -3,19 +3,33 @@ const path = require("path");
 
 const DATA_DIR = path.join(__dirname, "..", "data");
 
+/** [DD/MM/YYYY, H:MM(:SS)?] Sender: body (seconds optional) */
+const WHATSAPP_HEADER_BRACKET =
+  /^\[(\d{2}\/\d{2}\/\d{4}),\s(\d{1,2}:\d{2}(?::\d{2})?)\]\s([^:]+):\s*(.*)$/;
+
+/** DD/MM/YYYY, H:MM(:SS)? - Sender: body (brief export; seconds optional) */
+const WHATSAPP_HEADER_DASH =
+  /^(\d{2}\/\d{2}\/\d{4}),\s(\d{1,2}:\d{2}(?::\d{2})?)\s-\s([^:]+):\s*(.*)$/;
+
 function parseWhatsAppMeta(content, filename) {
   const participants = new Set();
   const dates = [];
   const areas = new Set();
   const budgetMatches = [];
 
-  const messagePattern = /\[(\d{2}\/\d{2}\/\d{4}), \d{2}:\d{2}:\d{2}\] ([^:]+):/g;
-  let match;
-  while ((match = messagePattern.exec(content)) !== null) {
-    dates.push(match[1]);
-    const name = match[2].replace(/\s*\(Sterling Boulevard\)/, "");
+  const lines = String(content ?? "").replace(/\r\n/g, "\n").split("\n");
+  for (const line of lines) {
+    const lineNorm = line.replace(/\r$/, "");
+    let m = lineNorm.match(WHATSAPP_HEADER_BRACKET);
+    if (!m) m = lineNorm.match(WHATSAPP_HEADER_DASH);
+    if (!m) continue;
+
+    dates.push(m[1]);
+    const name = m[3].replace(/\s*\(Sterling Boulevard\)/, "");
     participants.add(name);
   }
+
+  let match;
 
   const areaKeywords = [
     "JVC", "Dubai Marina", "Marina", "Meydan", "Business Bay", "Downtown",
