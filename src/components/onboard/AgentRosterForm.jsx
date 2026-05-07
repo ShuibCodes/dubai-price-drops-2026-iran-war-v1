@@ -33,9 +33,15 @@ function newAgentRow(id) {
   };
 }
 
-export default function AgentRosterForm({ onInitialLoadComplete }) {
+export default function AgentRosterForm({
+  onInitialLoadComplete,
+  onAgentsChange,
+}) {
   const onInitialLoadCompleteRef = useRef(onInitialLoadComplete);
   onInitialLoadCompleteRef.current = onInitialLoadComplete;
+
+  const onAgentsChangeRef = useRef(onAgentsChange);
+  onAgentsChangeRef.current = onAgentsChange;
 
   const [brokerage, setBrokerage] = useState("");
   const [agents, setAgents] = useState([]);
@@ -74,6 +80,10 @@ export default function AgentRosterForm({ onInitialLoadComplete }) {
   useEffect(() => {
     loadRoster();
   }, [loadRoster]);
+
+  useEffect(() => {
+    onAgentsChangeRef.current?.(agents);
+  }, [agents]);
 
   function updateAgent(id, field, value) {
     setSaveSuccess(false);

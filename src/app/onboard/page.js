@@ -7,9 +7,14 @@ import UploadProgress from "@/components/onboard/UploadProgress";
 export default function OnboardPage() {
   const [showPlaceholderIntegrations, setShowPlaceholderIntegrations] =
     useState(false);
+  const [agents, setAgents] = useState([]);
 
   const handleInitialLoadComplete = useCallback(() => {
     setShowPlaceholderIntegrations(true);
+  }, []);
+
+  const handleAgentsChange = useCallback((nextAgents) => {
+    setAgents(nextAgents);
   }, []);
 
   return (
@@ -24,8 +29,13 @@ export default function OnboardPage() {
         </p>
       </header>
 
-      <AgentRosterForm onInitialLoadComplete={handleInitialLoadComplete} />
-      {showPlaceholderIntegrations ? <UploadProgress /> : null}
+      <AgentRosterForm
+        onInitialLoadComplete={handleInitialLoadComplete}
+        onAgentsChange={handleAgentsChange}
+      />
+      {showPlaceholderIntegrations ? (
+        <UploadProgress agents={agents} />
+      ) : null}
     </div>
   );
 }
