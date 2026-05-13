@@ -6,6 +6,64 @@ import { useRef, useState } from "react";
  * @typedef {{ id?: string, name?: string }} AgentRow
  */
 
+/** @param {string} s */
+function normNameKey(s) {
+  return s.trim().toLowerCase();
+}
+
+/** @param {AgentRow} agent */
+function agentDisplayLabel(agent) {
+  const id =
+    typeof agent?.id === "string" ? agent.id : String(agent?.id ?? "");
+  if (typeof agent?.name === "string" && agent.name.trim()) {
+    return agent.name.trim();
+  }
+  return id || "Unnamed";
+}
+
+/**
+ * Known agent labels from roster + selected agent (same labels as the Agent dropdown).
+ * @param {AgentRow[]} agentList
+ * @param {string} selectedAgentIdRaw
+ */
+function buildExcludedAgentNameKeys(agentList, selectedAgentIdRaw) {
+  const keys = new Set();
+  for (const agent of agentList) {
+    const k = normNameKey(agentDisplayLabel(agent));
+    if (k) keys.add(k);
+  }
+  const sel = selectedAgentIdRaw.trim();
+  if (sel) {
+    const selected = agentList.find((a) => {
+      const id =
+        typeof a?.id === "string" ? a.id : String(a?.id ?? "");
+      return id.trim() === sel;
+    });
+    if (selected) {
+      const k = normNameKey(agentDisplayLabel(selected));
+      if (k) keys.add(k);
+    }
+  }
+  return keys;
+}
+
+/**
+ * @param {unknown} participants
+ * @param {Set<string>} excludedNormalized
+ */
+function participantsMinusAgents(participants, excludedNormalized) {
+  if (!Array.isArray(participants)) return [];
+  const out = [];
+  for (const p of participants) {
+    if (typeof p !== "string") continue;
+    const t = p.trim();
+    if (!t) continue;
+    if (excludedNormalized.has(normNameKey(t))) continue;
+    out.push(t);
+  }
+  return out;
+}
+
 /**
  * @param {{ agents?: AgentRow[] }} props
  */
@@ -76,6 +134,15 @@ export default function WhatsAppUploader({ agents = [] }) {
     fileInputRef.current?.click();
   }
 
+  /** @param {string} raw */
+  function friendlyUploadApiError(raw) {
+    const s = raw.trim();
+    if (s.includes("Unknown agentId")) {
+      return "This agent is not saved yet. Save the agent roster first, then try uploading again.";
+    }
+    return s;
+  }
+
   async function handleUpload() {
     if (selectedFiles.length === 0) return;
     if (!selectedAgentId.trim()) {
@@ -103,12 +170,12 @@ export default function WhatsAppUploader({ agents = [] }) {
       const data = await response.json();
 
       if (!response.ok) {
-        const msg =
+        const raw =
           (data &&
             typeof data.error === "string" &&
             data.error.trim()) ||
           `Upload failed with status ${response.status}.`;
-        setErrorMessage(msg);
+        setErrorMessage(friendlyUploadApiError(raw));
         setStatus("error");
         return;
       }
@@ -116,7 +183,7 @@ export default function WhatsAppUploader({ agents = [] }) {
       setSuccessPayload({
         filesUploaded: data.filesUploaded,
         docsAdded: data.docsAdded,
-        leads: Array.isArray(data.leads) ? data.leads : null,
+        leads: Array.isArray(data.leads) ? data.leads : [],
         files: Array.isArray(data.files) ? data.files : [],
       });
       setStatus("success");
@@ -131,12 +198,27 @@ export default function WhatsAppUploader({ agents = [] }) {
 
   const uploading = status === "uploading";
 
-  const leadsSummary =
-    successPayload &&
-    Array.isArray(successPayload.leads) &&
-    successPayload.leads.length > 0
-      ? successPayload.leads.join(", ")
-      : "—";
+  const excludedAgentNameKeys =
+    status === "success" && successPayload
+      ? buildExcludedAgentNameKeys(agents, selectedAgentId)
+      : null;
+
+  const detectedLeadPerFile =
+    excludedAgentNameKeys && successPayload
+      ? successPayload.files.map((f, i) => {
+          const fromApi = Array.isArray(successPayload.leads)
+            ? successPayload.leads[i]
+            : undefined;
+          if (typeof fromApi === "string" && fromApi.trim()) {
+            return fromApi.trim();
+          }
+          const remaining = participantsMinusAgents(
+            f.participants,
+            excludedAgentNameKeys,
+          );
+          return remaining.length > 0 ? remaining[0] : null;
+        })
+      : null;
 
   return (
     <section className="rounded-xl border border-[var(--border)] border-dashed bg-[var(--surface)]/80 p-6">
@@ -176,6 +258,9 @@ export default function WhatsAppUploader({ agents = [] }) {
               );
             })}
           </select>
+          <p className="mt-1.5 text-xs font-normal text-[var(--muted)]">
+            Save the agent roster before uploading files for a new or edited agent.
+          </p>
         </label>
 
         <div className="block text-xs font-medium text-[var(--muted)]">
@@ -214,15 +299,19 @@ export default function WhatsAppUploader({ agents = [] }) {
             <span className="font-medium text-[var(--foreground)]">
               Drop .txt files here or click to choose
             </span>
-            <span className="mt-1 text-xs text-[var(--muted)]">
-              Tip: hold Ctrl or Shift to select multiple .txt files.
-            </span>
           </div>
+          <p className="mt-1.5 text-xs text-[var(--muted)]">
+            Tip: hold Ctrl or Shift to select multiple .txt files.
+          </p>
         </div>
 
         {selectedFiles.length > 0 && status !== "success" ? (
           <div className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs text-[var(--muted)]">
-            <p className="font-medium text-[var(--foreground)]">Selected files</p>
+            <p className="font-medium text-[var(--foreground)]">
+              {selectedFiles.length === 1
+                ? "1 file selected"
+                : `${selectedFiles.length} files selected`}
+            </p>
             <ul className="mt-1 list-inside list-disc space-y-0.5">
               {selectedFiles.slice(0, 5).map((f, i) => (
                 <li
@@ -267,12 +356,12 @@ export default function WhatsAppUploader({ agents = [] }) {
           <p className="font-medium text-[var(--foreground)]">Upload complete</p>
           <ul className="mt-2 space-y-1 text-[var(--muted)]">
             <li>
-              <span className="text-[var(--foreground)]">Documents added:</span>{" "}
-              {successPayload.docsAdded}
+              <span className="text-[var(--foreground)]">Files uploaded:</span>{" "}
+              {successPayload.filesUploaded}
             </li>
             <li>
-              <span className="text-[var(--foreground)]">Leads detected:</span>{" "}
-              <span className="text-[var(--foreground)]">{leadsSummary}</span>
+              <span className="text-[var(--foreground)]">Documents added:</span>{" "}
+              {successPayload.docsAdded}
             </li>
           </ul>
           <ul className="mt-4 space-y-3">
@@ -298,6 +387,16 @@ export default function WhatsAppUploader({ agents = [] }) {
                     {Array.isArray(f.participants) &&
                     f.participants.length > 0
                       ? f.participants.join(", ")
+                      : "—"}
+                  </span>
+                </p>
+                <p className="mt-1 text-xs text-[var(--muted)]">
+                  <span className="text-[var(--foreground)]">
+                    Detected lead / conversation:
+                  </span>{" "}
+                  <span className="text-[var(--foreground)]">
+                    {detectedLeadPerFile && detectedLeadPerFile[i]
+                      ? detectedLeadPerFile[i]
                       : "—"}
                   </span>
                 </p>

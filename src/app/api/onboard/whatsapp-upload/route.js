@@ -179,6 +179,27 @@ function inferLeadName(meta, ctx) {
 }
 
 /**
+ * Human-readable label for the same non-agent participant chosen by {@link inferLeadName}
+ * (saved filename uses that participant's slug). Empty when only unknown-lead applies.
+ *
+ * @param {*} meta - parseWhatsAppExport()[0]
+ * @param {LeadInferenceContext} ctx
+ * @returns {string}
+ */
+function inferLeadDisplayLabel(meta, ctx) {
+  const participants = Array.isArray(meta?.participants) ? meta.participants : [];
+  for (const p of participants) {
+    if (!participantKey(p)) continue;
+    if (isAgentSideParticipant(p, ctx)) continue;
+    const slug = sanitizeLeadHyphenSlug(p, ctx.brokerageName);
+    if (slug && slug !== "unknown-lead") {
+      return stripBrokerageParenthetical(participantKey(p), ctx.brokerageName);
+    }
+  }
+  return "";
+}
+
+/**
  * Participants for JSON responses: strip brokerage parentheticals, preserve order (all participants).
  *
  * @param {string[] | undefined} participants
@@ -279,26 +300,6 @@ async function loadLeadInferenceContext(agentId) {
     brokerageName,
     agentName: agent.name.trim(),
   };
-}
-
-/**
- * Dedupe `leads` from each file result (non–agent-side only, already in `fr.leads`).
- *
- * @param {{ leads?: string[] }[]} fileResults
- * @returns {string[]}
- */
-function uniqueLeadsAcrossFiles(fileResults) {
-  const ordered = [];
-  const seen = new Set();
-  for (const fr of fileResults) {
-    if (!Array.isArray(fr.leads)) continue;
-    for (const label of fr.leads) {
-      if (!label || seen.has(label)) continue;
-      seen.add(label);
-      ordered.push(label);
-    }
-  }
-  return ordered;
 }
 
 export async function POST(request) {
@@ -411,6 +412,9 @@ export async function POST(request) {
   /** @type {{ originalName: string, savedAs: string, messageCount: number, participants: string[], leads: string[] }[]} */
   const fileResults = [];
 
+  /** One display lead label per uploaded file (same order as `files`). */
+  const leads = [];
+
   try {
     for (let index = 0; index < uploads.length; index++) {
       const blob = uploads[index];
@@ -456,6 +460,10 @@ export async function POST(request) {
         ),
         leads: leadsForFile(meta.participants, leadCtx),
       });
+
+      const displayLead = inferLeadDisplayLabel(meta, leadCtx).trim();
+      const stem = path.parse(originalName).name.trim() || originalName;
+      leads.push(displayLead || stem);
     }
   } catch (err) {
     const message =
@@ -481,13 +489,11 @@ export async function POST(request) {
         filesUploaded: fileResults.length,
         docsAdded: fileResults.length,
         files: fileResults,
-        leads: uniqueLeadsAcrossFiles(fileResults),
+        leads,
       },
       { status: 500 },
     );
   }
-
-  const leads = uniqueLeadsAcrossFiles(fileResults);
 
   return NextResponse.json({
     success: true,
