@@ -302,6 +302,13 @@ function uniqueLeadsAcrossFiles(fileResults) {
 }
 
 export async function POST(request) {
+  const { isOnboardSessionValid, onboardUnauthorizedResponse } = await import(
+    "@/lib/require-onboard-session"
+  );
+  if (!(await isOnboardSessionValid())) {
+    return onboardUnauthorizedResponse();
+  }
+
   let formData;
   try {
     formData = await request.formData();

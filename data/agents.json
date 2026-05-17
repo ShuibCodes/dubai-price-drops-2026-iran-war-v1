@@ -2,6 +2,16 @@
   "brokerage": "Sterling Boulevard",
   "agents": [
     {
+      "id": "sterling-boulevard",
+      "name": "Sterling Boulevard",
+      "whatsapp": null,
+      "role": "brokerage",
+      "gmailToken": null,
+      "gmailEmail": null,
+      "kbFiles": [],
+      "lastGmailSync": null
+    },
+    {
       "id": "agent_001",
       "name": "Test Agent",
       "whatsapp": "+971501234567",

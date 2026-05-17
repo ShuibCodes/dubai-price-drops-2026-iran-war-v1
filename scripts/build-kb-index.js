@@ -191,6 +191,67 @@ function buildIndex() {
     }
   }
 
+  const crmDir = path.join(DATA_DIR, "crm");
+  if (fs.existsSync(crmDir)) {
+    const files = fs.readdirSync(crmDir).filter((f) => f.endsWith(".jsonl")).sort();
+    for (const file of files) {
+      const absPath = path.join(crmDir, file);
+      const filePath = path.join("data", "crm", file);
+      const st = fs.statSync(absPath);
+      const lines = fs.readFileSync(absPath, "utf-8").split("\n").filter((l) => l.trim());
+      if (lines.length === 0) continue;
+
+      let meta = null;
+      const leadNames = [];
+      const areas = new Set();
+      let leadCount = 0;
+      for (const line of lines) {
+        let obj;
+        try {
+          obj = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        if (obj && obj.type === "crm-metadata") {
+          meta = obj;
+          continue;
+        }
+        if (obj && obj.type === "crm-lead") {
+          leadCount++;
+          if (typeof obj.name === "string" && obj.name.trim()) {
+            leadNames.push(obj.name.trim());
+          }
+          if (typeof obj.area === "string" && obj.area.trim()) {
+            areas.add(obj.area.trim());
+          }
+        }
+      }
+
+      const id = "crm-" + file.replace(".jsonl", "");
+      const previewLeads = leadNames.slice(0, 5).join(", ");
+      const summary =
+        leadCount > 0
+          ? `CRM import (${leadCount} lead${leadCount === 1 ? "" : "s"})${previewLeads ? `: ${previewLeads}${leadNames.length > 5 ? ", ..." : ""}` : ""}.`
+          : "CRM import (no leads parsed).";
+
+      index.push({
+        id,
+        file: filePath,
+        path: filePath,
+        type: "crm",
+        agentId: meta?.agentId ?? null,
+        agentName: meta?.agentName ?? null,
+        originalFilename: meta?.originalFilename ?? null,
+        dateAdded: meta?.importedAt ?? st.mtime.toISOString(),
+        summary,
+        participants: leadNames,
+        leadCount,
+        areas: [...areas],
+        lastActivity: null,
+      });
+    }
+  }
+
   const outputPath = path.join(DATA_DIR, "index.json");
   fs.writeFileSync(outputPath, JSON.stringify(index, null, 2));
   console.log(`Index built: ${index.length} documents indexed`);

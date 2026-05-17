@@ -10,7 +10,7 @@ const TRUST_LINE =
 /**
  * @param {{ onBack?: () => void, onAddMoreData?: () => void }} props
  */
-export default function WhatsAppUploader({ onAddMoreData }) {
+export default function CrmCsvUploader({ onAddMoreData }) {
   const fileInputRef = useRef(null);
   const [status, setStatus] = useState("idle");
   const [selectedFiles, setSelectedFiles] = useState([]);
@@ -24,17 +24,17 @@ export default function WhatsAppUploader({ onAddMoreData }) {
   }
 
   /** @param {File[]} files */
-  function setTxtSelection(files) {
+  function setCsvSelection(files) {
     if (files.length === 0) {
       setSelectedFiles([]);
       return;
     }
-    const hasNonTxt = files.some(
-      (f) => !f.name.toLowerCase().endsWith(".txt"),
+    const hasNonCsv = files.some(
+      (f) => !f.name.toLowerCase().endsWith(".csv"),
     );
-    if (hasNonTxt) {
+    if (hasNonCsv) {
       setErrorMessage(
-        "Only WhatsApp export .txt files are accepted. Your selection includes non-.txt files — fix the selection and try again.",
+        "Only .csv files are accepted. Your selection includes non-.csv files — fix the selection and try again.",
       );
       setStatus("error");
       setSelectedFiles([]);
@@ -43,28 +43,25 @@ export default function WhatsAppUploader({ onAddMoreData }) {
     setSelectedFiles(files);
   }
 
-  /** @param {React.ChangeEvent<HTMLInputElement>} e */
   function handleFilePick(e) {
     const picked = e.target.files;
     resetToIdle();
-    setTxtSelection(picked ? Array.from(picked) : []);
+    setCsvSelection(picked ? Array.from(picked) : []);
     e.target.value = "";
   }
 
-  /** @param {React.DragEvent} e */
   function handleDragOver(e) {
     e.preventDefault();
     e.stopPropagation();
   }
 
-  /** @param {React.DragEvent} e */
   function handleDrop(e) {
     e.preventDefault();
     e.stopPropagation();
     if (status === "uploading") return;
     resetToIdle();
     const files = Array.from(e.dataTransfer.files || []);
-    setTxtSelection(files);
+    setCsvSelection(files);
   }
 
   function openFilePicker() {
@@ -85,7 +82,7 @@ export default function WhatsAppUploader({ onAddMoreData }) {
       }
       body.append("agentId", AGENT_ID);
 
-      const response = await fetch("/api/onboard/whatsapp-upload", {
+      const response = await fetch("/api/onboard/crm-upload", {
         method: "POST",
         body,
       });
@@ -105,8 +102,12 @@ export default function WhatsAppUploader({ onAddMoreData }) {
 
       setSuccessPayload({
         filesUploaded: data.filesUploaded,
-        docsAdded: data.docsAdded,
-        leads: Array.isArray(data.leads) ? data.leads : null,
+        totals: data.totals || {
+          rowsTotal: 0,
+          rowsImported: 0,
+          rowsSkipped: 0,
+        },
+        leads: Array.isArray(data.leads) ? data.leads : [],
         files: Array.isArray(data.files) ? data.files : [],
       });
       setStatus("success");
@@ -125,24 +126,31 @@ export default function WhatsAppUploader({ onAddMoreData }) {
     successPayload &&
     Array.isArray(successPayload.leads) &&
     successPayload.leads.length > 0
-      ? successPayload.leads.join(", ")
+      ? `${successPayload.leads.slice(0, 5).join(", ")}${successPayload.leads.length > 5 ? `, +${successPayload.leads.length - 5} more` : ""}`
       : "—";
 
   return (
     <section className="rounded-xl border border-[var(--border)] border-dashed bg-[var(--surface)]/80 p-6">
       <p className="text-sm text-[var(--foreground)]">
-        Export chats from WhatsApp Business (one .txt per conversation), then upload them
-        here. AgentZero will learn who each lead is and what you last discussed.
+        Required column: <code className="text-[var(--foreground)]">name</code>.
+        Optional: phone, email, area, budget, bedrooms, last_contact, status, notes.{" "}
+        <a
+          href="/crm-template.csv"
+          download
+          className="underline underline-offset-2 hover:opacity-80"
+        >
+          Download template
+        </a>
       </p>
 
       <div className="mt-4">
         <div className="block text-xs font-medium text-[var(--foreground)]">
-          <span className="block">WhatsApp export files (.txt)</span>
+          <span className="block">Lead list (.csv)</span>
           <input
             ref={fileInputRef}
             type="file"
             multiple
-            accept=".txt,text/plain"
+            accept=".csv,text/csv"
             disabled={uploading}
             className="sr-only"
             onChange={handleFilePick}
@@ -170,10 +178,10 @@ export default function WhatsAppUploader({ onAddMoreData }) {
             }`}
           >
             <span className="font-medium text-[var(--foreground)]">
-              Drop .txt files here or click to choose
+              Drop .csv files here or click to choose
             </span>
             <span className="mt-1 text-xs text-[var(--foreground)]">
-              Tip: hold Ctrl or Shift to select multiple .txt files.
+              Headers can be any common alias (phone / mobile / whatsapp, budget / max_budget, etc).
             </span>
           </div>
         </div>
@@ -213,23 +221,29 @@ export default function WhatsAppUploader({ onAddMoreData }) {
             : "border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--foreground)] hover:opacity-90"
         }`}
       >
-        {uploading ? "Uploading and parsing…" : "Upload to knowledge base"}
+        {uploading ? "Importing leads…" : "Import to knowledge base"}
       </button>
 
       {uploading ? (
         <p className="mt-2 text-center text-xs text-[var(--foreground)]" aria-live="polite">
-          Uploading and parsing…
+          Parsing CSV and saving leads…
         </p>
       ) : null}
 
       {status === "success" && successPayload ? (
         <div className="mt-4 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 text-sm text-[var(--foreground)]">
-          <p className="font-medium text-[var(--foreground)]">Upload complete</p>
+          <p className="font-medium text-[var(--foreground)]">Import complete</p>
           <ul className="mt-2 space-y-1 text-[var(--foreground)]">
             <li>
-              <span className="text-[var(--foreground)]">Documents added:</span>{" "}
-              {successPayload.docsAdded}
+              <span className="text-[var(--foreground)]">Rows imported:</span>{" "}
+              {successPayload.totals.rowsImported} of {successPayload.totals.rowsTotal}
             </li>
+            {successPayload.totals.rowsSkipped > 0 ? (
+              <li>
+                <span className="text-[var(--foreground)]">Rows skipped:</span>{" "}
+                {successPayload.totals.rowsSkipped}
+              </li>
+            ) : null}
             <li>
               <span className="text-[var(--foreground)]">Leads detected:</span>{" "}
               <span className="text-[var(--foreground)]">{leadsSummary}</span>
@@ -249,18 +263,36 @@ export default function WhatsAppUploader({ onAddMoreData }) {
                   {f.savedAs}
                 </p>
                 <p className="mt-1 text-xs text-[var(--foreground)]">
-                  <span className="text-[var(--foreground)]">Message count:</span>{" "}
-                  {f.messageCount}
-                </p>
-                <p className="mt-1 text-xs text-[var(--foreground)]">
-                  <span className="text-[var(--foreground)]">Participants:</span>{" "}
+                  <span className="text-[var(--foreground)]">Mapped columns:</span>{" "}
                   <span className="text-[var(--foreground)]">
-                    {Array.isArray(f.participants) &&
-                    f.participants.length > 0
-                      ? f.participants.join(", ")
-                      : "—"}
+                    {Object.entries(f.headerMap || {})
+                      .map(([raw, canon]) => `${raw} → ${canon}`)
+                      .join(", ") || "—"}
                   </span>
                 </p>
+                {Array.isArray(f.unmappedHeaders) && f.unmappedHeaders.length > 0 ? (
+                  <p className="mt-1 text-xs text-[var(--foreground)]">
+                    <span className="text-[var(--foreground)]">Extra columns kept as notes:</span>{" "}
+                    {f.unmappedHeaders.join(", ")}
+                  </p>
+                ) : null}
+                {Array.isArray(f.errors) && f.errors.length > 0 ? (
+                  <details className="mt-2 text-xs text-[var(--foreground)]">
+                    <summary className="cursor-pointer">
+                      {f.errors.length} row warning{f.errors.length === 1 ? "" : "s"}
+                    </summary>
+                    <ul className="mt-1 list-inside list-disc space-y-0.5">
+                      {f.errors.slice(0, 10).map((er, idx) => (
+                        <li key={`${i}-err-${String(idx)}`}>
+                          Row {er.row}: {er.message}
+                        </li>
+                      ))}
+                      {f.errors.length > 10 ? (
+                        <li>+{f.errors.length - 10} more…</li>
+                      ) : null}
+                    </ul>
+                  </details>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -270,7 +302,7 @@ export default function WhatsAppUploader({ onAddMoreData }) {
               className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2 text-sm font-medium text-[var(--foreground)]"
               onClick={resetToIdle}
             >
-              Upload another batch
+              Upload another CSV
             </button>
             {onAddMoreData ? (
               <button
