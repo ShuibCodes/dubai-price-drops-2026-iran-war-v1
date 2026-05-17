@@ -1,0 +1,23 @@
+Call ID: 019e35b3-5c89-7001-941b-1c83b76424de
+Lead: Shuayb | WhatsApp: +971585690693
+Status: customer-ended-call
+Started: 2026-05-17T11:30:12.065Z
+Ended: 2026-05-17T11:32:15.215Z
+
+--- Call Summary ---
+An AI called to inquire about a person's availability, but was informed the person was not present. The AI then proactively presented a 2-bedroom unit in Dubai Marina within the user's 2,000,000 dirham budget and successfully scheduled a viewing for 2 PM on Monday.
+
+--- Transcript ---
+User: Hi. If you record your name and reason for calling, I'll see if this person is available.
+AI: Hey. Alex from Sterling Boulevard sent me I'm an AI, but just give me 15 seconds.
+User: Thanks. Please stay on the line.
+AI: Sure thing. I'll hold on.
+User: I'm sorry. This person is not available. If you would like to leave an additional message, please reply after the tone.
+AI: Thanks for letting me know. Just to mention, Alex has a 2 bedroom unit in Dubai Marina within your budget of 2000000 dirhams. When would be a good time next week for a viewing?
+User: Hello?
+AI: Hi. Just following up. When are you free next week to see the 2 bedroom unit in Dubai Marina within your 2000000 dirhams budget.
+User: PM tomorrow, Monday.
+AI: Great. What time in the PM works best for you tomorrow?
+User: 2 PM, Monday.
+AI: Got it. 2 PM on Monday. I'll let Alex know. Looking forward to showing you the Dubai Marina unit within your 2000000 dirhams budget.
+User: K.

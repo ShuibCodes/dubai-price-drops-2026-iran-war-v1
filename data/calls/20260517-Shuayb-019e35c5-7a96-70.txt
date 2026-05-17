@@ -1,0 +1,19 @@
+Call ID: 019e35c5-7a96-7001-9af9-0f65e303d480
+Lead: Shuayb | WhatsApp: +971585690693
+Status: customer-ended-call
+Started: 2026-05-17T11:49:57.768Z
+Ended: 2026-05-17T11:50:48.218Z
+
+--- Call Summary ---
+Joe scheduled a viewing for a 2-bedroom property with an AI representing Alex from Sterling Boulevard. They agreed on Wednesday at 3:30 PM at Kite Beach. The AI confirmed it would pass the details to Alex.
+
+--- Transcript ---
+User: Hi. If you record your name
+AI: Hey. Alex from Sterling Boulevard sent me I'm an AI, but just give me 15 seconds.
+User: Joe.
+AI: Great job. Alex asked me to check if you're free next week to view a 2 bedroom
+User: Yeah. Let's do Wednesday at 3 30 at Kite Beach.
+AI: Wednesday at 3 30 works. I'll confirm that with Alex. Looking forward to seeing you then.
+User: Wait. I didn't give you a location. It has to be Beach. That's the meeting. Kite Beach.
+AI: Got it. Wednesday at 3 30 at Kite Beach. I'll pass that along to Alex. See you then.
+User: Perfect. Bye bye.

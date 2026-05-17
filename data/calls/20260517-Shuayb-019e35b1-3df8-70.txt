@@ -1,0 +1,16 @@
+Call ID: 019e35b1-3df8-7000-8d3e-bc8feead7943
+Lead: Shuayb | WhatsApp: +971585690693
+Status: silence-timed-out
+Started: 2026-05-17T11:27:52.039Z
+Ended: 2026-05-17T11:29:24.399Z
+
+--- Call Summary ---
+An AI, calling on behalf of Alex from Sterling Boulevard, attempted to reach Alex but was informed he was unavailable. The AI then left a message for Alex regarding a lead interested in a 2-bedroom unit in Dubai Marina within a 2,000,000 dirham budget.
+
+--- Transcript ---
+User: Hi. If you record your name and reason for calling, I'll see if this person is available.
+AI: Hey. Alex from Sterling Boulevard sent me I'm an AI, but just give me 15 seconds.
+User: Thanks. Please stay on the line.
+AI: Sure. I'm here. Just let me know when Alex is available.
+User: I'm sorry. This person is not available. If you would like to leave an additional message, please reply after the tone.
+AI: Thanks for letting me know just tell Alex there's a lead interested in a 2 bedroom unit in Dubai Marina within the 2000000 dirhams budget. Ask him to get back when he's free.

@@ -1,8 +1,9 @@
 import { buildSystemPrompt } from "@/lib/kb/loader";
 import { buildEmailDraftFromRequest } from "@/lib/email/draft-workflow";
 import { sendLeadEmail } from "@/lib/email/resend-client";
-import { fireVapiCall } from "@/lib/vapi";
+import { fireVapiCall, getLatestCallByPhone } from "@/lib/vapi";
 import { resolveLeadByName } from "@/lib/kb/leads";
+import { getMostRecentCallForPhone, getMostRecentCallFile } from "@/lib/kb/calls";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_MODEL = "claude-sonnet-4-20250514";
@@ -15,6 +16,10 @@ function cloneState(state = {}) {
     pendingCallRequest: state.pendingCallRequest ?? null,
     pendingConfirmationExpiry:
       typeof state.pendingConfirmationExpiry === "number" ? state.pendingConfirmationExpiry : null,
+    lastPlacedCall: state.lastPlacedCall ?? null,
+    pendingSummaryRequest: state.pendingSummaryRequest ?? null,
+    pendingSummaryExpiry:
+      typeof state.pendingSummaryExpiry === "number" ? state.pendingSummaryExpiry : null,
   };
 }
 
@@ -23,7 +28,19 @@ export function defaultKbState() {
     pendingEmailDraft: null,
     pendingCallRequest: null,
     pendingConfirmationExpiry: null,
+    lastPlacedCall: null,
+    pendingSummaryRequest: null,
+    pendingSummaryExpiry: null,
   };
+}
+
+function extractPhoneNumber(text) {
+  const raw = String(text || "");
+  const match = raw.match(/(\+?\d[\d\s\-().]{6,}\d)/);
+  if (!match) return null;
+  const digits = match[1].replace(/[^\d+]/g, "");
+  if (digits.replace(/\D/g, "").length < 7) return null;
+  return digits;
 }
 
 export function limitWords(text, maxWords = 75) {
@@ -91,6 +108,102 @@ function normalizeMessageHistory(messages = []) {
     .slice(-30);
 }
 
+function extractNameForSummary(text) {
+  const raw = String(text ?? "");
+  const patterns = [
+    /summary of (?:the )?(?:call (?:with|to) )?([a-z][a-z\s'-]{1,40})\s*(?:call|$)/i,
+    /recap of (?:the )?(?:call (?:with|to) )?([a-z][a-z\s'-]{1,40})\s*(?:call|$)/i,
+    /how did (?:the )?call (?:with|to) ([a-z][a-z\s'-]{1,40})\s*(?:go|went)/i,
+    /what did ([a-z][a-z\s'-]{1,40}) say/i,
+    /did ([a-z][a-z\s'-]{1,40}) say/i,
+  ];
+  for (const pattern of patterns) {
+    const match = raw.match(pattern);
+    if (match?.[1]) {
+      return match[1]
+        .replace(/\b(?:the|call|recap|summary|with|to|please)\b/gi, " ")
+        .trim();
+    }
+  }
+  return null;
+}
+
+async function resolveSummaryTarget({ normalized, lastPlacedCall }) {
+  const namedTarget = extractNameForSummary(normalized);
+  if (namedTarget) {
+    const { matches } = resolveLeadByName(namedTarget);
+    if (matches.length) {
+      return { name: matches[0].name, phone: matches[0].phone };
+    }
+  }
+  if (lastPlacedCall?.phone) {
+    return { name: lastPlacedCall.name, phone: lastPlacedCall.phone };
+  }
+  const mostRecent = getMostRecentCallFile();
+  if (mostRecent?.leadPhone) {
+    return { name: mostRecent.leadName, phone: mostRecent.leadPhone };
+  }
+  return null;
+}
+
+function formatKbSummaryReply(lead, content) {
+  const summaryBlock = content.match(/--- Call Summary ---\s*([\s\S]*?)(?:\n---|$)/i)?.[1]?.trim();
+  const cleaned = cleanupFormatting(summaryBlock || content);
+  return `Latest call with ${lead.name} (WhatsApp: ${lead.phone}): ${cleaned}`;
+}
+
+function formatLiveSummaryReply(lead, live) {
+  const text = live.summary || live.transcript;
+  const cleaned = cleanupFormatting(text);
+  return `Latest call with ${lead.name} (WhatsApp: ${lead.phone}, status: ${live.status}): ${cleaned}`;
+}
+
+async function respondWithCallSummary({ targetLead, state, includeFreshFetch = true }) {
+  const kbRecord = getMostRecentCallForPhone(targetLead.phone);
+  if (kbRecord) {
+    return {
+      handled: true,
+      text: formatKbSummaryReply(targetLead, kbRecord.content),
+      nextState: state,
+    };
+  }
+  if (!includeFreshFetch) {
+    return {
+      handled: true,
+      text: `No saved call yet for ${targetLead.name} at ${targetLead.phone}.`,
+      nextState: state,
+    };
+  }
+  try {
+    const live = await getLatestCallByPhone(targetLead.phone);
+    if (!live) {
+      return {
+        handled: true,
+        text: `No call record found for ${targetLead.name} at ${targetLead.phone}. If we just hung up, VAPI may still be processing — try again in ~60s.`,
+        nextState: state,
+      };
+    }
+    if (!live.summary && !live.transcript) {
+      return {
+        handled: true,
+        text: `Call to ${targetLead.name} (${live.status}) exists in VAPI but no summary produced yet. Try again in ~30-60s.`,
+        nextState: state,
+      };
+    }
+    return {
+      handled: true,
+      text: formatLiveSummaryReply(targetLead, live),
+      nextState: state,
+    };
+  } catch (error) {
+    return {
+      handled: true,
+      text: `I couldn't fetch the call summary. ${error.message}`,
+      nextState: state,
+    };
+  }
+}
+
 async function runCommandPath(lastUserMessage, messageHistory, state) {
   const text = String(lastUserMessage || "").trim().toLowerCase();
   const normalized = text.replace(/\s+/g, " ");
@@ -99,8 +212,21 @@ async function runCommandPath(lastUserMessage, messageHistory, state) {
     .find((m) => m?.role === "assistant")?.content;
 
   const pendingCallFromHistory = parsePendingCallFromAssistantMessage(lastAssistantMessage);
+
+  const isSummaryIntent =
+    /\b(summary|recap)\b/i.test(normalized) ||
+    /\bhow (did|was) (the )?(call|chat|conversation|meeting)\b/i.test(normalized) ||
+    /\bhow (did|does|was) (it|that) (go|went|do)\b/i.test(normalized) ||
+    /\bwhat did .{1,40}? say\b/i.test(normalized) ||
+    /\bdid .{1,40}? (say|mention|agree|confirm)\b/i.test(normalized) ||
+    /\b(the )?call (with|to) \w+/i.test(normalized) ||
+    /\b(any )?(news|update|outcome|result) (on|from|of) (the )?call\b/i.test(normalized);
+
   const isCallIntent =
-    normalized.includes("call ") || normalized.startsWith("call") || normalized.includes("ring ");
+    !isSummaryIntent &&
+    (normalized.includes("call ") ||
+      normalized.startsWith("call") ||
+      normalized.includes("ring "));
   const isEmailIntent =
     normalized.includes("email ") ||
     normalized.startsWith("email") ||
@@ -174,6 +300,12 @@ async function runCommandPath(lastUserMessage, messageHistory, state) {
           ...state,
           pendingCallRequest: null,
           pendingConfirmationExpiry: null,
+          lastPlacedCall: {
+            name: callLead.name,
+            phone: callLead.phone,
+            callId: result?.id || null,
+            placedAt: Date.now(),
+          },
         },
       };
     } catch (error) {
@@ -183,6 +315,69 @@ async function runCommandPath(lastUserMessage, messageHistory, state) {
         nextState: state,
       };
     }
+  }
+
+  const hasPendingSummary =
+    Boolean(state.pendingSummaryRequest) &&
+    typeof state.pendingSummaryExpiry === "number" &&
+    Date.now() < state.pendingSummaryExpiry;
+  const phoneInMessage = extractPhoneNumber(normalized);
+  const wantsToFulfillSummary = hasPendingSummary && phoneInMessage;
+
+  if (wantsToFulfillSummary) {
+    const targetLead = {
+      name: state.pendingSummaryRequest.leadName,
+      phone: phoneInMessage,
+    };
+    return await respondWithCallSummary({
+      targetLead,
+      state: {
+        ...state,
+        pendingSummaryRequest: null,
+        pendingSummaryExpiry: null,
+      },
+      includeFreshFetch: true,
+    });
+  }
+
+  if (isSummaryIntent) {
+    const namedLeadInQuery = extractNameForSummary(normalized);
+    let resolvedTarget = null;
+    if (namedLeadInQuery) {
+      const { matches } = resolveLeadByName(namedLeadInQuery);
+      if (matches.length) {
+        resolvedTarget = { name: matches[0].name, phone: matches[0].phone };
+      } else {
+        return {
+          handled: true,
+          text: `I don't have ${namedLeadInQuery} in the lead KB. What's their phone number (e.g. +971501234567)?`,
+          nextState: {
+            ...state,
+            pendingSummaryRequest: { leadName: namedLeadInQuery },
+            pendingSummaryExpiry: Date.now() + PENDING_CONFIRMATION_TTL_MS,
+          },
+        };
+      }
+    }
+    if (!resolvedTarget) {
+      const fallback = await resolveSummaryTarget({
+        normalized,
+        lastPlacedCall: state.lastPlacedCall,
+      });
+      resolvedTarget = fallback;
+    }
+    if (!resolvedTarget) {
+      return {
+        handled: true,
+        text: "Which lead's call should I recap? Say 'summary of <name> call' or place a call first.",
+        nextState: state,
+      };
+    }
+    return await respondWithCallSummary({
+      targetLead: resolvedTarget,
+      state,
+      includeFreshFetch: true,
+    });
   }
 
   if (wantsToSendEmail) {

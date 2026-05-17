@@ -6,50 +6,55 @@ const DATA_DIR = path.join(process.cwd(), "data");
 let cachedIndex = null;
 let cachedCorpus = null;
 
+export function clearKbCache() {
+  cachedIndex = null;
+  cachedCorpus = null;
+}
+
+function listDirFiles(dirName, suffix = ".txt") {
+  const dirPath = path.join(DATA_DIR, dirName);
+  if (!fs.existsSync(dirPath)) return [];
+  return fs
+    .readdirSync(dirPath)
+    .filter((name) => name.toLowerCase().endsWith(suffix.toLowerCase()))
+    .map((name) => ({
+      relPath: path.join("data", dirName, name),
+      fileName: name,
+    }));
+}
+
 export function getIndex() {
   if (cachedIndex) return cachedIndex;
   const indexPath = path.join(DATA_DIR, "index.json");
-  if (fs.existsSync(indexPath)) {
-    const indexed = JSON.parse(fs.readFileSync(indexPath, "utf-8"));
-    const indexedFiles = new Set(indexed.map((doc) => doc.file));
-    const merged = [...indexed];
+  const indexed = fs.existsSync(indexPath)
+    ? JSON.parse(fs.readFileSync(indexPath, "utf-8"))
+    : [];
+  const indexedFiles = new Set(indexed.map((doc) => doc.file));
+  const merged = [...indexed];
 
-    // Include newly added WhatsApp lead files even before index rebuild.
-    const whatsappDir = path.join(DATA_DIR, "whatsapp");
-    if (fs.existsSync(whatsappDir)) {
-      const files = fs.readdirSync(whatsappDir).filter((name) => name.endsWith(".txt"));
-      for (const fileName of files) {
-        const filePath = path.join("data", "whatsapp", fileName);
-        if (indexedFiles.has(filePath)) continue;
-        merged.push({
-          id: `wa-${fileName.replace(/\.txt$/i, "")}`,
-          type: "whatsapp",
-          file: filePath,
-          participants: [],
-          areas: [],
-        });
-      }
-    }
-
-    cachedIndex = merged;
-    return cachedIndex;
+  for (const file of listDirFiles("whatsapp")) {
+    if (indexedFiles.has(file.relPath)) continue;
+    merged.push({
+      id: `wa-${file.fileName.replace(/\.txt$/i, "")}`,
+      type: "whatsapp",
+      file: file.relPath,
+      participants: [],
+      areas: [],
+    });
   }
 
-  const fallbackDocs = [];
-  const whatsappDir = path.join(DATA_DIR, "whatsapp");
-  if (fs.existsSync(whatsappDir)) {
-    const files = fs.readdirSync(whatsappDir).filter((name) => name.endsWith(".txt"));
-    for (const fileName of files) {
-      fallbackDocs.push({
-        id: `wa-${fileName.replace(/\.txt$/i, "")}`,
-        type: "whatsapp",
-        file: path.join("data", "whatsapp", fileName),
-        participants: [],
-        areas: [],
-      });
-    }
+  for (const file of listDirFiles("calls")) {
+    if (indexedFiles.has(file.relPath)) continue;
+    merged.push({
+      id: `call-${file.fileName.replace(/\.txt$/i, "")}`,
+      type: "call",
+      file: file.relPath,
+      participants: [],
+      areas: [],
+    });
   }
-  cachedIndex = fallbackDocs;
+
+  cachedIndex = merged;
   return cachedIndex;
 }
 
@@ -65,9 +70,13 @@ export function getAllDocuments() {
   const sections = [];
 
   for (const doc of index) {
-    const content = getDocument(doc.file);
-    const header = `━━━ [${doc.type.toUpperCase()}] ${doc.file} ━━━`;
-    sections.push(`${header}\n${content}`);
+    try {
+      const content = getDocument(doc.file);
+      const header = `━━━ [${doc.type.toUpperCase()}] ${doc.file} ━━━`;
+      sections.push(`${header}\n${content}`);
+    } catch {
+      continue;
+    }
   }
 
   cachedCorpus = sections.join("\n\n");
@@ -85,7 +94,7 @@ export function buildSystemPrompt() {
     )
     .join("\n");
 
-  return `You are AgentZero, an internal AI assistant for Sterling Boulevard Real Estate. You have access to WhatsApp chats, emails, and webinar transcripts.
+  return `You are AgentZero, an internal AI assistant for Sterling Boulevard Real Estate. You have access to WhatsApp chats, emails, webinar transcripts, and recorded call summaries from your own VAPI-driven outbound calls.
 
 Your job: give practical next-step guidance for agents, fast.
 
@@ -106,10 +115,12 @@ PRIVACY + FORMAT RULES:
 6. If no match exists, say so directly and suggest one next action.
 7. If multiple matches exist, prioritize top 1-3 by actionability, not exhaustive listing.
 
-CALL COMMANDS:
-1. If user asks to call Shuayb, always ask for confirmation first, never auto-dial immediately.
-2. If user replies with affirmative language (yes, yeah, go ahead, do it), proceed with the call action.
-3. If user asks for latest call summary (or says yes after summary prompt), return the latest Shuayb call summary when available.
+CALL HANDLING:
+1. When the user asks to call a lead, always confirm first ("Ready to call X — should I place the call?"), never auto-dial.
+2. On affirmative reply (yes, yeah, go ahead, do it), proceed with the call.
+3. When you see [CALL] documents in the knowledge base, those are recordings of past calls AgentZero placed. Use the "Call Summary" section as ground truth for what the lead said, agreed to, or requested.
+4. If the user asks "how did the call go", "summary", "recap", or "what did <lead> say", prioritize the most recent [CALL] document for that lead. Surface any commitments (meeting times, prices discussed, next steps).
+5. If no [CALL] document exists for the lead, say so honestly and suggest placing one.
 
 DOCUMENT INDEX:
 ${indexSummary}

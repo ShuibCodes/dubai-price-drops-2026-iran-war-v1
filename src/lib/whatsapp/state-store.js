@@ -47,28 +47,25 @@ function normalizeMessages(messages) {
     .map((m) => ({ role: m.role, content: m.content }));
 }
 
+function emptyState() {
+  return {
+    messages: [],
+    pendingEmailDraft: null,
+    pendingCallRequest: null,
+    pendingConfirmationExpiry: null,
+    lastPlacedCall: null,
+    pendingSummaryRequest: null,
+    pendingSummaryExpiry: null,
+    updatedAt: now(),
+  };
+}
+
 export function getSenderState(sender) {
   pruneExpired();
   const key = String(sender || "").trim();
-  if (!key) {
-    return {
-      messages: [],
-      pendingEmailDraft: null,
-      pendingCallRequest: null,
-      pendingConfirmationExpiry: null,
-      updatedAt: now(),
-    };
-  }
+  if (!key) return emptyState();
   const existing = conversationStore.get(key);
-  if (!existing) {
-    return {
-      messages: [],
-      pendingEmailDraft: null,
-      pendingCallRequest: null,
-      pendingConfirmationExpiry: null,
-      updatedAt: now(),
-    };
-  }
+  if (!existing) return emptyState();
   return {
     messages: normalizeMessages(existing.messages),
     pendingEmailDraft: existing.pendingEmailDraft ?? null,
@@ -76,6 +73,12 @@ export function getSenderState(sender) {
     pendingConfirmationExpiry:
       typeof existing.pendingConfirmationExpiry === "number"
         ? existing.pendingConfirmationExpiry
+        : null,
+    lastPlacedCall: existing.lastPlacedCall ?? null,
+    pendingSummaryRequest: existing.pendingSummaryRequest ?? null,
+    pendingSummaryExpiry:
+      typeof existing.pendingSummaryExpiry === "number"
+        ? existing.pendingSummaryExpiry
         : null,
     updatedAt: existing.updatedAt ?? now(),
   };
@@ -92,6 +95,12 @@ export function setSenderState(sender, nextState) {
     pendingConfirmationExpiry:
       typeof nextState?.pendingConfirmationExpiry === "number"
         ? nextState.pendingConfirmationExpiry
+        : null,
+    lastPlacedCall: nextState?.lastPlacedCall ?? null,
+    pendingSummaryRequest: nextState?.pendingSummaryRequest ?? null,
+    pendingSummaryExpiry:
+      typeof nextState?.pendingSummaryExpiry === "number"
+        ? nextState.pendingSummaryExpiry
         : null,
     updatedAt: now(),
   });
