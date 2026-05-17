@@ -1,6 +1,5 @@
 import { DM_Sans, IBM_Plex_Mono } from "next/font/google";
 import Script from "next/script";
-import "leaflet/dist/leaflet.css";
 import "./globals.css";
 
 const dmSans = DM_Sans({
