@@ -478,6 +478,8 @@ export async function POST(request) {
 
   try {
     await rebuildKbIndex();
+    const { clearKbCache } = await import("@/lib/kb/loader");
+    clearKbCache();
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Unknown rebuild failure.";

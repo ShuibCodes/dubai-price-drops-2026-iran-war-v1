@@ -443,6 +443,20 @@ async function runCommandPath(lastUserMessage, messageHistory, state) {
     }
 
     const lead = matches[0];
+    if (!lead.phone) {
+      const detail = [
+        lead.area ? `Area: ${lead.area}` : null,
+        lead.status ? `Status: ${lead.status}` : null,
+        lead.lastContact ? `Last contact: ${lead.lastContact}` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      return {
+        handled: true,
+        text: `I found ${lead.name} in your roster but there is no phone number on file.${detail ? ` ${detail}.` : ""} Add their mobile in CRM or upload a WhatsApp context file, then try again.`,
+        nextState: state,
+      };
+    }
     return {
       handled: true,
       text: `Ready to call ${lead.name} at ${lead.phone}. Should I place the call now?`,

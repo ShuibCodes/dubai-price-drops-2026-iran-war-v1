@@ -1,6 +1,8 @@
 import fs from "fs";
 import path from "path";
 
+import { buildLeadRosterText, formatCrmJsonlForKb } from "@/lib/kb/leads";
+
 const DATA_DIR = path.join(process.cwd(), "data");
 
 let cachedIndex = null;
@@ -54,12 +56,27 @@ export function getIndex() {
     });
   }
 
+  for (const file of listDirFiles("crm", ".jsonl")) {
+    if (indexedFiles.has(file.relPath)) continue;
+    merged.push({
+      id: `crm-${file.fileName.replace(/\.jsonl$/i, "")}`,
+      type: "crm",
+      file: file.relPath,
+      participants: [],
+      areas: [],
+    });
+  }
+
   cachedIndex = merged;
   return cachedIndex;
 }
 
 export function getDocument(filePath) {
   const fullPath = path.join(process.cwd(), filePath);
+  const normalized = String(filePath).replace(/\\/g, "/");
+  if (normalized.includes("data/crm/") && normalized.endsWith(".jsonl")) {
+    return formatCrmJsonlForKb(filePath);
+  }
   return fs.readFileSync(fullPath, "utf-8");
 }
 
@@ -124,6 +141,9 @@ CALL HANDLING:
 
 DOCUMENT INDEX:
 ${indexSummary}
+
+LEAD ROSTER (WhatsApp + CRM — use for names, phones, last contact, status, interests):
+${buildLeadRosterText()}
 
 FULL KNOWLEDGE BASE:
 ${corpus}`;

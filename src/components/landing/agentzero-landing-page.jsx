@@ -74,14 +74,15 @@ export default function AgentZeroLandingPage() {
       <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
         <div className="max-w-5xl">
           <div className="inline-flex rounded-full border border-[#ff2d55]/25 bg-[#ff2d55]/10 px-4 py-2 text-[11px] uppercase tracking-[0.28em] text-[#ff9ab0]">
-            Team intelligence, not guesswork
+            Runs inside WhatsApp · No new app
           </div>
           <h1 className="mt-8 text-4xl font-semibold leading-tight sm:text-6xl">
-            Your top agent just cracked a tough objection. Does the rest of your team know how?
+            AgentZero remembers everything your CRM doesn&apos;t.
+            <br />
+            Trained on your deals. Thinks like you. Works while you don&apos;t.
           </h1>
           <p className="mt-6 max-w-4xl text-base leading-8 text-white/65 sm:text-lg">
-            AgentZero captures what works in real deals, objections, follow-ups, and conversions,
-            then shares it instantly across your team.
+            No app. No login. Just WhatsApp.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <a
@@ -156,8 +157,9 @@ export default function AgentZeroLandingPage() {
               ✅ AgentZero
             </h2>
             <p className="mt-5 text-base leading-8 text-white/75 sm:text-lg">
-              Auto-qualify and re-engage old leads while you sleep. AI calls, handles
-              objections, and books meetings — with human oversight.
+              Text AgentZero like a colleague. It calls your leads via AI voice, handles
+              objections, books viewings, emails listing packs, and surfaces who to follow up
+              with — all from WhatsApp. Human oversight, zero context switching.
             </p>
             <p className="mt-5 text-base leading-8 text-white sm:text-lg">
               And your data{" "}
