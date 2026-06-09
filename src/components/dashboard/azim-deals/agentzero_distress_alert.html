@@ -1,0 +1,173 @@
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
+  .az-wrap { background: #0d0d0d; border-radius: 16px; padding: 0; overflow: hidden; font-family: 'Space Grotesk', sans-serif; max-width: 380px; margin: 0 auto; border: 1px solid #1f1f1f; }
+  .az-ticker { background: #ff2d2d; padding: 6px 16px; font-family: 'Space Mono', monospace; font-size: 11px; letter-spacing: 0.12em; color: #fff; display: flex; align-items: center; gap: 8px; }
+  .az-ticker-dot { width: 7px; height: 7px; background: #fff; border-radius: 50%; animation: pulse 1.4s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .az-header { padding: 16px 18px 12px; border-bottom: 1px solid #1f1f1f; display: flex; align-items: center; gap: 10px; }
+  .az-logo { font-family: 'Space Mono', monospace; font-size: 13px; font-weight: 700; color: #fff; letter-spacing: 0.04em; }
+  .az-logo span { color: #ff2d2d; }
+  .az-dot-live { display: flex; align-items: center; gap: 5px; margin-left: auto; font-size: 10px; color: #888; font-family: 'Space Mono', monospace; letter-spacing: 0.08em; }
+  .az-dot-live-circle { width: 6px; height: 6px; background: #ff2d2d; border-radius: 50%; animation: pulse 1.4s infinite; }
+  .az-alert-banner { margin: 14px 18px 0; background: #1a0a0a; border: 1px solid #ff2d2d33; border-radius: 10px; padding: 12px 14px; }
+  .az-alert-label { font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: 0.14em; color: #ff2d2d; margin-bottom: 4px; }
+  .az-alert-headline { font-size: 17px; font-weight: 700; color: #fff; line-height: 1.3; }
+  .az-alert-sub { font-size: 12px; color: #999; margin-top: 5px; line-height: 1.5; }
+  .az-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 18px 0; }
+  .az-stat { background: #141414; border-radius: 8px; padding: 10px 10px 8px; border: 1px solid #1f1f1f; }
+  .az-stat-label { font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: 0.1em; color: #666; margin-bottom: 4px; }
+  .az-stat-val { font-size: 16px; font-weight: 700; color: #ff2d2d; }
+  .az-stat-sub { font-size: 10px; color: #555; margin-top: 2px; }
+  .az-section-label { font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: 0.14em; color: #555; margin: 16px 18px 8px; }
+  .az-spotlight { margin: 0 18px; background: #111; border: 1px solid #ff2d2d55; border-radius: 10px; overflow: hidden; }
+  .az-spotlight-tag { background: #ff2d2d; font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: 0.1em; color: #fff; padding: 5px 12px; display: inline-block; }
+  .az-spotlight-body { padding: 12px 14px; }
+  .az-spotlight-title { font-size: 15px; font-weight: 700; color: #fff; margin-bottom: 2px; }
+  .az-spotlight-loc { font-size: 11px; color: #888; font-family: 'Space Mono', monospace; margin-bottom: 10px; }
+  .az-spotlight-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .az-spotlight-key { font-size: 12px; color: #777; }
+  .az-spotlight-val { font-size: 12px; color: #ccc; font-weight: 500; }
+  .az-spotlight-val.red { color: #ff2d2d; font-family: 'Space Mono', monospace; }
+  .az-spotlight-why { background: #0d0d0d; border-top: 1px solid #1f1f1f; padding: 10px 14px; }
+  .az-why-label { font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: 0.14em; color: #ff2d2d; margin-bottom: 5px; }
+  .az-why-text { font-size: 12px; color: #888; line-height: 1.5; }
+  .az-buildings { margin: 0 18px; display: flex; flex-direction: column; gap: 6px; }
+  .az-building { background: #111; border: 1px solid #1f1f1f; border-radius: 8px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; }
+  .az-building-name { font-size: 12px; font-weight: 500; color: #ccc; }
+  .az-building-sub { font-size: 10px; color: #555; margin-top: 2px; font-family: 'Space Mono', monospace; }
+  .az-building-units { font-family: 'Space Mono', monospace; font-size: 11px; color: #888; text-align: right; }
+  .az-building-units strong { color: #fff; display: block; font-size: 13px; }
+  .az-owner-note { margin: 12px 18px 0; background: #111; border-left: 2px solid #ff2d2d; border-radius: 0 8px 8px 0; padding: 10px 14px; }
+  .az-owner-text { font-size: 12px; color: #999; line-height: 1.5; }
+  .az-owner-text strong { color: #fff; }
+  .az-cta { margin: 16px 18px 18px; }
+  .az-cta-btn { display: block; width: 100%; background: #ff2d2d; color: #fff; border: none; border-radius: 10px; padding: 14px; font-family: 'Space Grotesk', sans-serif; font-size: 14px; font-weight: 700; letter-spacing: 0.03em; text-align: center; cursor: pointer; box-sizing: border-box; }
+  .az-cta-sub { text-align: center; font-size: 10px; color: #555; font-family: 'Space Mono', monospace; letter-spacing: 0.08em; margin-top: 8px; }
+  .az-footer { border-top: 1px solid #1a1a1a; padding: 10px 18px; display: flex; justify-content: space-between; align-items: center; }
+  .az-footer-brand { font-family: 'Space Mono', monospace; font-size: 10px; color: #333; letter-spacing: 0.06em; }
+  .az-footer-brand span { color: #ff2d2d; }
+  .az-footer-ts { font-family: 'Space Mono', monospace; font-size: 10px; color: #333; }
+  .az-divider { height: 1px; background: #1a1a1a; margin: 14px 0 0; }
+</style>
+
+<div class="az-wrap">
+
+  <div class="az-ticker">
+    <div class="az-ticker-dot"></div>
+    DISTRESS ALERT — EXCLUSIVE MULTI-UNIT PACKAGE — BELOW MARKET
+  </div>
+
+  <div class="az-header">
+    <div class="az-logo">AGENT<span>ZERO</span></div>
+    <div class="az-dot-live"><div class="az-dot-live-circle"></div>LIVE INTEL</div>
+  </div>
+
+  <div class="az-alert-banner">
+    <div class="az-alert-label">HOT DISTRESS DEAL</div>
+    <div class="az-alert-headline">Single owner. 24 units. Selling below market.</div>
+    <div class="az-alert-sub">Across 4 premium Dubai addresses. Owner recently liquidated major assets and is offloading Dubai property fast. Nearly all units are tenanted.</div>
+  </div>
+
+  <div class="az-stats">
+    <div class="az-stat">
+      <div class="az-stat-label">UNITS</div>
+      <div class="az-stat-val">24</div>
+      <div class="az-stat-sub">4 buildings</div>
+    </div>
+    <div class="az-stat">
+      <div class="az-stat-label">TENANTED</div>
+      <div class="az-stat-val">23</div>
+      <div class="az-stat-sub">instant yield</div>
+    </div>
+    <div class="az-stat">
+      <div class="az-stat-label">VACANT</div>
+      <div class="az-stat-val">01</div>
+      <div class="az-stat-sub">Kempinski</div>
+    </div>
+  </div>
+
+  <div class="az-divider"></div>
+
+  <div class="az-section-label">SPOTLIGHT UNIT</div>
+
+  <div class="az-spotlight">
+    <div class="az-spotlight-tag">VACANT — MOVE IN READY</div>
+    <div class="az-spotlight-body">
+      <div class="az-spotlight-title">Kempinski Boulevard</div>
+      <div class="az-spotlight-loc">DOWNTOWN DUBAI — STUDIO</div>
+      <div class="az-spotlight-row">
+        <span class="az-spotlight-key">Type</span>
+        <span class="az-spotlight-val">Studio</span>
+      </div>
+      <div class="az-spotlight-row">
+        <span class="az-spotlight-key">Status</span>
+        <span class="az-spotlight-val">Vacant</span>
+      </div>
+      <div class="az-spotlight-row">
+        <span class="az-spotlight-key">Pricing</span>
+        <span class="az-spotlight-val red">Below market</span>
+      </div>
+      <div class="az-spotlight-row">
+        <span class="az-spotlight-key">Seller motivation</span>
+        <span class="az-spotlight-val red">High</span>
+      </div>
+    </div>
+    <div class="az-spotlight-why">
+      <div class="az-why-label">WHY THIS UNIT</div>
+      <div class="az-why-text">One of only a handful of Kempinski Boulevard studios to come to market below asking. Vacant means no waiting for keys. Priced to move quickly by a motivated seller. Own-use or immediate rental.</div>
+    </div>
+  </div>
+
+  <div class="az-divider"></div>
+
+  <div class="az-section-label">FULL PORTFOLIO</div>
+
+  <div class="az-buildings">
+    <div class="az-building">
+      <div>
+        <div class="az-building-name">Kempinski Boulevard</div>
+        <div class="az-building-sub">DOWNTOWN DUBAI</div>
+      </div>
+      <div class="az-building-units"><strong>SPOTLIGHT</strong>1 vacant</div>
+    </div>
+    <div class="az-building">
+      <div>
+        <div class="az-building-name">Dubai Creek Residences South</div>
+        <div class="az-building-sub">CREEK PODIUM</div>
+      </div>
+      <div class="az-building-units"><strong>TENANTED</strong>yielding</div>
+    </div>
+    <div class="az-building">
+      <div>
+        <div class="az-building-name">Creek Residences Tower 1 & 2</div>
+        <div class="az-building-sub">DUBAI CREEK HARBOUR</div>
+      </div>
+      <div class="az-building-units"><strong>TENANTED</strong>yielding</div>
+    </div>
+    <div class="az-building">
+      <div>
+        <div class="az-building-name">Address Hotel</div>
+        <div class="az-building-sub">FMR. LAKE HOTEL</div>
+      </div>
+      <div class="az-building-units"><strong>TENANTED</strong>yielding</div>
+    </div>
+  </div>
+
+  <div class="az-owner-note">
+    <div class="az-owner-text"><strong>Owner context.</strong> Seller is a Middle East-based owner who recently came into significant liquidity. These assets are being released quickly. Price reflects urgency, not distress in the asset quality. All buildings are established, premium addresses.</div>
+  </div>
+
+  <div class="az-cta">
+    <button class="az-cta-btn" onclick="sendPrompt('I want to request the full unit list for the 24-unit distress package')">
+      Request Full Unit List
+    </button>
+    <div class="az-cta-sub">EXCLUSIVE ACCESS — LIMITED WINDOW</div>
+  </div>
+
+  <div class="az-footer">
+    <div class="az-footer-brand">AGENT<span>ZERO</span>.AE</div>
+    <div class="az-footer-ts">LIVE INTEL — JUNE 2026</div>
+  </div>
+
+</div>
