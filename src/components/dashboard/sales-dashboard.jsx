@@ -15,7 +15,7 @@ const emptySales = {
   meta: { updatedAt: null, resultCount: 0 },
 };
 
-export default function SalesDashboard({ homeHref = "/live-updates" }) {
+export default function SalesDashboard({ homeHref = "/deals" }) {
   const [data, setData] = useState(emptySales);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);

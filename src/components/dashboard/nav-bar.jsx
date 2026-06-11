@@ -16,7 +16,7 @@ export default function NavBar({
   lastUpdatedSeconds,
   isRefreshing,
   onRefresh,
-  developerHref = "/live-updates?view=developers",
+  developerHref = "/deals?view=developers",
 }) {
   return (
     <header className="rounded-[24px] border border-white/10 bg-white/[0.03] px-4 py-4 backdrop-blur sm:px-6">

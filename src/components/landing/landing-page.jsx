@@ -113,7 +113,7 @@ export default function LandingPage() {
             </div>
           </div>
           <Link
-            href="/live-updates"
+            href="/deals"
             className="rounded-full border border-white/10 px-4 py-2 text-sm text-white/75 transition hover:text-white"
           >
             Try for free
@@ -134,7 +134,7 @@ export default function LandingPage() {
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Link
-              href="/live-updates"
+              href="/deals"
               className="rounded-full bg-[#ff2d55] px-6 py-3 text-sm font-semibold text-white transition hover:opacity-90"
             >
               Try for free
@@ -237,7 +237,7 @@ export default function LandingPage() {
             </ul>
             <div className="mt-8">
               <Link
-                href="/live-updates"
+                href="/deals"
                 className="inline-flex rounded-full bg-[#ff2d55] px-6 py-3 text-sm font-semibold text-white transition hover:opacity-90"
               >
                 Try for free

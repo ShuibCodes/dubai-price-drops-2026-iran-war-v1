@@ -106,7 +106,7 @@ export default function AgentZeroLandingPage() {
       </section>
 
       <section className="mx-auto max-w-7xl px-4 pb-20 sm:px-6 lg:px-8">
-        <div className="grid gap-10 lg:grid-cols-2 lg:items-center">
+        <div className="grid gap-10 lg:grid-cols-2 lg:items-start">
           <div>
             <div className="mono text-[11px] uppercase tracking-[0.32em] text-white/35">
               How it works
@@ -132,34 +132,9 @@ export default function AgentZeroLandingPage() {
               </a>
             </div>
           </div>
-          <div className="overflow-hidden rounded-[28px] border border-white/10 bg-black">
-            <iframe
-              src="/agentzero-chat.html"
-              title="AgentZero animated demo"
-              loading="lazy"
-              scrolling="no"
-              sandbox="allow-scripts allow-same-origin"
-              className="h-[420px] w-full lg:h-[520px]"
-            />
-          </div>
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-7xl px-4 pb-20 sm:px-6 lg:px-8">
-        <div className="grid gap-10 lg:grid-cols-2 lg:items-center">
-          <div className="overflow-hidden rounded-[28px] border border-white/10 bg-black lg:order-1">
-            <iframe
-              src="/AgentZero-chat-2.html"
-              title="AgentZero predictive lead demo"
-              loading="lazy"
-              scrolling="no"
-              sandbox="allow-scripts allow-same-origin"
-              className="h-[420px] w-full lg:h-[520px]"
-            />
-          </div>
-          <div className="lg:order-2">
+          <div>
             <div className="mono text-[11px] uppercase tracking-[0.32em] text-white/35">
-              How it works
+              Why it wins
             </div>
             <h2 className="mt-4 text-3xl font-semibold text-white sm:text-4xl">
               Your rivals are calling the same leads. You&apos;ll call the right one first.

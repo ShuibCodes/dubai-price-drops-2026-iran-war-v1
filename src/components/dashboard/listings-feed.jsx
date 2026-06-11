@@ -6,6 +6,7 @@ import { CheckCircle2, MapPin, X, Loader2, ExternalLink, History } from "lucide-
 import { formatCurrency, formatDropAmount, formatGainAmount, formatUnsignedPercent, formatAreaTimestamp, formatNumber } from "@/lib/format";
 import { hasValue } from "@/lib/display";
 import { getSignalMetrics } from "@/lib/dashboard-data";
+import MacroTimelineChart from "@/components/dashboard/macro-timeline-chart";
 
 function TransactionModal({ listing, onClose }) {
   const [state, setState] = useState({ loading: true, rows: [], error: null });
@@ -169,10 +170,12 @@ export default function ListingsFeed({
 
   return (
     <section className="rounded-[24px] border border-white/10 bg-white/[0.03] p-4 sm:rounded-[32px] sm:p-6">
+      <MacroTimelineChart />
+
       <div className="flex items-center justify-between gap-4 border-b border-white/8 pb-4">
         <div>
           <h2 className="text-base font-semibold text-white sm:text-lg">
-            {filteredListings.length} pre-war gaps detected
+            Hot Deals, Compared to Pre-war numbers
           </h2>
           {timestamp && (
             <p className="mt-0.5 text-xs text-white/45">{timestamp} GMT+4</p>

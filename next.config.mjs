@@ -1,5 +1,14 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  async redirects() {
+    return [
+      {
+        source: "/live-updates",
+        destination: "/deals",
+        permanent: false,
+      },
+    ];
+  },
   async rewrites() {
     return [
       {

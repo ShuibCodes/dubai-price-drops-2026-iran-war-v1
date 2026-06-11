@@ -32,9 +32,9 @@ export default function DashboardPage({ isDeveloperView = false }) {
     <main className="dashboard-shell min-h-screen pb-10 text-white sm:pb-14">
       <AlertButton />
       {isDeveloperView ? (
-        <SalesDashboard homeHref="/live-updates" />
+        <SalesDashboard homeHref="/deals" />
       ) : (
-        <SalesMainDashboard developerHref="/live-updates?view=developers" />
+        <SalesMainDashboard developerHref="/deals?view=developers" />
       )}
     </main>
   );
