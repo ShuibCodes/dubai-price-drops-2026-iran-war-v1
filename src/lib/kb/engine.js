@@ -1,4 +1,5 @@
 import { buildSystemPrompt } from "@/lib/kb/loader";
+import { findGroupPosterMatches } from "@/lib/kb/group-intelligence";
 import { buildEmailDraftFromRequest } from "@/lib/email/draft-workflow";
 import { sendLeadEmail } from "@/lib/email/resend-client";
 import { fireVapiCall, getLatestCallByPhone } from "@/lib/vapi";
@@ -6,7 +7,7 @@ import { resolveLeadByName } from "@/lib/kb/leads";
 import { getMostRecentCallForPhone, getMostRecentCallFile } from "@/lib/kb/calls";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
-const ANTHROPIC_MODEL = "claude-sonnet-4-20250514";
+const ANTHROPIC_MODEL = "claude-sonnet-4-6";
 const WHATSAPP_REPLY_CHAR_LIMIT = 1200;
 const PENDING_CONFIRMATION_TTL_MS = 1000 * 60 * 10;
 
@@ -424,6 +425,15 @@ async function runCommandPath(lastUserMessage, messageHistory, state) {
 
     const { matches } = resolveLeadByName(targetName);
     if (!matches.length) {
+      const groupMatches = findGroupPosterMatches(targetName, 1);
+      if (groupMatches.length) {
+        const hit = groupMatches[0];
+        return {
+          handled: true,
+          text: `I found ${hit.sender} in group intelligence (${hit.groupName}, ${hit.timestamp}), but this is a secure group export — not a callable lead. No phone/email available unless you DM them in the group.`,
+          nextState: state,
+        };
+      }
       return {
         handled: true,
         text: `I could not find a lead named ${targetName}. Please check the name and try again.`,
@@ -503,8 +513,8 @@ async function runCommandPath(lastUserMessage, messageHistory, state) {
   return { handled: false, nextState: state, text: null };
 }
 
-async function runLlmPath(messages) {
-  const prompt = buildSystemPrompt();
+async function runLlmPath(messages, userQuery = "") {
+  const prompt = buildSystemPrompt(userQuery);
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     throw new Error("Missing ANTHROPIC_API_KEY");
@@ -515,7 +525,7 @@ async function runLlmPath(messages) {
     if (isLast && m.role === "user") {
       return {
         role: m.role,
-        content: `${m.content}\n\nOutput constraints: 30-75 words only. Lead with recommendation first. Do not include sources. Use FirstName + last initial only (example: Tariq H.). Include recency in brackets. Always include WhatsApp number when available. End with one short question if useful.`,
+        content: `${m.content}\n\nOutput constraints: 30-75 words only. Lead with recommendation first. Do not include sources. Use FirstName + last initial only (example: Tariq H.). Include recency in brackets. Always include WhatsApp number when available for lead chats. For group intelligence, include sender display name, timestamp, and group name; never offer to call/email group posters unless contact details are explicitly in the message. End with one short question if useful.`,
       };
     }
     return { role: m.role, content: m.content };
@@ -572,7 +582,7 @@ export async function runKbTurn({ messages, state }) {
     };
   }
 
-  const llmText = await runLlmPath(history);
+  const llmText = await runLlmPath(history, lastUserMessage);
   return {
     text: trimForWhatsapp(llmText),
     nextState,

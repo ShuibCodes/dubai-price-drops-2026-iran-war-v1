@@ -2,7 +2,7 @@ import { promises as fs } from "fs";
 import path from "path";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
-const ANTHROPIC_MODEL = "claude-sonnet-4-20250514";
+const ANTHROPIC_MODEL = "claude-sonnet-4-6";
 
 function sanitizeName(value) {
   return String(value ?? "")

@@ -1,0 +1,54 @@
+{
+    "nodes": [
+      {
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "cronExpression",
+                "expression": "0 9 * * 1"
+              }
+            ]
+          }
+        },
+        "id": "b1c2d3e4-0001-4f00-9000-000000000001",
+        "name": "Weekly Monday Trigger",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1,
+        "position": [-1888, 0]
+      },
+      {
+        "parameters": {
+          "operation": "read",
+          "documentId": {
+            "__rl": true,
+            "value": "YOUR_GOOGLE_SHEET_ID",
+            "mode": "id"
+          },
+          "sheetName": {
+            "__rl": true,
+            "value": "New Leads",
+            "mode": "list",
+            "cachedResultName": "New Leads"
+          },
+          "options": {}
+        },
+        "id": "b1c2d3e4-0002-4f00-9000-000000000002",
+        "name": "Read Leads",
+        "type": "n8n-nodes-base.googleSheets",
+        "typeVersion": 4,
+        "position": [-1616, 0],
+        "credentials": {
+          "googleSheetsOAuth2Api": {
+            "id": "HY1XnZYRuDM041F8",
+            "name": "Shuayb EduSync"
+          }
+        }
+      }
+    ],
+    "connections": {
+      "Weekly Monday Trigger": {
+        "main": [[{ "node": "Read Leads", "type": "main", "index": 0 }]]
+      }
+    }
+  }
