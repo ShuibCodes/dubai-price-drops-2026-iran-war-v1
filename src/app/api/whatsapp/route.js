@@ -36,6 +36,7 @@ export async function GET() {
   return Response.json({
     ok: true,
     message: "Twilio WhatsApp webhook is healthy.",
+    anthropicConfigured: Boolean(process.env.ANTHROPIC_API_KEY),
   });
 }
 
@@ -79,7 +80,11 @@ export async function POST(request) {
 
     return xmlResponse(makeTwiml(result.text));
   } catch (error) {
-    console.error("WhatsApp webhook error:", error);
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("WhatsApp webhook error:", message, error);
+    if (message.includes("Missing ANTHROPIC_API_KEY")) {
+      console.error("Set ANTHROPIC_API_KEY in Vercel project environment variables.");
+    }
     return xmlResponse(
       makeTwiml("I hit a temporary issue. Please try again in a moment.")
     );
