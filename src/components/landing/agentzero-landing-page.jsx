@@ -1,11 +1,27 @@
 "use client";
 
-import Image from "next/image";
-import reviewShotBrokerages from "@/app/images/IMG_0979.jpg";
-import reviewShotAgents from "@/app/images/IMG_0990.jpg";
-import reviewShotInvestors from "@/app/images/IMG_0991.jpg";
+import { animate, useInView } from "framer-motion";
+import { useEffect, useRef, useState } from "react";
 
 const WHATSAPP_URL = "https://wa.me/971585690693";
+
+function CountUp({ to, duration = 2, format }) {
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true, margin: "-80px" });
+  const [value, setValue] = useState(0);
+
+  useEffect(() => {
+    if (!inView) return;
+    const controls = animate(0, to, {
+      duration,
+      ease: "easeOut",
+      onUpdate: (v) => setValue(v),
+    });
+    return () => controls.stop();
+  }, [inView, to, duration]);
+
+  return <span ref={ref}>{format ? format(value) : Math.round(value)}</span>;
+}
 
 const BROKERAGE_FEATURES = [
   {
@@ -26,23 +42,31 @@ const BROKERAGE_FEATURES = [
   },
 ];
 
-const SOCIAL_PROOF_SHOTS = [
-  {
-    src: reviewShotBrokerages,
-    alt: "Brokerage WhatsApp conversation screenshot",
-    label: "Brokerages",
-  },
-  {
-    src: reviewShotAgents,
-    alt: "Agent WhatsApp conversation screenshot",
-    label: "Agents",
-  },
-  {
-    src: reviewShotInvestors,
-    alt: "Investor WhatsApp conversation screenshot",
-    label: "Investors",
-  },
+const PLAN_FEATURES = [
+  "Full CRM integration (Property Finder, Bayut, and more)",
+  "AI lead nurturing",
+  "30 AI calls a day",
+  "Native WhatsApp ... no app, no login, your agents just text a new contact",
 ];
+
+function GoldCheck() {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      aria-hidden="true"
+      className="mt-0.5 h-5 w-5 flex-shrink-0 text-[#ffd60a]"
+    >
+      <path
+        d="M4 10.5L8 14.5L16 6"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
 export default function AgentZeroLandingPage() {
   return (
@@ -90,23 +114,41 @@ export default function AgentZeroLandingPage() {
       </section>
 
       <section className="mx-auto max-w-7xl px-4 pb-20 sm:px-6 lg:px-8">
-        <div className="grid gap-5 md:grid-cols-3">
-          {SOCIAL_PROOF_SHOTS.map((shot) => (
-            <figure
-              key={shot.label}
-              className="overflow-hidden rounded-[28px] border border-white/10 bg-white/[0.03]"
-            >
-              <div className="border-b border-white/[0.08] px-5 py-4 text-sm font-medium text-white">{shot.label}</div>
-              <div className="p-3">
-                <Image src={shot.src} alt={shot.alt} className="h-auto w-full rounded-[20px]" placeholder="blur" />
-              </div>
-            </figure>
-          ))}
+        <div className="mb-8">
+          <div className="mono text-[11px] uppercase tracking-[0.32em] text-white/35">
+            Proven in the market
+          </div>
+        </div>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <article className="rounded-[32px] border border-[#ff2d55]/20 bg-[#ff2d55]/[0.06] p-8 sm:p-10">
+            <div className="flex flex-wrap items-baseline gap-x-2 font-semibold leading-none text-white">
+              <span className="text-2xl text-white/70 sm:text-3xl">AED</span>
+              <span className="text-5xl tracking-tight text-[#ff2d55] sm:text-6xl">
+                <CountUp
+                  to={1000000}
+                  format={(v) => Math.round(v).toLocaleString()}
+                />
+              </span>
+              <span className="text-4xl text-[#ff2d55] sm:text-5xl">+</span>
+            </div>
+            <p className="mt-5 text-lg leading-7 text-white/65">
+              sold in 6 weeks
+            </p>
+          </article>
+
+          <article className="rounded-[32px] border border-white/10 bg-white/[0.03] p-8 sm:p-10">
+            <div className="text-5xl font-semibold leading-none tracking-tight text-[#ffd60a] sm:text-6xl">
+              <CountUp to={7} />
+            </div>
+            <p className="mt-5 text-lg leading-7 text-white/65">
+              years of broker experience, built in
+            </p>
+          </article>
         </div>
       </section>
 
       <section className="mx-auto max-w-7xl px-4 pb-20 sm:px-6 lg:px-8">
-        <div className="grid gap-10 lg:grid-cols-2 lg:items-start">
+        <div className="grid gap-10 lg:grid-cols-2 lg:items-center">
           <div>
             <div className="mono text-[11px] uppercase tracking-[0.32em] text-white/35">
               How it works
@@ -132,7 +174,32 @@ export default function AgentZeroLandingPage() {
               </a>
             </div>
           </div>
-          <div>
+          <div className="overflow-hidden rounded-[28px] border border-white/10 bg-black">
+            <iframe
+              src="/agentzero-chat.html"
+              title="AgentZero animated demo"
+              loading="lazy"
+              scrolling="no"
+              sandbox="allow-scripts allow-same-origin"
+              className="h-[420px] w-full lg:h-[520px]"
+            />
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-4 pb-20 sm:px-6 lg:px-8">
+        <div className="grid gap-10 lg:grid-cols-2 lg:items-center">
+          <div className="overflow-hidden rounded-[28px] border border-white/10 bg-black lg:order-1">
+            <iframe
+              src="/AgentZero-chat-2.html"
+              title="AgentZero predictive lead demo"
+              loading="lazy"
+              scrolling="no"
+              sandbox="allow-scripts allow-same-origin"
+              className="h-[420px] w-full lg:h-[520px]"
+            />
+          </div>
+          <div className="lg:order-2">
             <div className="mono text-[11px] uppercase tracking-[0.32em] text-white/35">
               Why it wins
             </div>
@@ -189,6 +256,91 @@ export default function AgentZeroLandingPage() {
             Every deal trains the system — so when a new agent joins, their AgentZero
             already knows your clients, your market, and how your best people close. They
             ramp in days, not months.
+          </p>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-4 pb-20 sm:px-6 lg:px-8">
+        <div className="mb-8">
+          <div className="mono text-[11px] uppercase tracking-[0.32em] text-[#ffd60a]">
+            Pricing
+          </div>
+          <h2 className="mt-4 text-3xl font-semibold text-white sm:text-4xl">
+            Plans that scale with your roster
+          </h2>
+        </div>
+
+        <div className="grid items-stretch gap-6 lg:grid-cols-2">
+          <article className="flex flex-col rounded-[32px] border border-[#ffd60a]/40 bg-white/[0.03] p-8 transition hover:-translate-y-1 sm:p-10">
+            <div className="flex items-center gap-3">
+              <h3 className="text-xl font-semibold text-white">Per Agent</h3>
+              <span className="rounded-full bg-[#ffd60a] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-black">
+                Most popular
+              </span>
+            </div>
+            <div className="mt-6 flex items-baseline gap-2">
+              <span className="text-5xl font-semibold leading-none text-white">
+                AED 750
+              </span>
+            </div>
+            <p className="mt-2 text-sm text-[#a1a1a1]">/ agent / month</p>
+
+            <ul className="mt-8 space-y-4">
+              {PLAN_FEATURES.map((feature) => (
+                <li key={feature} className="flex items-start gap-3">
+                  <GoldCheck />
+                  <span className="text-sm leading-7 text-white/80">{feature}</span>
+                </li>
+              ))}
+            </ul>
+
+            <div className="mt-auto pt-10">
+              <a
+                href={WHATSAPP_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex w-full justify-center rounded-full bg-[#ffd60a] px-6 py-3 text-sm font-semibold text-black transition hover:opacity-90"
+              >
+                Get started
+              </a>
+            </div>
+          </article>
+
+          <article className="flex flex-col rounded-[32px] border border-[#ffd60a]/10 bg-white/[0.03] p-8 transition hover:-translate-y-1 sm:p-10">
+            <h3 className="text-xl font-semibold text-white">Brokerage</h3>
+            <div className="mt-6 flex items-baseline gap-2">
+              <span className="text-5xl font-semibold leading-none text-white">
+                Custom
+              </span>
+            </div>
+            <p className="mt-2 text-sm text-[#a1a1a1]">tailored to your roster</p>
+
+            <ul className="mt-8 space-y-4">
+              {PLAN_FEATURES.map((feature) => (
+                <li key={feature} className="flex items-start gap-3">
+                  <GoldCheck />
+                  <span className="text-sm leading-7 text-white/80">{feature}</span>
+                </li>
+              ))}
+            </ul>
+
+            <div className="mt-auto pt-10">
+              <a
+                href={WHATSAPP_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex w-full justify-center rounded-full border border-[#ffd60a]/60 px-6 py-3 text-sm font-semibold text-[#ffd60a] transition hover:bg-[#ffd60a]/10"
+              >
+                Request pricing
+              </a>
+            </div>
+          </article>
+        </div>
+
+        <div className="mt-6 rounded-[20px] border-l-2 border-[#ffd60a] bg-[#ffd60a]/[0.06] px-6 py-5 text-center">
+          <p className="text-base leading-7 text-white/85 sm:text-lg">
+            Don&apos;t close a deal within 6 weeks?{" "}
+            <span className="font-semibold text-[#ffd60a]">Pay nothing.</span>
           </p>
         </div>
       </section>
