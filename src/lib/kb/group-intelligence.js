@@ -126,13 +126,41 @@ function detectGroupQueryIntent(query) {
   return GROUP_QUERY_TRIGGERS.some((term) => normalized.includes(term));
 }
 
+function normalizePhone(rawPhone) {
+  const cleaned = String(rawPhone || "").replace(/[^\d+]/g, "");
+  if (!cleaned) return null;
+
+  if (cleaned.startsWith("+")) {
+    return `+${cleaned.slice(1).replace(/\D/g, "")}`;
+  }
+
+  if (cleaned.startsWith("00")) {
+    return `+${cleaned.slice(2).replace(/\D/g, "")}`;
+  }
+
+  const digits = cleaned.replace(/\D/g, "");
+  if (!digits) return null;
+  if (digits.startsWith("971")) return `+${digits}`;
+  if (digits.length === 10 && digits.startsWith("05")) return `+971${digits.slice(1)}`;
+  if (digits.length === 9 && digits.startsWith("5")) return `+971${digits}`;
+  return digits;
+}
+
+function extractPhoneFromText(text) {
+  const source = String(text || "");
+  const labeled =
+    source.match(/(?:whatsapp|phone|mobile|call|contact|dm|message me)[^\d+]*(\+?\d[\d\s\-().]{7,}\d)/i)?.[1] ||
+    source.match(/(\+971[\d\s\-().]{7,}\d)/i)?.[1] ||
+    source.match(/\b(0?5\d[\d\s\-().]{7,}\d)\b/)?.[1];
+  if (!labeled) return null;
+  return normalizePhone(labeled);
+}
+
 function extractContactHints(text) {
-  const phone =
-    text.match(/(?:whatsapp|phone|mobile|call|pm)[:\s]*(\+?\d[\d\s\-]{7,}\d)/i)?.[1] ||
-    text.match(/(\+971[\d\s\-]{7,})/)?.[1];
+  const phone = extractPhoneFromText(text);
   const email = text.match(/([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})/i)?.[1];
   const parts = [];
-  if (phone) parts.push(`phone ${phone.replace(/\s+/g, " ").trim()}`);
+  if (phone) parts.push(`phone ${phone}`);
   if (email) parts.push(`email ${email}`);
   return parts.length ? parts.join(", ") : null;
 }
@@ -182,6 +210,7 @@ export function searchGroupIntelligence(userQuery, options = {}) {
         timestamp: message.timestamp,
         at: message.at,
         text: message.text,
+        phone: extractPhoneFromText(message.text),
         contactHint: extractContactHints(message.text),
       });
     }
@@ -248,6 +277,7 @@ export function findGroupPosterMatches(nameQuery, limit = 3) {
         sender: message.sender,
         timestamp: message.timestamp,
         text: message.text,
+        phone: extractPhoneFromText(message.text),
         contactHint: extractContactHints(message.text),
       });
     }

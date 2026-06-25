@@ -425,12 +425,33 @@ async function runCommandPath(lastUserMessage, messageHistory, state) {
 
     const { matches } = resolveLeadByName(targetName);
     if (!matches.length) {
-      const groupMatches = findGroupPosterMatches(targetName, 1);
+      const groupMatches = findGroupPosterMatches(targetName, 3);
       if (groupMatches.length) {
+        const callable = groupMatches.find((entry) => entry.phone);
+        if (callable) {
+          const senderName = String(callable.sender || targetName)
+            .replace(/^~\s*/, "")
+            .trim() || targetName;
+          const groupLead = {
+            name: senderName,
+            phone: callable.phone,
+            area: callable.groupName || "Dubai",
+            status: "group-intelligence",
+          };
+          return {
+            handled: true,
+            text: `Ready to call ${groupLead.name} at ${groupLead.phone}. Source: ${callable.groupName} (${callable.timestamp}). Should I place the call now?`,
+            nextState: {
+              ...state,
+              pendingCallRequest: groupLead,
+              pendingConfirmationExpiry: Date.now() + PENDING_CONFIRMATION_TTL_MS,
+            },
+          };
+        }
         const hit = groupMatches[0];
         return {
           handled: true,
-          text: `I found ${hit.sender} in group intelligence (${hit.groupName}, ${hit.timestamp}), but this is a secure group export — not a callable lead. No phone/email available unless you DM them in the group.`,
+          text: `I found ${hit.sender} in group intelligence (${hit.groupName}, ${hit.timestamp}), but no phone number was captured in that message. Ask for a direct number or share one here and I can place the call.`,
           nextState: state,
         };
       }
