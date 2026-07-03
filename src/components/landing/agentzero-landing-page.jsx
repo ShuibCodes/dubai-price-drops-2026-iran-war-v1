@@ -125,14 +125,14 @@ export default function AgentZeroLandingPage() {
               <span className="text-2xl text-white/70 sm:text-3xl">AED</span>
               <span className="text-5xl tracking-tight text-[#ff2d55] sm:text-6xl">
                 <CountUp
-                  to={1000000}
+                  to={7500000}
                   format={(v) => Math.round(v).toLocaleString()}
                 />
               </span>
               <span className="text-4xl text-[#ff2d55] sm:text-5xl">+</span>
             </div>
             <p className="mt-5 text-lg leading-7 text-white/65">
-              sold in 6 weeks
+              Sold with AI
             </p>
           </article>
 
