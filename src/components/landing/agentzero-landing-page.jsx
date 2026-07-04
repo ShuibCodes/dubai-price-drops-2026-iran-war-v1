@@ -1,7 +1,9 @@
 "use client";
 
 import { animate, useInView } from "framer-motion";
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
+import dubaiMap from "@/app/images/dubai-map.webp";
 
 const WHATSAPP_URL = "https://wa.me/971585690693";
 
@@ -221,6 +223,36 @@ export default function AgentZeroLandingPage() {
                 Get access
               </a>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-4 pb-20 sm:px-6 lg:px-8">
+        <div className="grid gap-10 lg:grid-cols-2 lg:items-center">
+          <div>
+            <div className="mono text-[11px] uppercase tracking-[0.32em] text-white/35">
+              Compounding edge
+            </div>
+            <h2 className="mt-4 text-3xl font-semibold text-white sm:text-4xl">
+              Month one, it answers. Month six, it predicts.
+            </h2>
+            <p className="mt-5 text-base leading-8 text-white/75 sm:text-lg">
+              Every chat, call and closed deal feeds one brain. AgentZero learns
+              which communities are moving, what buyers actually pay there, and
+              which of today&apos;s leads look like your last ten closes... then
+              points your agents at them first.
+            </p>
+            <p className="mt-8 text-lg font-semibold text-[#ffd60a] sm:text-xl">
+              6 months AI-native = 2 years ahead.
+            </p>
+          </div>
+          <div className="overflow-hidden rounded-[28px] border border-white/10 bg-black">
+            <Image
+              src={dubaiMap}
+              alt="AgentZero mapping which Dubai communities are moving"
+              className="h-[320px] w-full object-cover object-[50%_22%] sm:h-[380px] lg:h-[440px]"
+              placeholder="blur"
+            />
           </div>
         </div>
       </section>
