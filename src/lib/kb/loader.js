@@ -126,7 +126,8 @@ export function getAllDocuments() {
   return cachedCorpus;
 }
 
-export function buildSystemPrompt(userQuery = "") {
+export function buildSystemPrompt(userQuery = "", options = {}) {
+  const liveContext = String(options?.liveContext || "").trim();
   const index = getIndex();
   const corpus = getAllDocuments();
 
@@ -184,7 +185,7 @@ ${formatGroupIntelligenceForPrompt(searchGroupIntelligence(userQuery))}
 
 LEAD ROSTER (WhatsApp + CRM — use for names, phones, last contact, status, interests):
 ${buildLeadRosterText()}
-
+${liveContext ? `\nLIVE WHATSAPP CONVERSATIONS:\n${liveContext}\n` : ""}
 FULL KNOWLEDGE BASE:
 ${corpus}`;
 }

@@ -64,9 +64,12 @@ export async function POST(request) {
     const previousMessages = Array.isArray(state.messages) ? state.messages : [];
     const nextMessages = [...previousMessages, { role: "user", content: body }].slice(-30);
 
+    const callerWaId = from.replace(/^whatsapp:/i, "").replace(/\D/g, "");
+
     const result = await runKbTurn({
       messages: nextMessages,
       state,
+      callerWaId: callerWaId || null,
     });
 
     const persistedState = {

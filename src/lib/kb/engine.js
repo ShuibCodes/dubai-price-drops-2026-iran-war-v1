@@ -1,4 +1,13 @@
 import { buildSystemPrompt } from "@/lib/kb/loader";
+import {
+  formatLiveContext,
+  getRecentConversations,
+} from "@/lib/kb/live-conversations";
+import {
+  getFirstTenant,
+  resolveTenantByAgent,
+} from "@/lib/kb/resolve-tenant";
+import { normalizeWaId } from "@/lib/supabase/server";
 import { findGroupPosterMatches } from "@/lib/kb/group-intelligence";
 import { buildEmailDraftFromRequest } from "@/lib/email/draft-workflow";
 import { sendLeadEmail } from "@/lib/email/resend-client";
@@ -534,8 +543,47 @@ async function runCommandPath(lastUserMessage, messageHistory, state) {
   return { handled: false, nextState: state, text: null };
 }
 
-async function runLlmPath(messages, userQuery = "") {
-  const prompt = buildSystemPrompt(userQuery);
+async function resolveTenantForKbTurn(callerWaId) {
+  const normalizedCaller = normalizeWaId(callerWaId);
+
+  if (normalizedCaller) {
+    const tenant = await resolveTenantByAgent(normalizedCaller);
+    if (!tenant) {
+      return {
+        tenant: null,
+        unregistered: true,
+      };
+    }
+    return { tenant, unregistered: false };
+  }
+
+  const tenant = await getFirstTenant();
+  if (tenant) {
+    console.warn("TENANT FALLBACK USED — dev only");
+  }
+  return { tenant, unregistered: false };
+}
+
+async function runLlmPath(messages, userQuery = "", callerWaId = null) {
+  const tenantResolution = await resolveTenantForKbTurn(callerWaId);
+  if (tenantResolution.unregistered) {
+    return "You're not registered on AgentZero yet. Ask your admin to add your WhatsApp number.";
+  }
+
+  let liveContext = "";
+  if (tenantResolution.tenant?.id) {
+    try {
+      const conversations = await getRecentConversations(tenantResolution.tenant.id, {
+        limit: 5,
+        messageLimit: 10,
+      });
+      liveContext = formatLiveContext(conversations);
+    } catch (error) {
+      console.error("Live conversation context unavailable:", error.message);
+    }
+  }
+
+  const prompt = buildSystemPrompt(userQuery, { liveContext });
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     throw new Error("Missing ANTHROPIC_API_KEY");
@@ -581,7 +629,7 @@ async function runLlmPath(messages, userQuery = "") {
   return limitWords(cleanupFormatting(rawText), 75);
 }
 
-export async function runKbTurn({ messages, state }) {
+export async function runKbTurn({ messages, state, callerWaId = null }) {
   const nextState = cloneState(state ?? defaultKbState());
   const history = normalizeMessageHistory(messages);
   const lastUserMessage = [...history].reverse().find((m) => m.role === "user")?.content;
@@ -603,7 +651,7 @@ export async function runKbTurn({ messages, state }) {
     };
   }
 
-  const llmText = await runLlmPath(history, lastUserMessage);
+  const llmText = await runLlmPath(history, lastUserMessage, callerWaId);
   return {
     text: trimForWhatsapp(llmText),
     nextState,

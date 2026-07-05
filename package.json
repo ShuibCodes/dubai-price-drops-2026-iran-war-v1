@@ -6,10 +6,15 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "seed:tenant": "node scripts/seed-tenant.mjs",
+    "simulate:meta": "node scripts/simulate-meta.mjs all",
+    "migrate:whatsapp": "node scripts/apply-migration.mjs",
+    "verify:coexistence": "node scripts/verify-coexistence.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.86.1",
+    "@supabase/supabase-js": "^2.110.0",
     "cheerio": "^1.2.0",
     "clsx": "^2.1.1",
     "framer-motion": "^12.35.0",
@@ -34,6 +39,7 @@
     "autoprefixer": "^10.5.0",
     "eslint": "^8",
     "eslint-config-next": "14.2.35",
+    "pg": "^8.22.0",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
     "typescript": "^6.0.2"
