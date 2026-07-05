@@ -61,26 +61,40 @@ When you connect external accounts (such as WhatsApp Business via Meta), their r
   },
   {
     title: "8. Your Rights",
-    body: `Depending on your location, you may have rights to access, correct, delete, restrict, or port your personal data, and to object to certain processing. To exercise these rights, contact us using the details below. We will respond within the timeframe required by applicable law.`,
+    body: `Depending on your location, you may have rights to access, correct, delete, restrict, or port your personal data, and to object to certain processing. To exercise these rights, contact us using the details below or follow the data deletion instructions in Section 9. We will respond within the timeframe required by applicable law.`,
   },
   {
-    title: "9. Cookies and Analytics",
+    title: "9. Data Deletion Requests",
+    body: `You may request deletion of your personal data at any time. We provide the following options:
+
+• Email request — send a message to ${CONTACT_EMAIL} with the subject "Data Deletion Request". Include your name, business name, and the WhatsApp number or email associated with your AgentZero account.
+
+• Meta/Facebook removal — if you connected AgentZero through Facebook or WhatsApp Business, you can remove the app from Facebook Settings → Apps and Websites. Meta will notify us via our data deletion callback, and we will process the request automatically.
+
+What we delete: account details, stored WhatsApp messages, lead and conversation records, integration tokens, and AI-generated summaries linked to your account.
+
+Timeline: verified requests are processed within 30 days. Backup copies may take up to 90 days to purge. We may retain minimal information where required by law.
+
+Status: if you removed the app via Meta, you will receive a confirmation code and can check status at /data-deletion on our website.`,
+  },
+  {
+    title: "10. Cookies and Analytics",
     body: `We may use cookies and similar technologies to maintain sessions, remember preferences, and understand how the Service is used. You can control cookies through your browser settings. Disabling cookies may affect certain features.`,
   },
   {
-    title: "10. International Transfers",
+    title: "11. International Transfers",
     body: `Your information may be processed in countries other than your own, including the United Arab Emirates, the United States, and the European Union, where our infrastructure and subprocessors operate. We take steps to ensure appropriate safeguards are in place for such transfers.`,
   },
   {
-    title: "11. Children's Privacy",
+    title: "12. Children's Privacy",
     body: `The Service is not intended for individuals under 18. We do not knowingly collect personal information from children. If you believe we have collected data from a minor, please contact us and we will delete it promptly.`,
   },
   {
-    title: "12. Changes to This Policy",
+    title: "13. Changes to This Policy",
     body: `We may update this Privacy Policy from time to time. The "Last updated" date at the top will reflect the latest revision. Material changes will be communicated via the Service or email where appropriate. Continued use after changes constitutes acceptance.`,
   },
   {
-    title: "13. Contact Us",
+    title: "14. Contact Us",
     body: `If you have questions about this Privacy Policy or our data practices, contact us at:
 
 Email: ${CONTACT_EMAIL}`,
@@ -110,9 +124,14 @@ export default function PrivacyPolicyPage() {
       </article>
 
       <footer className="mt-16 border-t border-[var(--border)] pt-8 text-sm text-[var(--muted)]">
-        <a href="/" className="hover:text-foreground transition-colors">
-          ← Back to home
-        </a>
+        <div className="flex flex-wrap gap-4">
+          <a href="/data-deletion" className="hover:text-foreground transition-colors">
+            Data deletion requests →
+          </a>
+          <a href="/" className="hover:text-foreground transition-colors">
+            ← Back to home
+          </a>
+        </div>
       </footer>
     </main>
   );
