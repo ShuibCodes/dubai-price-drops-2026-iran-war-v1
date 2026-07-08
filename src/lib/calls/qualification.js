@@ -38,7 +38,51 @@ function normalizeQualification(raw = {}) {
     callback_time: raw.callback_time != null ? String(raw.callback_time) : null,
     outcome: VALID_OUTCOMES.has(outcome) ? outcome : null,
     lead_engaged: raw.lead_engaged === true || raw.lead_engaged === "true",
+    crm_note: clean(raw.crm_note) || null,
   };
+}
+
+const INTENT_SENTENCES = {
+  live: "Lead is looking for a home to live in.",
+  invest: "Lead is an investment buyer.",
+  browsing: "Lead is at an early browsing stage.",
+};
+
+const OUTCOME_LABELS = {
+  qualified: "Qualified",
+  callback: "Callback requested",
+  not_interested: "Not interested",
+  voicemail: "Voicemail",
+  no_answer: "No answer",
+};
+
+/** Fallback broker note when the model (or structuredData) didn't provide one. */
+export function composeCrmNote(qualification = {}, summary = "") {
+  const outcomeLabel = OUTCOME_LABELS[qualification.outcome] || "Call completed";
+  const lines = [`AgentZero AI Call — ${outcomeLabel}`];
+
+  const facts = [];
+  if (qualification.intent && INTENT_SENTENCES[qualification.intent]) {
+    facts.push(INTENT_SENTENCES[qualification.intent]);
+  }
+  if (qualification.budget_aed) {
+    facts.push(`Budget around AED ${qualification.budget_aed}.`);
+  }
+  if (Array.isArray(qualification.areas) && qualification.areas.length) {
+    facts.push(`Interested in ${qualification.areas.join(", ")}.`);
+  }
+  if (qualification.timeline) {
+    facts.push(`Timeline: ${qualification.timeline}.`);
+  }
+  if (qualification.callback_time) {
+    facts.push(`Callback requested for ${qualification.callback_time}.`);
+  }
+  if (facts.length) lines.push(facts.join(" "));
+
+  const summarySentence = clean(summary).split(/(?<=[.!?])\s+/)[0] || "";
+  if (summarySentence) lines.push(summarySentence);
+
+  return lines.join("\n");
 }
 
 export function qualificationFromStructuredData(structuredData) {
@@ -74,7 +118,8 @@ Return ONLY valid JSON (no markdown, no explanation) with this exact shape:
   "timeline": string | null,
   "callback_time": string | null,
   "outcome": "qualified" | "callback" | "not_interested" | "voicemail" | "no_answer",
-  "lead_engaged": boolean
+  "lead_engaged": boolean,
+  "crm_note": string
 }
 
 Rules:
@@ -83,6 +128,7 @@ Rules:
 - Use null for unknown fields
 - areas should be Dubai area names mentioned, empty array if none
 - lead_engaged: true ONLY if the lead contributed at least one substantive conversational turn beyond a greeting or an immediate rejection/hangup (e.g. answered a question, shared a preference, asked something back); false for voicemail, no answer, greeting-only, or instant hangup/rejection
+- crm_note: a polished, broker-ready activity note, 3-5 short lines of plain text separated by newlines. First line exactly "AgentZero AI Call — {outcome}". Then only the qualification facts that actually exist (intent, budget, areas, timeline, callback) written as natural sentences — omit anything unknown entirely, never print empty labels like "Budget: null". End with a one-sentence summary of the conversation. No markdown, no emojis, no ISO timestamps.
 
 Call ended reason: ${clean(endedReason) || "unknown"}
 
@@ -102,7 +148,8 @@ ${clean(transcript) || "(none)"}`;
       },
       body: JSON.stringify({
         model: ANTHROPIC_MODEL,
-        max_tokens: 512,
+        // Enough headroom for the multi-line crm_note without truncating the JSON
+        max_tokens: 1024,
         messages: [{ role: "user", content: prompt }],
       }),
     });
@@ -128,6 +175,12 @@ ${clean(transcript) || "(none)"}`;
 
 export async function resolveQualification({ structuredData, transcript, summary, endedReason }) {
   const fromStructured = qualificationFromStructuredData(structuredData);
-  if (fromStructured) return fromStructured;
-  return qualifyCallFromTranscript({ transcript, summary, endedReason });
+  const qualification =
+    fromStructured || (await qualifyCallFromTranscript({ transcript, summary, endedReason }));
+
+  if (!qualification.crm_note) {
+    qualification.crm_note = composeCrmNote(qualification, summary);
+  }
+
+  return qualification;
 }

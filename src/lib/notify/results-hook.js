@@ -1,4 +1,5 @@
-import { getSupabaseServerClient } from "@/lib/supabase/server";
+// Relative import (not @/) so plain node scripts like retry-results-sync.mjs can resolve it
+import { getSupabaseServerClient } from "../supabase/server.js";
 
 function flatPayload(call, lead, qualification) {
   const areas = Array.isArray(qualification?.areas)
@@ -16,6 +17,7 @@ function flatPayload(call, lead, qualification) {
     timeline: qualification?.timeline != null ? String(qualification.timeline) : "",
     callback_time: qualification?.callback_time != null ? String(qualification.callback_time) : "",
     lead_engaged: qualification?.lead_engaged === true ? "true" : "false",
+    crm_note: String(qualification?.crm_note || ""),
     duration_seconds: call?.duration_seconds != null ? String(call.duration_seconds) : "",
     summary: String(call?.summary || ""),
     recording_url: String(call?.recording_url || ""),

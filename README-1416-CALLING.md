@@ -113,6 +113,7 @@ ON CONFLICT (slug) DO UPDATE SET
 | `timeline` | Move-in / purchase timeline |
 | `callback_time` | Requested callback time |
 | `lead_engaged` | `'true'`/`'false'` — lead gave at least one substantive turn beyond a greeting or immediate rejection/hangup |
+| `crm_note` | Broker-ready activity note (3-5 plain-text lines, starts with "AgentZero AI Call — {outcome}"); paste directly into the Pixxi note |
 | `duration_seconds` | Call duration in seconds (string, empty if unknown) |
 | `summary` | Call summary text |
 | `recording_url` | Vapi recording URL |
