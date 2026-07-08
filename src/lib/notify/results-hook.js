@@ -15,6 +15,8 @@ function flatPayload(call, lead, qualification) {
     areas,
     timeline: qualification?.timeline != null ? String(qualification.timeline) : "",
     callback_time: qualification?.callback_time != null ? String(qualification.callback_time) : "",
+    lead_engaged: qualification?.lead_engaged === true ? "true" : "false",
+    duration_seconds: call?.duration_seconds != null ? String(call.duration_seconds) : "",
     summary: String(call?.summary || ""),
     recording_url: String(call?.recording_url || ""),
     called_at: call?.started_at || call?.ended_at || call?.created_at || "",

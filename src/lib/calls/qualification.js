@@ -37,6 +37,7 @@ function normalizeQualification(raw = {}) {
     timeline: raw.timeline != null ? String(raw.timeline) : null,
     callback_time: raw.callback_time != null ? String(raw.callback_time) : null,
     outcome: VALID_OUTCOMES.has(outcome) ? outcome : null,
+    lead_engaged: raw.lead_engaged === true || raw.lead_engaged === "true",
   };
 }
 
@@ -49,7 +50,8 @@ export function qualificationFromStructuredData(structuredData) {
     normalized.areas.length ||
     normalized.timeline ||
     normalized.callback_time ||
-    normalized.outcome
+    normalized.outcome ||
+    normalized.lead_engaged
   ) {
     return normalized;
   }
@@ -71,7 +73,8 @@ Return ONLY valid JSON (no markdown, no explanation) with this exact shape:
   "areas": string[],
   "timeline": string | null,
   "callback_time": string | null,
-  "outcome": "qualified" | "callback" | "not_interested" | "voicemail" | "no_answer"
+  "outcome": "qualified" | "callback" | "not_interested" | "voicemail" | "no_answer",
+  "lead_engaged": boolean
 }
 
 Rules:
@@ -79,6 +82,7 @@ Rules:
 - outcome: qualified = engaged and actionable, callback = wants follow-up, not_interested = declined, voicemail = left message, no_answer = no pickup
 - Use null for unknown fields
 - areas should be Dubai area names mentioned, empty array if none
+- lead_engaged: true ONLY if the lead contributed at least one substantive conversational turn beyond a greeting or an immediate rejection/hangup (e.g. answered a question, shared a preference, asked something back); false for voicemail, no answer, greeting-only, or instant hangup/rejection
 
 Call ended reason: ${clean(endedReason) || "unknown"}
 

@@ -112,6 +112,8 @@ ON CONFLICT (slug) DO UPDATE SET
 | `areas` | Comma-separated area names |
 | `timeline` | Move-in / purchase timeline |
 | `callback_time` | Requested callback time |
+| `lead_engaged` | `'true'`/`'false'` — lead gave at least one substantive turn beyond a greeting or immediate rejection/hangup |
+| `duration_seconds` | Call duration in seconds (string, empty if unknown) |
 | `summary` | Call summary text |
 | `recording_url` | Vapi recording URL |
 | `called_at` | ISO timestamp |
