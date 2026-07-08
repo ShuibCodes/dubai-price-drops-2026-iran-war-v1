@@ -1,31 +1,15 @@
 import fs from "fs";
 import path from "path";
 import { findAreasInText } from "@/lib/kb/dubai-areas";
+import { getVapiConfig, startLeadCall } from "@/lib/vapi/dial";
+
+export { startLeadCall };
 
 const TARGET_LEAD_NAME = "Shuayb";
 const TARGET_LEAD_PHONE = "+971585690693";
 const TARGET_LEAD_TRANSCRIPT_PATH =
   process.env.TARGET_LEAD_TRANSCRIPT_PATH ||
   "data/whatsapp/shuayb-context.txt";
-
-function getRequiredEnv(name) {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`);
-  }
-  return value;
-}
-
-function getVapiConfig() {
-  return {
-    apiKey: getRequiredEnv("VAPI_API_KEY"),
-    assistantId: getRequiredEnv("VAPI_ASSISTANT_ID"),
-    phoneNumberId: getRequiredEnv("VAPI_PHONE_NUMBER_ID"),
-    baseUrl: process.env.VAPI_BASE_URL || "https://api.vapi.ai",
-    createPath: process.env.VAPI_CALL_CREATE_PATH || "/call/phone",
-    callsPath: process.env.VAPI_CALLS_PATH || "/call",
-  };
-}
 
 function getAuthHeaders(apiKey) {
   return {
