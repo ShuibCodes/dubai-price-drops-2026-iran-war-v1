@@ -70,7 +70,7 @@ async function main() {
         phone,
         assistantId: tenant.vapi_assistant_id,
         phoneNumberId: tenant.vapi_phone_number_id,
-        variableValues: { leadName, leadSource, propertyInterest },
+        variableValues: { leadName, leadSource, propertyInterest, campaignTopic: "", formWhen: "", ownsProperty: "" },
         metadata: {
           tenantId: tenant.id,
           leadId: lead.id,

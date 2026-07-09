@@ -62,7 +62,7 @@ ON CONFLICT (slug) DO UPDATE SET
 
 1. **Server URL**: `https://YOUR_DOMAIN/api/vapi/webhook`
 2. **Server URL Secret**: same value as `VAPI_WEBHOOK_SECRET`
-3. Ensure assistant has variables: `leadName`, `leadSource`, `propertyInterest`
+3. Ensure assistants have variables: `leadName`, `leadSource`, `propertyInterest`, and for Meta Instant Form also `campaignTopic`, `formWhen`, `ownsProperty`
 4. Enable end-of-call report / structured data if available
 
 ## 5. Zapier Zap 1 — Pixxi → inbound endpoint
@@ -94,6 +94,45 @@ ON CONFLICT (slug) DO UPDATE SET
 | `agent_phone` | Agent Info Phone |
 
 **Response**: `{ "ok": true, "queued": false, "callId": "..." }` or `{ "ok": true, "queued": true }` outside business hours.
+
+### Meta Instant Form Zap (same endpoint)
+
+Same URL + `x-leads-secret`. Extra / differing fields:
+
+| Field | Meta / Zap source |
+|-------|-------------------|
+| `name` | Lead full name |
+| `phone` | Lead phone |
+| `client_source` | Must be exactly `Meta Instant Form` |
+| `ad_name` | Ad name |
+| `form_name` | Form name |
+| `created_time` | Form submission time (ISO string) |
+| `owns_property` | Form answer (yes/no) |
+| `pixxi_lead_id` | Optional CRM id if available |
+| `agent_name` / `agent_phone` | Optional assigned agent |
+
+When `client_source === "Meta Instant Form"` and the tenant has `vapi_assistant_id_meta` set, the call uses that assistant. Otherwise it uses `vapi_assistant_id`.
+
+**Vapi `variableValues` for every call** (empty string when N/A):
+
+| Variable | Contents |
+|----------|----------|
+| `leadName` | Lead name (or `"there"`) |
+| `leadSource` | Source string; Meta leads append `ad_name / form_name` |
+| `propertyInterest` | Rooms / type / community / budget summary |
+| `campaignTopic` | Cleaned topic from `ad_name` (fallback `form_name`), e.g. `"Ellington"`, `"Dubai Hills"` |
+| `formWhen` | Relative time: `"a few minutes ago"`, `"earlier today"`, `"yesterday"`, or `"recently"` |
+| `ownsProperty` | `"yes"`, `"no"`, or `""` |
+
+Seed the Meta assistant on the 1416 tenant:
+
+```sql
+UPDATE tenants
+SET vapi_assistant_id_meta = '<ALLAN_META_ID>'
+WHERE slug = '1416';
+```
+
+Also apply migration `supabase/migrations/004_meta_leads.sql` (adds `vapi_assistant_id_meta` on tenants and `owns_property` on leads).
 
 ## 6. Zapier Zap 2 — results → Pixxi activity note
 

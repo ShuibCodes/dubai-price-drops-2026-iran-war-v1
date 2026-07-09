@@ -7,6 +7,12 @@ import {
   phoneToWaId,
   resolveLeadSource,
 } from "@/lib/leads/normalize";
+import {
+  buildLeadSourceWithMeta,
+  buildMetaFormVariables,
+  isMetaInstantFormSource,
+  normalizeOwnsProperty,
+} from "@/lib/leads/meta-form";
 
 const TENANT_SLUG = "1416";
 
@@ -16,7 +22,9 @@ export async function getTenantBySlug(slug = TENANT_SLUG) {
 
   const { data, error } = await supabase
     .from("tenants")
-    .select("id, name, slug, vapi_assistant_id, vapi_phone_number_id, phone_number_id, business_token")
+    .select(
+      "id, name, slug, vapi_assistant_id, vapi_assistant_id_meta, vapi_phone_number_id, phone_number_id, business_token"
+    )
     .eq("slug", slug)
     .maybeSingle();
 
@@ -34,7 +42,9 @@ export async function upsertPixxiLead(tenantId, fields) {
 
   const waId = phoneToWaId(phone);
   const pixxiLeadId = String(fields.pixxi_lead_id || "").trim() || null;
-  const leadSource = resolveLeadSource(fields);
+  const baseSource = resolveLeadSource(fields);
+  const leadSource = buildLeadSourceWithMeta(fields, baseSource);
+  const ownsProperty = normalizeOwnsProperty(fields.owns_property) || null;
   const now = new Date().toISOString();
 
   const row = {
@@ -47,6 +57,7 @@ export async function upsertPixxiLead(tenantId, fields) {
       ? normalizePhone(fields.agent_phone) || String(fields.agent_phone).trim()
       : null,
     source: leadSource,
+    owns_property: ownsProperty,
     last_message_at: now,
     first_seen: now,
   };
@@ -107,12 +118,29 @@ export function buildCallVariables(lead, fields = {}) {
     community: fields.community,
     budget: fields.budget,
   });
+  const metaVars = buildMetaFormVariables(fields);
 
-  return { leadName, leadSource, propertyInterest };
+  return {
+    leadName,
+    leadSource,
+    propertyInterest,
+    campaignTopic: metaVars.campaignTopic,
+    formWhen: metaVars.formWhen,
+    ownsProperty: metaVars.ownsProperty,
+  };
+}
+
+export function resolveAssistantId(tenant, fields = {}) {
+  if (isMetaInstantFormSource(fields) && tenant.vapi_assistant_id_meta) {
+    return tenant.vapi_assistant_id_meta;
+  }
+  return tenant.vapi_assistant_id;
 }
 
 export async function dialOrQueueLead({ tenant, lead, fields = {}, dryRun = false }) {
-  const { leadName, leadSource, propertyInterest } = buildCallVariables(lead, fields);
+  const variables = buildCallVariables(lead, fields);
+  const { leadName, leadSource, propertyInterest, campaignTopic, formWhen, ownsProperty } =
+    variables;
   const supabase = getSupabaseServerClient();
   if (!supabase) throw new Error("Supabase not configured");
 
@@ -133,21 +161,30 @@ export async function dialOrQueueLead({ tenant, lead, fields = {}, dryRun = fals
   }
 
   if (dryRun) {
-    return { queued: false, dryRun: true, leadName, leadSource, propertyInterest };
+    return { queued: false, dryRun: true, ...variables };
   }
 
   const phone = normalizePhone(fields.phone || lead.wa_id);
+  const assistantId = resolveAssistantId(tenant, fields);
   const result = await startLeadCall({
     name: leadName,
     phone,
-    assistantId: tenant.vapi_assistant_id,
+    assistantId,
     phoneNumberId: tenant.vapi_phone_number_id,
-    variableValues: { leadName, leadSource, propertyInterest },
+    variableValues: {
+      leadName,
+      leadSource,
+      propertyInterest,
+      campaignTopic,
+      formWhen,
+      ownsProperty,
+    },
     metadata: {
       tenantId: tenant.id,
       leadId: lead.id,
       pixxiLeadId: lead.pixxi_lead_id,
-      source: "pixxi-inbound",
+      source: isMetaInstantFormSource(fields) ? "meta-instant-form" : "pixxi-inbound",
+      assistantId,
     },
   });
 
@@ -165,8 +202,6 @@ export async function dialOrQueueLead({ tenant, lead, fields = {}, dryRun = fals
     queued: false,
     callId: result.callId,
     status: result.status,
-    leadName,
-    leadSource,
-    propertyInterest,
+    ...variables,
   };
 }
