@@ -34,30 +34,34 @@ WHAUTOMATE RAW: {...full JSON payload...}
 
 Every request is logged in full **before** any mapping — this is the source of truth for the real payload shape.
 
-## 5. Seed your tenant's channel id
+## 5. Enable your tenant
 
-Read the channel/account id from the raw log (look for `channelId`, `channel_id`, `accountId`, or similar), then run:
+Whautomate payloads carry **no channel identifier**, so the route ingests into the first (single) tenant that has `whautomate_channel_id` set — the value just acts as an on-switch. Set any marker value:
 
 ```sql
 UPDATE tenants
-SET whautomate_channel_id = 'CHANNEL_ID_FROM_RAW_LOG'
+SET whautomate_channel_id = 'whautomate'
 WHERE id = 'YOUR_TENANT_UUID';
 ```
 
-Until this is set, ingestion is skipped with a `no_tenant` reason in the response. If the payload's channel id doesn't match any tenant, the route falls back to the first tenant that has `whautomate_channel_id` set (with a logged warning).
+Until this is set, ingestion is skipped with a `no_tenant` reason in the response.
 
-## 6. Tighten the mapping
+## 6. Payload mapping (confirmed shape)
 
-The route does best-effort mapping in `mapWhautomatePayload()` (`src/app/api/whautomate/webhook/route.js`) across common field conventions:
+`mapWhautomatePayload()` in `src/app/api/whautomate/webhook/route.js` maps the confirmed Whautomate event shape:
 
-- contact phone → `wa_id` (tries `contact.phone`, `contact.phoneNumber`, `message.from`, ...)
-- contact/profile name → `push_name`
-- text → `body` (tries `message.text`, `message.body`, `message.content`, ...)
-- direction → inbound vs outbound (checks `direction`, `type`, `fromMe`, `sender`, echo/agent keywords)
-- message id → idempotent insert key (falls back to `whautomate-{wa_id}-{timestamp}`)
-- timestamp → accepts unix seconds, milliseconds, or ISO strings
+| Our field | Whautomate path |
+|-----------|-----------------|
+| event filter | `event.type` = `incoming_whatsapp_message` or `outgoing_whatsapp_message` |
+| direction | `message.isIncoming` → `true` = inbound, `false` = outbound |
+| `wa_id` | `message.contact.phoneNumber` (no plus prefix — normalized to digits) |
+| `push_name` | `message.from` (inbound only; outbound `sentBy` is our side and is ignored) |
+| `body` | `message.text` |
+| `wa_message_id` | `message.id` |
+| `timestamp` | `message.timestamp` (ISO) |
+| thread anchor | `message.contact.id` (kept in `raw`) |
 
-Once real payloads are in the logs, replace the guesswork in `mapWhautomatePayload()` with the actual field names.
+Other `event.type` values are acknowledged with 200 and skipped (`not_a_message_event`).
 
 ## 7. Verify rows
 

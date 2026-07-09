@@ -15,162 +15,67 @@ function verifySecret(request) {
   return timingSafeEqual(provided, expected);
 }
 
-function firstString(...candidates) {
-  for (const value of candidates) {
-    if (value == null) continue;
-    const str = String(value).trim();
-    if (str) return str;
-  }
-  return null;
+function clean(value) {
+  if (value == null) return null;
+  const str = String(value).trim();
+  return str || null;
 }
+
+const MESSAGE_EVENT_TYPES = new Set([
+  "incoming_whatsapp_message",
+  "outgoing_whatsapp_message",
+]);
 
 /**
- * Best-effort direction detection across common webhook field conventions.
- * Returns 'inbound' | 'outbound'.
+ * Confirmed Whautomate payload shape:
+ *   event.type: 'incoming_whatsapp_message' | 'outgoing_whatsapp_message'
+ *   message.isIncoming: boolean (direction)
+ *   message.from: sender name (inbound only — outbound sentBy is our side, not the lead)
+ *   message.contact.phoneNumber: phone without plus prefix
+ *   message.contact.id: thread anchor
+ *   message.text, message.id, message.timestamp (ISO)
  */
-function detectDirection(payload, message) {
-  const explicit = firstString(
-    message?.direction,
-    payload?.direction,
-    message?.type,
-    payload?.type,
-    payload?.event,
-    payload?.eventType
-  );
-  const lowered = (explicit || "").toLowerCase();
-
-  if (
-    message?.fromMe === true ||
-    payload?.fromMe === true ||
-    lowered.includes("outbound") ||
-    lowered.includes("outgoing") ||
-    lowered.includes("sent") ||
-    lowered.includes("echo") ||
-    lowered.includes("agent")
-  ) {
-    return "outbound";
-  }
-
-  const sender = firstString(message?.sender, payload?.sender, message?.author);
-  if (sender && ["agent", "business", "operator", "user"].includes(sender.toLowerCase())) {
-    return "outbound";
-  }
-
-  return "inbound";
-}
-
-/** Best-effort field mapping — refined from real "WHAUTOMATE RAW:" logs. */
 function mapWhautomatePayload(payload = {}) {
-  const message =
-    payload?.message || payload?.data?.message || payload?.data || payload;
-  const contact =
-    payload?.contact ||
-    payload?.customer ||
-    payload?.data?.contact ||
-    message?.contact ||
-    {};
-
-  const phone = firstString(
-    contact?.phone,
-    contact?.phoneNumber,
-    contact?.whatsappNumber,
-    contact?.wa_id,
-    message?.from,
-    message?.phone,
-    payload?.from,
-    payload?.phone
-  );
-
-  const pushName = firstString(
-    contact?.name,
-    contact?.fullName,
-    contact?.firstName && contact?.lastName
-      ? `${contact.firstName} ${contact.lastName}`
-      : contact?.firstName,
-    contact?.profileName,
-    message?.senderName,
-    payload?.name
-  );
-
-  const body = firstString(
-    message?.text,
-    message?.body,
-    message?.message,
-    message?.content,
-    typeof payload?.text === "string" ? payload.text : null
-  );
-
-  const messageId = firstString(
-    message?.id,
-    message?.messageId,
-    message?.wamid,
-    payload?.messageId,
-    payload?.id
-  );
-
-  const rawTimestamp =
-    message?.timestamp ?? payload?.timestamp ?? message?.createdAt ?? payload?.createdAt;
-  let timestamp = new Date().toISOString();
-  if (rawTimestamp != null) {
-    const num = Number(rawTimestamp);
-    if (Number.isFinite(num) && num > 0) {
-      // Accept unix seconds or milliseconds
-      timestamp = new Date(num > 1e12 ? num : num * 1000).toISOString();
-    } else {
-      const parsed = new Date(String(rawTimestamp));
-      if (!Number.isNaN(parsed.getTime())) timestamp = parsed.toISOString();
-    }
+  const eventType = clean(payload?.event?.type);
+  if (eventType && !MESSAGE_EVENT_TYPES.has(eventType)) {
+    return null;
   }
 
-  const channelId = firstString(
-    payload?.channelId,
-    payload?.channel_id,
-    payload?.channel?.id,
-    payload?.accountId,
-    payload?.account_id,
-    payload?.locationId,
-    message?.channelId
-  );
+  const message = payload?.message;
+  if (!message) return null;
 
-  const msgType = firstString(message?.messageType, message?.mediaType, "text");
+  const isIncoming = message.isIncoming === true;
+  const direction = isIncoming ? "inbound" : "outbound";
+
+  // Outbound sentBy is our own agent label — never the lead's name
+  const pushName = isIncoming ? clean(message.from) : null;
+
+  const parsed = new Date(String(message.timestamp || ""));
+  const timestamp = Number.isNaN(parsed.getTime())
+    ? new Date().toISOString()
+    : parsed.toISOString();
 
   return {
-    phone,
+    phone: clean(message.contact?.phoneNumber),
+    contactId: clean(message.contact?.id),
     pushName,
-    body,
-    messageId,
+    body: clean(message.text),
+    messageId: clean(message.id),
     timestamp,
-    channelId,
-    msgType,
-    direction: detectDirection(payload, message),
+    msgType: "text",
+    direction,
   };
 }
 
-async function resolveTenantByChannelId(supabase, channelId) {
-  if (channelId) {
-    const { data } = await supabase
-      .from("tenants")
-      .select("id, name, whautomate_channel_id")
-      .eq("whautomate_channel_id", channelId)
-      .maybeSingle();
-    if (data) return data;
-  }
-
-  // Fallback: first tenant with a whautomate_channel_id configured
-  const { data: fallback } = await supabase
+// Whautomate payloads carry no channel identifier — single-tenant fallback, silent
+async function resolveTenant(supabase) {
+  const { data } = await supabase
     .from("tenants")
     .select("id, name, whautomate_channel_id")
     .not("whautomate_channel_id", "is", null)
     .limit(1);
 
-  if (fallback?.[0]) {
-    console.warn(
-      `Whautomate webhook: channel id ${channelId || "(none)"} not matched, falling back to tenant ${fallback[0].id}`
-    );
-    return fallback[0];
-  }
-
-  return null;
+  return data?.[0] || null;
 }
 
 export async function GET() {
@@ -193,6 +98,10 @@ export async function POST(request) {
 
     const mapped = mapWhautomatePayload(payload);
 
+    if (!mapped) {
+      return Response.json({ ok: true, ingested: false, reason: "not_a_message_event" });
+    }
+
     if (!mapped.phone || !mapped.body) {
       console.log(
         `Whautomate webhook: skipping event (phone=${Boolean(mapped.phone)}, body=${Boolean(mapped.body)})`
@@ -206,7 +115,7 @@ export async function POST(request) {
       return Response.json({ ok: true, ingested: false, reason: "no_supabase" });
     }
 
-    const tenant = await resolveTenantByChannelId(supabase, mapped.channelId);
+    const tenant = await resolveTenant(supabase);
     if (!tenant) {
       console.warn("Whautomate webhook: no tenant with whautomate_channel_id configured");
       return Response.json({ ok: true, ingested: false, reason: "no_tenant" });
