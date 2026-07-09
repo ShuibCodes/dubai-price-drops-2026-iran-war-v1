@@ -11,17 +11,11 @@ import { startLeadCall } from "../src/lib/vapi/dial.js";
 
 applyEnv(loadEnvFile());
 
+// Minimal CSV: Name, Phone, Client Source. Other fields stay empty via rowToFields defaults.
 const PIXXI_COLUMN_MAP = {
   name: "Name",
   phone: "Phone",
   source: "Client Source",
-  pixxi_lead_id: "ID",
-  agent_name: "Agent Info Name",
-  agent_phone: "Agent Info Phone",
-  rooms: "Rooms",
-  house_type: "House Type",
-  community: "Community",
-  budget: "Budget",
 };
 
 const TENANT_SLUG = "1416";
