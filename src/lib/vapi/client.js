@@ -92,16 +92,6 @@ export function getTargetLeadContext() {
 export async function startTargetLeadCall() {
   const { apiKey, assistantId, phoneNumberId, baseUrl, createPath } = getVapiConfig();
   const leadContext = buildTargetLeadContext();
-  const firstMessageParts = [
-    "Hi Shuayb, quick follow-up.",
-    leadContext.listing_area
-      ? `You asked about listings in ${leadContext.listing_area}.`
-      : null,
-    leadContext.budget_aed
-      ? `Your budget was around AED ${leadContext.budget_aed.toLocaleString()}.`
-      : null,
-    "I can answer your listing questions directly now.",
-  ].filter(Boolean);
 
   const payload = {
     assistantId,
@@ -131,7 +121,6 @@ export async function startTargetLeadCall() {
         response_style:
           "Answer questions directly. Do not defer to Alex or another person unless explicitly requested.",
       },
-      firstMessage: firstMessageParts.join(" "),
     },
   };
 

@@ -39,26 +39,12 @@ export async function startLeadCall({
   phoneNumberId: phoneNumberIdOverride,
   variableValues = {},
   metadata = {},
-  firstMessage,
 }) {
   const { apiKey, assistantId, phoneNumberId, baseUrl, createPath } = getVapiConfig();
   const resolvedAssistantId = assistantIdOverride || assistantId;
   const resolvedPhoneNumberId = phoneNumberIdOverride || phoneNumberId;
   const leadName = String(name || "there").trim() || "there";
   const phoneNumber = normalizePhoneForVapi(phone);
-
-  const defaultFirstMessage = [
-    `Hi ${leadName}, this is AgentZero calling about your property enquiry.`,
-    variableValues.propertyInterest
-      ? `You were looking at ${variableValues.propertyInterest}.`
-      : null,
-    variableValues.leadSource
-      ? `I see you came from ${variableValues.leadSource}.`
-      : null,
-    "I have a few quick questions to help match you with the right options.",
-  ]
-    .filter(Boolean)
-    .join(" ");
 
   const payload = {
     assistantId: resolvedAssistantId,
@@ -80,7 +66,6 @@ export async function startLeadCall({
         propertyInterest: variableValues.propertyInterest || null,
         ...variableValues,
       },
-      firstMessage: firstMessage || defaultFirstMessage,
     },
   };
 
