@@ -1,41 +1,60 @@
 // Shared lead/message ingest used by the Meta and Whautomate webhooks.
-// Logic moved verbatim from src/lib/meta/webhook-handler.js — do not change behaviour.
+// Optional fields (whautomateContactId, sentByBot) are additive — Meta path unchanged.
 
-export async function upsertLead({ supabase, tenantId, waId, pushName, messageAt }) {
+export async function upsertLead({
+  supabase,
+  tenantId,
+  waId,
+  pushName,
+  messageAt,
+  whautomateContactId = null,
+}) {
   const nowIso = messageAt || new Date().toISOString();
 
   const { data: existingLead } = await supabase
     .from("leads")
-    .select("id, push_name, first_seen, last_message_at")
+    .select(
+      "id, push_name, first_seen, last_message_at, whautomate_contact_id, bot_paused_until, wa_id"
+    )
     .eq("tenant_id", tenantId)
     .eq("wa_id", waId)
     .maybeSingle();
 
   if (existingLead) {
+    const patch = {
+      push_name: pushName || existingLead.push_name,
+      last_message_at: nowIso,
+    };
+    if (whautomateContactId) {
+      patch.whautomate_contact_id = whautomateContactId;
+    }
+
     const { data: updatedLead, error } = await supabase
       .from("leads")
-      .update({
-        push_name: pushName || existingLead.push_name,
-        last_message_at: nowIso,
-      })
+      .update(patch)
       .eq("id", existingLead.id)
-      .select("id")
+      .select("id, push_name, wa_id, whautomate_contact_id, bot_paused_until")
       .single();
 
     if (error) throw error;
     return updatedLead;
   }
 
+  const insertRow = {
+    tenant_id: tenantId,
+    wa_id: waId,
+    push_name: pushName,
+    first_seen: nowIso,
+    last_message_at: nowIso,
+  };
+  if (whautomateContactId) {
+    insertRow.whautomate_contact_id = whautomateContactId;
+  }
+
   const { data: insertedLead, error } = await supabase
     .from("leads")
-    .insert({
-      tenant_id: tenantId,
-      wa_id: waId,
-      push_name: pushName,
-      first_seen: nowIso,
-      last_message_at: nowIso,
-    })
-    .select("id")
+    .insert(insertRow)
+    .select("id, push_name, wa_id, whautomate_contact_id, bot_paused_until")
     .single();
 
   if (error) throw error;
@@ -53,6 +72,7 @@ export async function insertMessageIfNew({
   mediaId,
   timestamp,
   raw,
+  sentByBot = false,
 }) {
   const { data: existingMessage } = await supabase
     .from("messages")
@@ -60,19 +80,42 @@ export async function insertMessageIfNew({
     .eq("wa_message_id", waMessageId)
     .maybeSingle();
 
-  if (existingMessage) return;
+  if (existingMessage) return { inserted: false, id: existingMessage.id };
 
-  const { error } = await supabase.from("messages").insert({
-    tenant_id: tenantId,
-    lead_id: leadId,
-    wa_message_id: waMessageId,
-    direction,
-    body,
-    msg_type: msgType,
-    media_id: mediaId,
-    timestamp,
-    raw,
-  });
+  // Dedup Whautomate echo of our own bot send (same body, recent sent_by_bot=true)
+  if (direction === "outbound" && !sentByBot && body) {
+    const since = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+    const { data: botDup } = await supabase
+      .from("messages")
+      .select("id")
+      .eq("lead_id", leadId)
+      .eq("direction", "outbound")
+      .eq("sent_by_bot", true)
+      .eq("body", body)
+      .gte("timestamp", since)
+      .limit(1);
+    if (botDup?.length) {
+      return { inserted: false, id: botDup[0].id, reason: "bot_echo_dedup" };
+    }
+  }
+
+  const { data, error } = await supabase
+    .from("messages")
+    .insert({
+      tenant_id: tenantId,
+      lead_id: leadId,
+      wa_message_id: waMessageId,
+      direction,
+      body,
+      msg_type: msgType,
+      media_id: mediaId,
+      timestamp,
+      raw,
+      sent_by_bot: Boolean(sentByBot),
+    })
+    .select("id")
+    .single();
 
   if (error) throw error;
+  return { inserted: true, id: data.id };
 }

@@ -1,6 +1,7 @@
 import { getSupabaseServerClient, normalizeWaId } from "@/lib/supabase/server";
 import { upsertLead, insertMessageIfNew } from "@/lib/ingest/message-ingest";
 import { timingSafeEqual } from "@/lib/security/timing-safe";
+import { scheduleAutoReply } from "@/lib/whautomate/autoreply";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -71,7 +72,9 @@ function mapWhautomatePayload(payload = {}) {
 async function resolveTenant(supabase) {
   const { data } = await supabase
     .from("tenants")
-    .select("id, name, whautomate_channel_id")
+    .select(
+      "id, name, whautomate_channel_id, autoreply_enabled, reply_prompt"
+    )
     .not("whautomate_channel_id", "is", null)
     .limit(1);
 
@@ -132,6 +135,7 @@ export async function POST(request) {
       waId,
       pushName: mapped.pushName,
       messageAt: mapped.timestamp,
+      whautomateContactId: mapped.contactId,
     });
 
     const waMessageId = mapped.messageId || `whautomate-${waId}-${mapped.timestamp}`;
@@ -147,7 +151,18 @@ export async function POST(request) {
       mediaId: null,
       timestamp: mapped.timestamp,
       raw: payload,
+      sentByBot: false,
     });
+
+    // Auto-reply: never block the webhook response on the LLM
+    if (mapped.direction === "inbound") {
+      scheduleAutoReply({
+        supabase,
+        tenant,
+        lead,
+        inboundBody: mapped.body,
+      });
+    }
 
     return Response.json({
       ok: true,
