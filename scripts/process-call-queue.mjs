@@ -1,22 +1,55 @@
 import { createClient } from "@supabase/supabase-js";
 import { applyEnv, loadEnvFile } from "./load-env.mjs";
 import { isWithinBusinessHours } from "../src/lib/calls/business-hours.js";
-import { buildPropertyInterest } from "../src/lib/leads/normalize.js";
-import { startLeadCall } from "../src/lib/vapi/dial.js";
+import { dialLeadNow, getOutboundTenant } from "../src/lib/calls/outbound.js";
 
 applyEnv(loadEnvFile());
 
-async function main() {
+const MAX_DIALS_PER_RUN = 15;
+const DIAL_DELAY_MS = Number(process.env.CALL_QUEUE_DIAL_DELAY_MS || 1500);
+let runSummary = { processed: 0, skipped: 0, failed: 0 };
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function logSummary({ processed, skipped, failed }, suffix = "") {
+  console.log(
+    `call_queue summary processed=${processed} skipped=${skipped} failed=${failed}${suffix}`
+  );
+}
+
+async function updateQueueRow(supabase, id, values) {
+  const { error } = await supabase.from("call_queue").update(values).eq("id", id);
+  if (error) throw new Error(`Queue state update failed: ${error.message}`);
+}
+
+async function claimQueueRow(supabase, id) {
+  const { data, error } = await supabase
+    .from("call_queue")
+    .update({ processing_started_at: new Date().toISOString() })
+    .eq("id", id)
+    .eq("processed", false)
+    .is("processing_started_at", null)
+    .select("id")
+    .maybeSingle();
+  if (error) throw new Error(`Queue claim failed: ${error.message}`);
+  return Boolean(data);
+}
+
+async function main({ dryRun = false } = {}) {
+  runSummary = { processed: 0, skipped: 0, failed: 0 };
+  const summary = runSummary;
+
   if (!isWithinBusinessHours()) {
-    console.log("Outside business hours — exiting quietly.");
+    logSummary(summary, " outside_business_hours=true");
     return;
   }
 
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) {
-    console.error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
-    process.exit(1);
+    throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
   }
 
   const supabase = createClient(url, key, {
@@ -27,80 +60,88 @@ async function main() {
 
   const { data: queueRows, error } = await supabase
     .from("call_queue")
-    .select("id, tenant_id, lead_id, scheduled_for, leads(*), tenants(*)")
+    .select("id, tenant_id, lead_id, scheduled_for, source, leads(*)")
     .eq("processed", false)
+    .is("processing_started_at", null)
     .lte("scheduled_for", now)
     .order("scheduled_for", { ascending: true })
-    .limit(20);
+    .limit(1000);
 
-  if (error) {
-    console.error("Queue query failed:", error.message);
-    process.exit(1);
-  }
+  if (error) throw new Error(`Queue query failed: ${error.message}`);
 
   if (!queueRows?.length) {
-    console.log("No due queue items.");
+    logSummary(summary, dryRun ? " dry_run=true" : "");
     return;
   }
 
-  let processed = 0;
-  let failed = 0;
+  let dialAttempts = 0;
 
   for (const item of queueRows) {
+    if (dialAttempts >= MAX_DIALS_PER_RUN) break;
+
     const lead = item.leads;
-    const tenant = item.tenants;
-    if (!lead || !tenant) {
-      await supabase.from("call_queue").update({ processed: true }).eq("id", item.id);
+    const tenant = await getOutboundTenant(supabase, item.tenant_id);
+
+    if (tenant.outbound_paused) {
+      summary.skipped += 1;
       continue;
     }
 
-    const leadName = lead.push_name || "there";
-    const phone = lead.wa_id ? `+${lead.wa_id}` : null;
-    if (!phone) {
-      await supabase.from("call_queue").update({ processed: true }).eq("id", item.id);
+    if (dryRun) {
+      summary.skipped += 1;
+      dialAttempts += 1;
       continue;
     }
 
-    const propertyInterest = buildPropertyInterest({});
-    const leadSource = lead.source || "one of the property portals";
+    const claimed = await claimQueueRow(supabase, item.id);
+    if (!claimed) {
+      summary.skipped += 1;
+      continue;
+    }
 
+    if (!lead) {
+      await updateQueueRow(supabase, item.id, {
+        processed: true,
+        failed_at: new Date().toISOString(),
+        failure_reason: "Lead not found",
+      });
+      summary.failed += 1;
+      continue;
+    }
+
+    if (dialAttempts > 0 && DIAL_DELAY_MS > 0) {
+      await sleep(DIAL_DELAY_MS);
+    }
+    dialAttempts += 1;
     try {
-      const result = await startLeadCall({
-        name: leadName,
-        phone,
-        assistantId: tenant.vapi_assistant_id,
-        phoneNumberId: tenant.vapi_phone_number_id,
-        variableValues: { leadName, leadSource, propertyInterest, campaignTopic: "", formWhen: "", ownsProperty: "" },
-        metadata: {
-          tenantId: tenant.id,
-          leadId: lead.id,
-          pixxiLeadId: lead.pixxi_lead_id,
-          source: "pixxi-queue",
-        },
+      await dialLeadNow({
+        supabase,
+        tenant,
+        lead,
+        source: item.source || "pixxi-queue",
       });
 
-      await supabase.from("calls").insert({
-        tenant_id: tenant.id,
-        lead_id: lead.id,
-        vapi_call_id: result.callId,
-        direction: "outbound",
-        status: "initiated",
-        raw: result.raw,
+      await updateQueueRow(supabase, item.id, {
+        processed: true,
+        processed_at: new Date().toISOString(),
       });
-
-      await supabase.from("call_queue").update({ processed: true }).eq("id", item.id);
-      processed += 1;
-      console.log(`Processed queue item ${item.id} → call ${result.callId}`);
-    } catch (err) {
-      failed += 1;
-      console.error(`Failed queue item ${item.id}: ${err.message}`);
+      summary.processed += 1;
+    } catch (error) {
+      await updateQueueRow(supabase, item.id, {
+        processed: true,
+        failed_at: new Date().toISOString(),
+        failure_reason: String(error.message || "Dial failed").slice(0, 1000),
+      });
+      summary.failed += 1;
     }
   }
 
-  console.log(`Queue drain complete: ${processed} processed, ${failed} failed`);
+  logSummary(summary, dryRun ? " dry_run=true" : "");
 }
 
-main().catch((error) => {
-  console.error(error.message);
-  process.exit(1);
+const dryRun = process.argv.includes("--dry-run");
+
+main({ dryRun }).catch((error) => {
+  logSummary(runSummary, ` fatal=${JSON.stringify(error.message)}`);
+  process.exitCode = 1;
 });

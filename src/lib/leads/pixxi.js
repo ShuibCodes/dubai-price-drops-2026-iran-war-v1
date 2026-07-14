@@ -1,6 +1,7 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { startLeadCall } from "@/lib/vapi/client";
 import { isWithinBusinessHours, nextWindowStart } from "@/lib/calls/business-hours";
+import { assertOutboundActive } from "@/lib/calls/outbound";
 import {
   buildPropertyInterest,
   normalizePhone,
@@ -23,7 +24,7 @@ export async function getTenantBySlug(slug = TENANT_SLUG) {
   const { data, error } = await supabase
     .from("tenants")
     .select(
-      "id, name, slug, vapi_assistant_id, vapi_assistant_id_meta, vapi_phone_number_id, phone_number_id, business_token"
+      "id, name, slug, outbound_paused, vapi_assistant_id, vapi_assistant_id_meta, vapi_phone_number_id, phone_number_id, business_token"
     )
     .eq("slug", slug)
     .maybeSingle();
@@ -138,6 +139,7 @@ export function resolveAssistantId(tenant, fields = {}) {
 }
 
 export async function dialOrQueueLead({ tenant, lead, fields = {}, dryRun = false }) {
+  assertOutboundActive(tenant);
   const variables = buildCallVariables(lead, fields);
   const { leadName, leadSource, propertyInterest, campaignTopic, formWhen, ownsProperty } =
     variables;
@@ -155,6 +157,7 @@ export async function dialOrQueueLead({ tenant, lead, fields = {}, dryRun = fals
       lead_id: lead.id,
       scheduled_for: scheduledFor.toISOString(),
       processed: false,
+      source: isMetaInstantFormSource(fields) ? "meta-instant-form" : "pixxi-inbound",
     });
     if (error) throw new Error(`Queue insert failed: ${error.message}`);
     return { queued: true, scheduledFor: scheduledFor.toISOString() };
@@ -194,6 +197,7 @@ export async function dialOrQueueLead({ tenant, lead, fields = {}, dryRun = fals
     vapi_call_id: result.callId,
     direction: "outbound",
     status: "initiated",
+    source: isMetaInstantFormSource(fields) ? "meta-instant-form" : "pixxi-inbound",
     raw: result.raw,
   });
   if (callError) throw new Error(`Call insert failed: ${callError.message}`);

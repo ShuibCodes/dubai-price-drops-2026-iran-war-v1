@@ -2,12 +2,11 @@ import fs from "fs";
 import { createClient } from "@supabase/supabase-js";
 import { applyEnv, loadEnvFile } from "./load-env.mjs";
 import {
-  buildPropertyInterest,
   normalizePhone,
   resolveLeadSource,
 } from "../src/lib/leads/normalize.js";
 import { isWithinBusinessHours, nextWindowStart } from "../src/lib/calls/business-hours.js";
-import { startLeadCall } from "../src/lib/vapi/dial.js";
+import { assertOutboundActive, dialLeadNow } from "../src/lib/calls/outbound.js";
 
 applyEnv(loadEnvFile());
 
@@ -172,10 +171,7 @@ async function upsertLead(supabase, tenantId, fields) {
 }
 
 async function dialOrQueue(supabase, tenant, lead, fields, dryRun) {
-  const leadName = fields.name || lead.push_name || "there";
-  const leadSource = lead.source || resolveLeadSource(fields);
-  const propertyInterest = buildPropertyInterest(fields);
-  const phone = normalizePhone(fields.phone);
+  assertOutboundActive(tenant);
 
   if (!isWithinBusinessHours()) {
     if (dryRun) return { queued: true };
@@ -185,35 +181,19 @@ async function dialOrQueue(supabase, tenant, lead, fields, dryRun) {
       lead_id: lead.id,
       scheduled_for: scheduledFor.toISOString(),
       processed: false,
+      source: "pixxi-batch",
     });
     return { queued: true };
   }
 
   if (dryRun) return { attempted: true };
 
-  const result = await startLeadCall({
-    name: leadName,
-    phone,
-    assistantId: tenant.vapi_assistant_id,
-    phoneNumberId: tenant.vapi_phone_number_id,
-    variableValues: {
-      leadName,
-      leadSource,
-      propertyInterest,
-      campaignTopic: "",
-      formWhen: "",
-      ownsProperty: "",
-    },
-    metadata: { tenantId: tenant.id, leadId: lead.id, pixxiLeadId: lead.pixxi_lead_id, source: "pixxi-batch" },
-  });
-
-  await supabase.from("calls").insert({
-    tenant_id: tenant.id,
-    lead_id: lead.id,
-    vapi_call_id: result.callId,
-    direction: "outbound",
-    status: "initiated",
-    raw: result.raw,
+  const result = await dialLeadNow({
+    supabase,
+    tenant,
+    lead,
+    fields,
+    source: "pixxi-batch",
   });
 
   return { attempted: true, callId: result.callId };
@@ -239,7 +219,7 @@ async function main() {
 
   const { data: tenant, error: tenantError } = await supabase
     .from("tenants")
-    .select("id, vapi_assistant_id, vapi_phone_number_id")
+    .select("id, outbound_paused, vapi_assistant_id, vapi_phone_number_id")
     .eq("slug", TENANT_SLUG)
     .maybeSingle();
 

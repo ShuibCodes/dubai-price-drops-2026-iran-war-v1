@@ -174,11 +174,32 @@ CSV headers are matched case-insensitively against `PIXXI_COLUMN_MAP` in the scr
 
 ## 8. Queue drainer (cron)
 
-Outside business hours, inbound leads and batch rows are queued. Run every 15 minutes during business hours:
+Outside business hours, inbound leads and batch rows are queued. The drainer claims
+due rows oldest-first, attempts at most 15 calls, and exits. For a safe read-only
+local check:
 
 ```bash
+node scripts/process-call-queue.mjs --dry-run
 node scripts/process-call-queue.mjs
 ```
+
+### Railway second service
+
+Create a second Railway service from this same repository:
+
+- **Start command:** `node scripts/process-call-queue.mjs`
+- **Cron schedule:** `*/15 5-16 * * *` (UTC)
+- **Required variables:** `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
+  `VAPI_API_KEY`, `VAPI_ASSISTANT_ID`, and `VAPI_PHONE_NUMBER_ID`
+- **Optional variables:** `VAPI_BASE_URL`, `VAPI_CALL_CREATE_PATH`,
+  `CALLS_BUSINESS_HOURS_START`, `CALLS_BUSINESS_HOURS_END`, and
+  `CALL_QUEUE_DIAL_DELAY_MS`
+
+Apply the call-queue cron-state migration before enabling the service. The script
+also enforces 09:00–20:00 Asia/Dubai itself, so out-of-window cron ticks exit
+without touching queued rows. Paused tenants remain queued. A row with
+`processing_started_at` but no `processed_at` or `failed_at` is quarantined
+after an interrupted run for manual review; the next tick will not double-dial it.
 
 ## 9. Retry failed results sync
 
