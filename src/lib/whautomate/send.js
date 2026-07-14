@@ -1,6 +1,7 @@
 /**
  * Whautomate WhatsApp send adapter.
- * Docs use the misspelled field name "recepient" — keep it verbatim.
+ * OpenAPI requires location.id + textMessage; addressing via contact.id
+ * or recepient.phoneNumber (their misspelling — keep verbatim).
  */
 
 function getApiConfig() {
@@ -8,9 +9,11 @@ function getApiConfig() {
   const base = String(process.env.WHAUTOMATE_API_BASE || "")
     .trim()
     .replace(/\/$/, "");
+  const locationId = String(process.env.WHAUTOMATE_LOCATION_ID || "").trim();
   if (!apiKey) throw new Error("Missing WHAUTOMATE_API_KEY");
   if (!base) throw new Error("Missing WHAUTOMATE_API_BASE");
-  return { apiKey, base };
+  if (!locationId) throw new Error("Missing WHAUTOMATE_LOCATION_ID");
+  return { apiKey, base, locationId };
 }
 
 function digitsOnlyPhone(phone) {
@@ -18,17 +21,37 @@ function digitsOnlyPhone(phone) {
 }
 
 /**
- * @param {{ contactId?: string|null, phoneNumber?: string|null, name?: string|null, text: string }} opts
+ * @param {{
+ *   contactId?: string|null,
+ *   phoneNumber?: string|null,
+ *   name?: string|null,
+ *   text: string,
+ *   locationId?: string|null,
+ * }} opts
  * @returns {Promise<{ ok: boolean, raw: any }>}
  */
-export async function sendWhautomateText({ contactId, phoneNumber, name, text }) {
+export async function sendWhautomateText({
+  contactId,
+  phoneNumber,
+  name,
+  text,
+  locationId: locationIdOverride,
+}) {
   const bodyText = String(text || "").trim();
   if (!bodyText) {
     return { ok: false, raw: { error: "empty_text" } };
   }
 
-  const { apiKey, base } = getApiConfig();
-  const payload = { textMessage: bodyText };
+  const { apiKey, base, locationId: envLocationId } = getApiConfig();
+  const locationId = String(locationIdOverride || envLocationId || "").trim();
+  if (!locationId) {
+    return { ok: false, raw: { error: "missing_location_id" } };
+  }
+
+  const payload = {
+    location: { id: locationId },
+    textMessage: bodyText,
+  };
 
   const id = String(contactId || "").trim();
   if (id) {
@@ -38,10 +61,10 @@ export async function sendWhautomateText({ contactId, phoneNumber, name, text })
     if (!phone) {
       return { ok: false, raw: { error: "missing_contact_and_phone" } };
     }
-    payload.recepient = {
-      phoneNumber: phone,
-      name: String(name || "").trim() || "Lead",
-    };
+    // name is optional in OpenAPI; include when present
+    payload.recepient = { phoneNumber: phone };
+    const displayName = String(name || "").trim();
+    if (displayName) payload.recepient.name = displayName;
   }
 
   const response = await fetch(`${base}/v1/messages/whatsapp/sendtext`, {
@@ -54,7 +77,9 @@ export async function sendWhautomateText({ contactId, phoneNumber, name, text })
   });
 
   const raw = await response.json().catch(() => ({}));
-  const ok = response.ok && (raw?.success === true || raw?.success === "true" || response.status < 300);
+  const ok =
+    response.ok &&
+    (raw?.success === true || raw?.success === "true" || response.status < 300);
   if (!ok) {
     console.error(
       `[whautomate/send] failed status=${response.status} body=${JSON.stringify(raw).slice(0, 300)}`

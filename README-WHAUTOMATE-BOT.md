@@ -18,7 +18,8 @@ Set in `.env.local` / Railway (never commit real keys):
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `WHAUTOMATE_API_KEY` | — | Whautomate REST API key |
-| `WHAUTOMATE_API_BASE` | — | e.g. `https://api.whautomate.com` |
+| `WHAUTOMATE_API_BASE` | — | Host from dashboard Integrations → REST API (often `https://api.whautomate.com` or `https://data.whautomate.com`) |
+| `WHAUTOMATE_LOCATION_ID` | — | Required on every send — from `GET /v1/locations` |
 | `WHAUTOMATE_AUTOREPLY` | `false` | **Global kill switch** — must be exactly `true` to enable |
 | `ANTHROPIC_API_KEY` | — | Claude for reply generation |
 | `WHAUTOMATE_WEBHOOK_SECRET` | optional | Existing webhook auth |
@@ -46,11 +47,22 @@ WHERE whautomate_channel_id IS NOT NULL;
 
 ## 4. Live send test (no LLM)
 
+1. Fetch your location id:
+
+```bash
+curl -s -H "x-api-key: $WHAUTOMATE_API_KEY" \
+  "$WHAUTOMATE_API_BASE/v1/locations"
+```
+
+2. Set `WHAUTOMATE_LOCATION_ID` to that id in `.env.local` / Railway.
+
+3. Send a test message:
+
 ```bash
 node scripts/test-whautomate-send.mjs 9715XXXXXXXX "Hello from AgentZero"
 ```
 
-Uses `recepient.phoneNumber` addressing. Confirm delivery on WhatsApp before enabling auto-reply.
+Payload always includes `location: { id }` (required by Whautomate OpenAPI). Addressing uses `recepient.phoneNumber` or `contact.id`. Confirm delivery on WhatsApp before enabling auto-reply.
 
 ## 5. Live auto-reply test
 
@@ -75,7 +87,7 @@ Also automatic:
 
 ## 7. Addressing
 
-Send prefers `message.contact.id` stored on `leads.whautomate_contact_id`. Falls back to Whautomate's `recepient` object with digits-only phone (no `+`) + name.
+Send always includes `location: { id }` from `WHAUTOMATE_LOCATION_ID`. Addressing prefers `message.contact.id` stored on `leads.whautomate_contact_id`. Falls back to Whautomate's `recepient` object with digits-only phone (no `+`).
 
 ## Notes
 

@@ -19,6 +19,12 @@ async function main() {
     console.error("Set WHAUTOMATE_API_KEY and WHAUTOMATE_API_BASE in .env.local");
     process.exit(1);
   }
+  if (!process.env.WHAUTOMATE_LOCATION_ID) {
+    console.error(
+      "Set WHAUTOMATE_LOCATION_ID in .env.local (GET /v1/locations with your API key)"
+    );
+    process.exit(1);
+  }
 
   console.log(`Sending to ${phone.replace(/\d(?=\d{3})/g, "*")}…`);
   const result = await sendWhautomateText({
