@@ -30,6 +30,10 @@ function callTime(call) {
   return call.ended_at || call.started_at || call.created_at;
 }
 
+function callStartedAt(call) {
+  return call.started_at || call.created_at || call.ended_at;
+}
+
 function dubaiDayBounds(date = new Date()) {
   const dubai = new Date(date.getTime() + 4 * 60 * 60 * 1000);
   const start = new Date(
@@ -135,6 +139,130 @@ export async function todaysDigest(tenantId) {
     });
 
   return { ...summarizeCalls(data), topCalls: engaged };
+}
+
+function validateOptionalIso(value, label) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) throw new Error(`Invalid ${label}`);
+  return date.toISOString();
+}
+
+function truncateCrmNote(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  return text.length <= 200 ? text : `${text.slice(0, 199)}…`;
+}
+
+function distressedDealsInterest(q) {
+  for (const key of [
+    "wants_distressed_deals",
+    "wantsDistressedDeals",
+    "distressed_deals_interest",
+  ]) {
+    if (Object.prototype.hasOwnProperty.call(q, key)) return q[key];
+  }
+  return undefined;
+}
+
+export async function listLeads(
+  tenantId,
+  {
+    sinceIso,
+    untilIso,
+    engagedOnly = false,
+    qualifiedOnly = false,
+    outcome,
+    limit = 5,
+    offset = 0,
+  } = {}
+) {
+  const supabase = db();
+  const since = validateOptionalIso(sinceIso, "sinceIso");
+  const until = validateOptionalIso(untilIso, "untilIso");
+  const pageSize = Math.min(50, Math.max(1, Number.parseInt(limit, 10) || 5));
+  const pageOffset = Math.max(0, Number.parseInt(offset, 10) || 0);
+  const normalizedOutcome = String(outcome || "").trim().toLowerCase();
+
+  let query = supabase
+    .from("calls")
+    .select(
+      "id, lead_id, started_at, ended_at, created_at, recording_url, qualification, leads(push_name, wa_id, source)",
+      { count: "exact" }
+    )
+    .eq("tenant_id", tenantId);
+
+  if (since) query = query.gte("created_at", since);
+  if (until) query = query.lt("created_at", until);
+  if (engagedOnly) query = query.eq("qualification->>lead_engaged", "true");
+  if (qualifiedOnly) query = query.eq("qualification->>outcome", "qualified");
+  if (normalizedOutcome) {
+    query = query.eq("qualification->>outcome", normalizedOutcome);
+  }
+
+  const { data, count, error } = await query
+    .order("created_at", { ascending: false })
+    .range(pageOffset, pageOffset + pageSize - 1);
+  if (error) throw new Error(`Lead list query failed: ${error.message}`);
+
+  const leads = (data || []).map((call) => {
+    const q = qualification(call);
+    const item = {
+      leadName: call.leads?.push_name || null,
+      phoneMasked: maskPhone(call.leads?.wa_id),
+      source: call.leads?.source || null,
+      calledAt: callStartedAt(call),
+      outcome: q.outcome || null,
+      intent: q.intent || null,
+      budget: q.budget_aed || null,
+      areas: Array.isArray(q.areas) ? q.areas : q.areas ? [q.areas] : [],
+      timeline: q.timeline || null,
+      callbackTime: q.callback_time || null,
+      crmNote: truncateCrmNote(q.crm_note),
+      recordingUrl: call.recording_url || null,
+    };
+    const wantsDistressedDeals = distressedDealsInterest(q);
+    if (wantsDistressedDeals !== undefined) {
+      item.wantsDistressedDeals = wantsDistressedDeals;
+    }
+    return item;
+  });
+
+  return { total: count || 0, showing: leads.length, leads };
+}
+
+export async function getCallDetail(tenantId, { leadId, callId } = {}) {
+  const supabase = db();
+  if (!leadId && !callId) throw new Error("leadId or callId is required");
+
+  let query = supabase
+    .from("calls")
+    .select(
+      "id, lead_id, started_at, ended_at, created_at, duration_seconds, transcript, recording_url, qualification, leads(push_name)"
+    )
+    .eq("tenant_id", tenantId);
+
+  if (callId) {
+    query = query.eq("id", callId);
+  } else {
+    query = query
+      .eq("lead_id", leadId)
+      .order("created_at", { ascending: false })
+      .limit(1);
+  }
+
+  const { data, error } = await query.maybeSingle();
+  if (error) throw new Error(`Call detail query failed: ${error.message}`);
+  if (!data) return null;
+
+  return {
+    leadName: data.leads?.push_name || null,
+    calledAt: callStartedAt(data),
+    durationSeconds: data.duration_seconds ?? null,
+    outcome: qualification(data).outcome || null,
+    transcript: data.transcript || null,
+    recordingUrl: data.recording_url || null,
+  };
 }
 
 export async function searchLeadByName(tenantId, name) {

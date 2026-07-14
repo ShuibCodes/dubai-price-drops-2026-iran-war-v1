@@ -1,8 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 import {
   countCallsSince,
+  getCallDetail,
   getLeadStory,
   getPendingCallbacks,
+  listLeads,
   pauseTenant,
   resumeTenant,
   scheduleBatch,
@@ -32,6 +34,52 @@ export const copilotToolDefinitions = [
     description:
       "Get today's Dubai-time calling totals and up to five notable engaged calls.",
     input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "list_leads",
+    description:
+      "List actual leads with who they are and what they want. Use whenever the user asks about engaged leads, qualified leads, callbacks, or any group of leads/calls — never answer such questions with counts alone.",
+    input_schema: {
+      type: "object",
+      properties: {
+        sinceIso: {
+          type: "string",
+          description: "Optional inclusive ISO-8601 start timestamp.",
+        },
+        untilIso: {
+          type: "string",
+          description: "Optional exclusive ISO-8601 end timestamp for a day or date range.",
+        },
+        engagedOnly: { type: "boolean", default: false },
+        qualifiedOnly: { type: "boolean", default: false },
+        outcome: {
+          type: "string",
+          description: "Optional exact qualification outcome, such as callback or qualified.",
+        },
+        limit: { type: "integer", minimum: 1, maximum: 50, default: 5 },
+        offset: { type: "integer", minimum: 0, default: 0 },
+      },
+    },
+  },
+  {
+    name: "get_call_detail",
+    description:
+      "Fetch one call's details including the raw transcript. Use when the user asks what a specific person said or how a specific call went. READ the transcript and answer with a 1-5 line summary in your own words — what they wanted, key objections or reactions, budget/area/timing specifics, and how it ended. Report only supported, non-empty facts; never mention missing fields or infer why the call ended. NEVER paste the transcript itself into the reply.",
+    input_schema: {
+      type: "object",
+      properties: {
+        leadId: {
+          type: "string",
+          format: "uuid",
+          description: "Fetch the lead's most recent call.",
+        },
+        callId: {
+          type: "string",
+          format: "uuid",
+          description: "Fetch this exact call.",
+        },
+      },
+    },
   },
   {
     name: "search_lead_by_name",
@@ -121,11 +169,25 @@ Rules:
 - Answer operational questions only from tool results. Never invent data.
 - If a tool returns no rows or null, say that no matching data was found.
 - Tenant identity is resolved by the server. Never ask for, infer, or pass a tenant ID.
-- For "what did X say?" and similar questions, use search_conversations and then get_lead_story when a lead is identified. Do not claim access to any disk knowledge base.
 - For write actions, briefly restate what you are doing and execute it in the same turn without asking for confirmation.
 - Exception: before start_cold_batch above 100 calls, ask for an explicit yes. Do not execute until the user confirms.
 - Phone values are deliberately masked. Do not ask tools to reveal full numbers.
-- Dates and business hours are Asia/Dubai unless the user specifies otherwise.`;
+- Dates and business hours are Asia/Dubai unless the user specifies otherwise.
+
+ANSWERING ABOUT LEADS AND CALLS:
+- Whenever the user asks about leads, calls, engagement, or qualification — even phrased as "how many" — answer with BOTH the headline numbers and a named breakdown of the FIRST 5 leads. Use the relevant count/digest tool and list_leads; never answer with counts alone.
+- Format headline stats as a compact Markdown table.
+- Format the lead breakdown as short bullets, one lead per line: name, then what they wanted (intent + budget + areas + timeline in one natural line), callback time if present, and distressed-deals interest if present.
+- Build that one-line breakdown from the structured intent, budget, areas, timeline, callbackTime, and wantsDistressedDeals fields. Do not infer a callback time from the outcome, and do not add placeholders such as "no details captured", "callback pending", or "unknown"; if a field is empty, omit it.
+- After the breakdown always add exactly: "Full details for every lead are on the CRM."
+- If total is greater than the number shown, state how many more there are and offer the next batch.
+- Specific person exception: when asked about one person or one lead, use search_lead_by_name and get_lead_story without the group-list cap. If asked for their broader story or history, give the relevant history. If asked what they said or how a call went, also use get_call_detail and follow the stricter specific-call rule below.
+- Specific review-window exception: for a day or date range the user wants reviewed, call list_leads with both time bounds and limit 10.
+- When summarising a specific call from its transcript, write 1-5 substantive lines covering what they wanted, notable objections or reactions, concrete budget/area/timing details, and the outcome. Quote at most one short telling phrase. Never paste or reproduce the transcript.
+- If the request is specifically about one latest or identified call, the 1-5 line rule OVERRIDES the broader person-history guidance. The ENTIRE reply must be 1-5 lines about that call only.
+- In a specific-call summary, mention only facts directly supported by non-empty tool fields or dialogue. It is forbidden to mention absent/uncaptured fields, infer why the call ended from missing data or a transcript stopping, discuss other calls, append an assessment or recommendation, or add the group-list CRM boilerplate.
+- Never invent or embellish fields a tool did not return. Skip empty fields silently instead of saying they are unknown.
+- For broader "what did anyone say about X?" searches, use search_conversations and then get_lead_story or get_call_detail for the identified lead. Do not claim access to any disk knowledge base.`;
 }
 
 function normalizeMessages(messages) {
@@ -158,6 +220,10 @@ async function executeTool({ name, input, tenantId, agentName, messages }) {
       return countCallsSince(tenantId, input.sinceIso);
     case "todays_digest":
       return todaysDigest(tenantId);
+    case "list_leads":
+      return listLeads(tenantId, input);
+    case "get_call_detail":
+      return getCallDetail(tenantId, input);
     case "search_lead_by_name":
       return searchLeadByName(tenantId, input.name);
     case "get_lead_story":
