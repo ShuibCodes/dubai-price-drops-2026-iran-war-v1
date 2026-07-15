@@ -32,6 +32,66 @@ export function isWithinBusinessHours(date = new Date()) {
   return hour >= start && hour < end;
 }
 
+// International leads are gated 9:00–21:00 in THEIR local time. Asia/Dubai
+// keeps the env-configured window so existing +971 behavior is unchanged.
+const INTL_WINDOW = { start: 9, end: 21 };
+
+function getWindowBoundsForZone(timeZone) {
+  return timeZone === "Asia/Dubai" ? getWindowBounds() : INTL_WINDOW;
+}
+
+function getZoneParts(timeZone, date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "numeric",
+    hour12: false,
+  }).formatToParts(date);
+
+  const get = (type) => Number(parts.find((p) => p.type === type)?.value);
+  return {
+    year: get("year"),
+    month: get("month") - 1,
+    day: get("day"),
+    hour: get("hour") % 24,
+    minute: get("minute"),
+  };
+}
+
+/** Approximate UTC offset of a zone at a moment (DST-aware enough for scheduling). */
+function getZoneOffsetMs(timeZone, date = new Date()) {
+  const zoned = getZoneParts(timeZone, date);
+  const asUtc = Date.UTC(zoned.year, zoned.month, zoned.day, zoned.hour, zoned.minute);
+  const truncated = new Date(date);
+  truncated.setUTCSeconds(0, 0);
+  return asUtc - truncated.getTime();
+}
+
+export function isWithinBusinessHoursForZone(timeZone, date = new Date()) {
+  const { hour } = getZoneParts(timeZone, date);
+  const { start, end } = getWindowBoundsForZone(timeZone);
+  return hour >= start && hour < end;
+}
+
+/** Next business-window start (in UTC) for the zone, plus 5 minutes. */
+export function nextWindowStartForZone(timeZone, date = new Date()) {
+  const parts = getZoneParts(timeZone, date);
+  const { start, end } = getWindowBoundsForZone(timeZone);
+
+  if (parts.hour >= start && parts.hour < end) return date;
+
+  let dayShift = 0;
+  if (parts.hour >= end) dayShift = 1;
+
+  const offset = getZoneOffsetMs(timeZone, date);
+  const targetUtcMs =
+    Date.UTC(parts.year, parts.month, parts.day + dayShift, start, 5) - offset;
+  return new Date(targetUtcMs);
+}
+
 /** Next business-window start in UTC, plus 5 minutes (queue scheduling). */
 export function nextWindowStart(date = new Date()) {
   const parts = getDubaiParts(date);

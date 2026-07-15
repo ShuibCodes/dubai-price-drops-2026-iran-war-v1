@@ -119,7 +119,7 @@ export const copilotToolDefinitions = [
   {
     name: "start_cold_batch",
     description:
-      "Start or queue calls to the next uncalled Purchased list leads, subject to daily cap and business hours. More than 100 requires explicit user confirmation.",
+      "Start or queue calls to the next uncalled Purchased list leads, subject to daily cap and per-lead local business hours. Returns a byTimezone summary — mention when leads will be called in their local daytime (e.g. UK leads). More than 100 requires explicit user confirmation.",
     input_schema: {
       type: "object",
       properties: { count: { type: "integer", minimum: 1 } },
@@ -176,7 +176,7 @@ Rules:
 
 ANSWERING ABOUT LEADS AND CALLS:
 - Whenever the user asks about leads, calls, engagement, or qualification — even phrased as "how many" — answer with BOTH the headline numbers and a named breakdown of the FIRST 5 leads. Use the relevant count/digest tool and list_leads; never answer with counts alone.
-- Format headline stats as a compact Markdown table.
+- Use a Markdown table ONLY for the numeric stat summary (the metric/count block). Never put leads or any non-numeric listing in a table; replies must stay readable on a phone screen.
 - Format the lead breakdown as short bullets, one lead per line: name, then what they wanted (intent + budget + areas + timeline in one natural line), callback time if present, and distressed-deals interest if present.
 - Build that one-line breakdown from the structured intent, budget, areas, timeline, callbackTime, and wantsDistressedDeals fields. Do not infer a callback time from the outcome, and do not add placeholders such as "no details captured", "callback pending", or "unknown"; if a field is empty, omit it.
 - After the breakdown always add exactly: "Full details for every lead are on the CRM."

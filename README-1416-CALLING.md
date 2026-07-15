@@ -188,18 +188,21 @@ node scripts/process-call-queue.mjs
 Create a second Railway service from this same repository:
 
 - **Start command:** `node scripts/process-call-queue.mjs`
-- **Cron schedule:** `*/15 5-16 * * *` (UTC)
+- **Cron schedule:** `*/15 * * * *` (UTC — run 24/7; per-row lead-timezone gating is now the safety)
 - **Required variables:** `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
   `VAPI_API_KEY`, `VAPI_ASSISTANT_ID`, and `VAPI_PHONE_NUMBER_ID`
 - **Optional variables:** `VAPI_BASE_URL`, `VAPI_CALL_CREATE_PATH`,
   `CALLS_BUSINESS_HOURS_START`, `CALLS_BUSINESS_HOURS_END`, and
   `CALL_QUEUE_DIAL_DELAY_MS`
 
-Apply the call-queue cron-state migration before enabling the service. The script
-also enforces 09:00–20:00 Asia/Dubai itself, so out-of-window cron ticks exit
-without touching queued rows. Paused tenants remain queued. A row with
-`processing_started_at` but no `processed_at` or `failed_at` is quarantined
-after an interrupted run for manual review; the next tick will not double-dial it.
+Apply the call-queue cron-state migration before enabling the service. Business
+hours are enforced per lead in the LEAD's local timezone (derived from the phone
+country code, `src/lib/leads/phone-timezone.js`): +971 keeps the env-configured
+Dubai window; international leads use 09:00–21:00 local. A due row outside the
+lead's local window is rescheduled to the lead's next local window start, never
+dropped. Paused tenants remain queued. A row with `processing_started_at` but no
+`processed_at` or `failed_at` is quarantined after an interrupted run for manual
+review; the next tick will not double-dial it.
 
 ## 9. Retry failed results sync
 

@@ -1,5 +1,11 @@
-import { isWithinBusinessHours, nextWindowStart } from "./business-hours.js";
+import {
+  isWithinBusinessHours,
+  isWithinBusinessHoursForZone,
+  nextWindowStart,
+  nextWindowStartForZone,
+} from "./business-hours.js";
 import { buildPropertyInterest, normalizePhone } from "../leads/normalize.js";
+import { getLeadTimezone } from "../leads/phone-timezone.js";
 import { startLeadCall } from "../vapi/dial.js";
 
 export const DAILY_BATCH_CAP = 500;
@@ -62,6 +68,16 @@ export async function queueLeadCalls({
   return data || [];
 }
 
+/** Business-hours check in the LEAD's local timezone (from phone country code). */
+export function isLeadWithinBusinessHours(phone, date = new Date()) {
+  return isWithinBusinessHoursForZone(getLeadTimezone(phone), date);
+}
+
+/** Next local business-window start (UTC) for the LEAD's timezone. */
+export function nextLeadWindowStart(phone, date = new Date()) {
+  return nextWindowStartForZone(getLeadTimezone(phone), date);
+}
+
 export async function dialLeadNow({
   supabase,
   tenant,
@@ -76,6 +92,12 @@ export async function dialLeadNow({
   const propertyInterest = buildPropertyInterest(fields);
   const phone = normalizePhone(fields.phone || lead.wa_id);
   if (!phone) throw new Error("Lead has no valid phone number");
+
+  if (!isLeadWithinBusinessHours(phone)) {
+    throw new Error(
+      `Outside business hours for lead timezone ${getLeadTimezone(phone)}`
+    );
+  }
 
   const result = await startLeadCall({
     name: leadName,

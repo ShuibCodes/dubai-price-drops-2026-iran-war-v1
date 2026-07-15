@@ -22,6 +22,19 @@ function clean(value) {
   return str || null;
 }
 
+// Whautomate falls back to the phone number when it has no name for a
+// contact — never store that as a person's name.
+function realName(candidate, phone) {
+  const name = clean(candidate);
+  if (!name) return null;
+  const lettersOnly = name.replace(/[\d\s+()./-]/g, "");
+  if (!lettersOnly) return null;
+  const nameDigits = name.replace(/\D/g, "");
+  const phoneDigits = String(phone || "").replace(/\D/g, "");
+  if (phoneDigits && nameDigits === phoneDigits) return null;
+  return name;
+}
+
 const MESSAGE_EVENT_TYPES = new Set([
   "incoming_whatsapp_message",
   "outgoing_whatsapp_message",
@@ -48,8 +61,13 @@ function mapWhautomatePayload(payload = {}) {
   const isIncoming = message.isIncoming === true;
   const direction = isIncoming ? "inbound" : "outbound";
 
-  // Outbound sentBy is our own agent label — never the lead's name
-  const pushName = isIncoming ? clean(message.from) : null;
+  const phone = clean(message.contact?.phoneNumber);
+
+  // Prefer the saved contact name; fall back to the inbound sender name.
+  // Outbound `from` is our own agent label — never the lead's name.
+  const pushName =
+    realName(message.contact?.name, phone) ||
+    (isIncoming ? realName(message.from, phone) : null);
 
   const parsed = new Date(String(message.timestamp || ""));
   const timestamp = Number.isNaN(parsed.getTime())
@@ -57,7 +75,7 @@ function mapWhautomatePayload(payload = {}) {
     : parsed.toISOString();
 
   return {
-    phone: clean(message.contact?.phoneNumber),
+    phone,
     contactId: clean(message.contact?.id),
     pushName,
     body: clean(message.text),

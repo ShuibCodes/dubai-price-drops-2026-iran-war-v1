@@ -1,11 +1,14 @@
 import { getSupabaseServerClient } from "../supabase/server.js";
 import { isWithinBusinessHours, nextWindowStart } from "../calls/business-hours.js";
+import { getLeadTimezone } from "../leads/phone-timezone.js";
 import {
   DAILY_BATCH_CAP,
   assertOutboundActive,
   buildScheduledTimes,
   dialLeadNow,
   getOutboundTenant,
+  isLeadWithinBusinessHours,
+  nextLeadWindowStart,
   queueLeadCalls,
 } from "../calls/outbound.js";
 
@@ -276,37 +279,58 @@ export async function searchLeadByName(tenantId, name) {
     .eq("tenant_id", tenantId)
     .ilike("push_name", `%${query}%`)
     .order("last_message_at", { ascending: false })
-    .limit(10);
+    .limit(30);
   if (error) throw new Error(`Lead search failed: ${error.message}`);
   if (!leads?.length) return [];
 
-  const { data: calls, error: callsError } = await supabase
-    .from("calls")
-    .select("lead_id, qualification, created_at")
-    .eq("tenant_id", tenantId)
-    .in(
-      "lead_id",
-      leads.map((lead) => lead.id)
-    )
-    .order("created_at", { ascending: false });
-  if (callsError) throw new Error(`Lead calls query failed: ${callsError.message}`);
+  const ids = leads.map((lead) => lead.id);
+  const [callsResult, messagesResult] = await Promise.all([
+    supabase
+      .from("calls")
+      .select("lead_id, qualification, created_at")
+      .eq("tenant_id", tenantId)
+      .in("lead_id", ids)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("messages")
+      .select("lead_id")
+      .eq("tenant_id", tenantId)
+      .in("lead_id", ids),
+  ]);
+  if (callsResult.error) {
+    throw new Error(`Lead calls query failed: ${callsResult.error.message}`);
+  }
+  if (messagesResult.error) {
+    throw new Error(`Lead messages query failed: ${messagesResult.error.message}`);
+  }
 
   const latestOutcome = new Map();
-  for (const call of calls || []) {
+  for (const call of callsResult.data || []) {
     if (!latestOutcome.has(call.lead_id)) {
       latestOutcome.set(call.lead_id, qualification(call).outcome || null);
     }
   }
 
-  return leads.map((lead) => ({
-    id: lead.id,
-    name: lead.push_name || null,
-    phone: maskPhone(lead.wa_id),
-    source: lead.source || null,
-    ownsProperty: lead.owns_property || null,
-    lastCallOutcome: latestOutcome.get(lead.id) || null,
-    lastMessageAt: lead.last_message_at || null,
-  }));
+  const messageCounts = new Map();
+  for (const message of messagesResult.data || []) {
+    messageCounts.set(message.lead_id, (messageCounts.get(message.lead_id) || 0) + 1);
+  }
+
+  // Contacts with real conversations first — imported leads with no
+  // activity share the same import timestamp and would crowd them out.
+  return leads
+    .map((lead) => ({
+      id: lead.id,
+      name: lead.push_name || null,
+      phone: maskPhone(lead.wa_id),
+      source: lead.source || null,
+      ownsProperty: lead.owns_property || null,
+      lastCallOutcome: latestOutcome.get(lead.id) || null,
+      lastMessageAt: lead.last_message_at || null,
+      messageCount: messageCounts.get(lead.id) || 0,
+    }))
+    .sort((a, b) => (b.messageCount > 0) - (a.messageCount > 0))
+    .slice(0, 10);
 }
 
 export async function getLeadStory(tenantId, leadId) {
@@ -566,10 +590,16 @@ export async function startColdBatch(tenantId, count, requestedBy) {
       source: "copilot-cold-batch",
       requestedBy,
     });
+    const byTimezone = {};
+    for (const lead of leads) {
+      const timezone = getLeadTimezone(`+${lead.wa_id}`);
+      byTimezone[timezone] = (byTimezone[timezone] || 0) + 1;
+    }
     return {
       started: withinHours ? queued.length : 0,
       scheduled: withinHours ? 0 : queued.length,
       capRemaining: capRemaining + (Number(count) - queued.length),
+      byTimezone,
     };
   });
 }
@@ -592,12 +622,13 @@ export async function startTargetCall(tenantId, leadId, requestedBy) {
       if (error) throw new Error(`Lead lookup failed: ${error.message}`);
       if (!lead) throw new Error("Lead not found");
 
-      if (!isWithinBusinessHours()) {
+      const leadPhone = lead.wa_id ? `+${lead.wa_id}` : null;
+      if (leadPhone && !isLeadWithinBusinessHours(leadPhone)) {
         const queued = await queueLeadCalls({
           supabase,
           tenantId,
           leadIds: [lead.id],
-          startAt: nextWindowStart(),
+          startAt: nextLeadWindowStart(leadPhone),
           source: "copilot-target-call",
           requestedBy,
         });

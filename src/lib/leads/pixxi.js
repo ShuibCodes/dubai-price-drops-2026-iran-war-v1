@@ -1,7 +1,10 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { startLeadCall } from "@/lib/vapi/client";
-import { isWithinBusinessHours, nextWindowStart } from "@/lib/calls/business-hours";
-import { assertOutboundActive } from "@/lib/calls/outbound";
+import {
+  assertOutboundActive,
+  isLeadWithinBusinessHours,
+  nextLeadWindowStart,
+} from "@/lib/calls/outbound";
 import {
   buildPropertyInterest,
   normalizePhone,
@@ -146,8 +149,10 @@ export async function dialOrQueueLead({ tenant, lead, fields = {}, dryRun = fals
   const supabase = getSupabaseServerClient();
   if (!supabase) throw new Error("Supabase not configured");
 
-  if (!isWithinBusinessHours()) {
-    const scheduledFor = nextWindowStart();
+  const phone = normalizePhone(fields.phone || lead.wa_id);
+
+  if (!isLeadWithinBusinessHours(phone)) {
+    const scheduledFor = nextLeadWindowStart(phone);
     if (dryRun) {
       return { queued: true, scheduledFor: scheduledFor.toISOString(), dryRun: true };
     }
@@ -167,7 +172,6 @@ export async function dialOrQueueLead({ tenant, lead, fields = {}, dryRun = fals
     return { queued: false, dryRun: true, ...variables };
   }
 
-  const phone = normalizePhone(fields.phone || lead.wa_id);
   const assistantId = resolveAssistantId(tenant, fields);
   const result = await startLeadCall({
     name: leadName,

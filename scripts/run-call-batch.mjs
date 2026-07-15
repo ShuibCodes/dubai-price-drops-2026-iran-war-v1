@@ -5,8 +5,12 @@ import {
   normalizePhone,
   resolveLeadSource,
 } from "../src/lib/leads/normalize.js";
-import { isWithinBusinessHours, nextWindowStart } from "../src/lib/calls/business-hours.js";
-import { assertOutboundActive, dialLeadNow } from "../src/lib/calls/outbound.js";
+import {
+  assertOutboundActive,
+  dialLeadNow,
+  isLeadWithinBusinessHours,
+  nextLeadWindowStart,
+} from "../src/lib/calls/outbound.js";
 
 applyEnv(loadEnvFile());
 
@@ -173,9 +177,10 @@ async function upsertLead(supabase, tenantId, fields) {
 async function dialOrQueue(supabase, tenant, lead, fields, dryRun) {
   assertOutboundActive(tenant);
 
-  if (!isWithinBusinessHours()) {
+  const phone = normalizePhone(fields.phone || lead.wa_id);
+  if (!isLeadWithinBusinessHours(phone)) {
     if (dryRun) return { queued: true };
-    const scheduledFor = nextWindowStart();
+    const scheduledFor = nextLeadWindowStart(phone);
     await supabase.from("call_queue").insert({
       tenant_id: tenant.id,
       lead_id: lead.id,

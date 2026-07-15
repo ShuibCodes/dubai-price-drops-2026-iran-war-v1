@@ -1,21 +1,25 @@
 import { createClient } from "@supabase/supabase-js";
 import { applyEnv, loadEnvFile } from "./load-env.mjs";
-import { isWithinBusinessHours } from "../src/lib/calls/business-hours.js";
-import { dialLeadNow, getOutboundTenant } from "../src/lib/calls/outbound.js";
+import {
+  dialLeadNow,
+  getOutboundTenant,
+  isLeadWithinBusinessHours,
+  nextLeadWindowStart,
+} from "../src/lib/calls/outbound.js";
 
 applyEnv(loadEnvFile());
 
 const MAX_DIALS_PER_RUN = 15;
 const DIAL_DELAY_MS = Number(process.env.CALL_QUEUE_DIAL_DELAY_MS || 1500);
-let runSummary = { processed: 0, skipped: 0, failed: 0 };
+let runSummary = { processed: 0, skipped: 0, rescheduled: 0, failed: 0 };
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function logSummary({ processed, skipped, failed }, suffix = "") {
+function logSummary({ processed, skipped, rescheduled, failed }, suffix = "") {
   console.log(
-    `call_queue summary processed=${processed} skipped=${skipped} failed=${failed}${suffix}`
+    `call_queue summary processed=${processed} skipped=${skipped} rescheduled=${rescheduled} failed=${failed}${suffix}`
   );
 }
 
@@ -38,14 +42,11 @@ async function claimQueueRow(supabase, id) {
 }
 
 async function main({ dryRun = false } = {}) {
-  runSummary = { processed: 0, skipped: 0, failed: 0 };
+  runSummary = { processed: 0, skipped: 0, rescheduled: 0, failed: 0 };
   const summary = runSummary;
 
-  if (!isWithinBusinessHours()) {
-    logSummary(summary, " outside_business_hours=true");
-    return;
-  }
-
+  // No global business-hours exit: the worker runs 24/7 and each row is gated
+  // in the LEAD's local timezone below (UK evening rows fire after Dubai hours).
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) {
@@ -84,6 +85,19 @@ async function main({ dryRun = false } = {}) {
 
     if (tenant.outbound_paused) {
       summary.skipped += 1;
+      continue;
+    }
+
+    // Per-row gate in the LEAD's local timezone: a due row at a bad local hour
+    // is pushed to the lead's next local window start instead of being dialed.
+    const leadPhone = lead?.wa_id ? `+${lead.wa_id}` : null;
+    if (leadPhone && !isLeadWithinBusinessHours(leadPhone)) {
+      if (!dryRun) {
+        await updateQueueRow(supabase, item.id, {
+          scheduled_for: nextLeadWindowStart(leadPhone).toISOString(),
+        });
+      }
+      summary.rescheduled += 1;
       continue;
     }
 
