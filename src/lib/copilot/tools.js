@@ -502,6 +502,20 @@ async function batchUsageForDay(supabase, tenantId, date) {
   return (callsResult.count || 0) + (queueResult.count || 0);
 }
 
+// PostgREST encodes .in() filters into the URL; too many UUIDs at once
+// overflows Node's header size limit ("fetch failed").
+const IN_FILTER_CHUNK = 100;
+
+async function fetchInChunks(ids, runQuery) {
+  const rows = [];
+  for (let i = 0; i < ids.length; i += IN_FILTER_CHUNK) {
+    const { data, error } = await runQuery(ids.slice(i, i + IN_FILTER_CHUNK));
+    if (error) throw error;
+    rows.push(...(data || []));
+  }
+  return rows;
+}
+
 async function selectUncalledPurchasedLeads(supabase, tenantId, count) {
   const { data: candidates, error } = await supabase
     .from("leads")
@@ -514,21 +528,31 @@ async function selectUncalledPurchasedLeads(supabase, tenantId, count) {
   if (!candidates?.length) return [];
 
   const ids = candidates.map((lead) => lead.id);
-  const [callsResult, queueResult] = await Promise.all([
-    supabase.from("calls").select("lead_id").eq("tenant_id", tenantId).in("lead_id", ids),
-    supabase
-      .from("call_queue")
-      .select("lead_id")
-      .eq("tenant_id", tenantId)
-      .eq("processed", false)
-      .in("lead_id", ids),
-  ]);
-  if (callsResult.error) throw new Error(`Called lead query failed: ${callsResult.error.message}`);
-  if (queueResult.error) throw new Error(`Queued lead query failed: ${queueResult.error.message}`);
+  let calledRows;
+  let queuedRows;
+  try {
+    calledRows = await fetchInChunks(ids, (chunk) =>
+      supabase.from("calls").select("lead_id").eq("tenant_id", tenantId).in("lead_id", chunk)
+    );
+  } catch (error) {
+    throw new Error(`Called lead query failed: ${error.message}`);
+  }
+  try {
+    queuedRows = await fetchInChunks(ids, (chunk) =>
+      supabase
+        .from("call_queue")
+        .select("lead_id")
+        .eq("tenant_id", tenantId)
+        .eq("processed", false)
+        .in("lead_id", chunk)
+    );
+  } catch (error) {
+    throw new Error(`Queued lead query failed: ${error.message}`);
+  }
 
   const unavailable = new Set([
-    ...(callsResult.data || []).map((row) => row.lead_id),
-    ...(queueResult.data || []).map((row) => row.lead_id),
+    ...calledRows.map((row) => row.lead_id),
+    ...queuedRows.map((row) => row.lead_id),
   ]);
   return candidates.filter((lead) => !unavailable.has(lead.id)).slice(0, count);
 }
