@@ -18,9 +18,9 @@ function db() {
   return supabase;
 }
 
-function maskPhone(phone) {
+function fullPhone(phone) {
   const digits = String(phone || "").replace(/\D/g, "");
-  return digits ? `••••${digits.slice(-4)}` : null;
+  return digits ? `+${digits}` : null;
 }
 
 function qualification(call) {
@@ -212,7 +212,7 @@ export async function listLeads(
     const q = qualification(call);
     const item = {
       leadName: call.leads?.push_name || null,
-      phoneMasked: maskPhone(call.leads?.wa_id),
+      phone: fullPhone(call.leads?.wa_id),
       source: call.leads?.source || null,
       calledAt: callStartedAt(call),
       outcome: q.outcome || null,
@@ -322,7 +322,7 @@ export async function searchLeadByName(tenantId, name) {
     .map((lead) => ({
       id: lead.id,
       name: lead.push_name || null,
-      phone: maskPhone(lead.wa_id),
+      phone: fullPhone(lead.wa_id),
       source: lead.source || null,
       ownsProperty: lead.owns_property || null,
       lastCallOutcome: latestOutcome.get(lead.id) || null,
@@ -384,7 +384,7 @@ export async function getLeadStory(tenantId, leadId) {
     lead: {
       id: lead.id,
       name: lead.push_name || null,
-      phone: maskPhone(lead.wa_id),
+      phone: fullPhone(lead.wa_id),
       source: lead.source || null,
       ownsProperty: lead.owns_property || null,
     },
@@ -415,7 +415,7 @@ export async function getPendingCallbacks(tenantId) {
     .map((call) => ({
       leadId: call.lead_id,
       leadName: call.leads?.push_name || null,
-      phone: maskPhone(call.leads?.wa_id),
+      phone: fullPhone(call.leads?.wa_id),
       callbackTime: qualification(call).callback_time,
       crmNote: qualification(call).crm_note || null,
     }))
