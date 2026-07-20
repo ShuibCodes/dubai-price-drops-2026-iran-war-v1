@@ -516,12 +516,59 @@ async function fetchInChunks(ids, runQuery) {
   return rows;
 }
 
-async function selectUncalledPurchasedLeads(supabase, tenantId, count) {
-  const { data: candidates, error } = await supabase
+// Common ways Naheem may name a market, mapped to the E.164 dialing code
+// stored in leads.country_code. Bare dialing codes ("971") pass through.
+const COUNTRY_ALIASES = {
+  uae: "971",
+  emirates: "971",
+  dubai: "971",
+  ksa: "966",
+  saudi: "966",
+  saudiarabia: "966",
+  uk: "44",
+  unitedkingdom: "44",
+  britain: "44",
+  usa: "1",
+  us: "1",
+  unitedstates: "1",
+  canada: "1",
+  india: "91",
+  pakistan: "92",
+  egypt: "20",
+  turkey: "90",
+  qatar: "974",
+  kuwait: "965",
+  bahrain: "973",
+  oman: "968",
+  russia: "7",
+  china: "86",
+  germany: "49",
+  france: "33",
+  israel: "972",
+};
+
+export function normalizeCountryCode(country) {
+  const raw = String(country || "").trim().toLowerCase();
+  if (!raw) return null;
+  const digits = raw.replace(/\D/g, "");
+  if (digits && digits === raw.replace(/^\+/, "")) return digits;
+  const alias = COUNTRY_ALIASES[raw.replace(/[^a-z]/g, "")];
+  if (!alias) {
+    throw new Error(
+      `Unknown country "${country}". Use a dialing code like 971 (UAE) or a known name (UAE, Saudi, UK...).`
+    );
+  }
+  return alias;
+}
+
+async function selectUncalledPurchasedLeads(supabase, tenantId, count, countryCode) {
+  let candidateQuery = supabase
     .from("leads")
     .select("id, push_name, wa_id, source, owns_property, pixxi_lead_id")
     .eq("tenant_id", tenantId)
-    .ilike("source", "Purchased list")
+    .ilike("source", "Purchased list");
+  if (countryCode) candidateQuery = candidateQuery.eq("country_code", countryCode);
+  const { data: candidates, error } = await candidateQuery
     .order("first_seen", { ascending: true })
     .limit(Math.max(count * 3, 100));
   if (error) throw new Error(`Cold lead query failed: ${error.message}`);
@@ -568,9 +615,7 @@ function dubaiDayKey(date) {
   return shifted.toISOString().slice(0, 10);
 }
 
-async function assertCapAndSelect(supabase, tenantId, count, startAt) {
-  const requested = validateCount(count);
-  const schedule = buildScheduledTimes(requested, startAt);
+async function assertDailyCaps(supabase, tenantId, schedule) {
   const perDay = new Map();
   for (const scheduledFor of schedule) {
     const key = dubaiDayKey(scheduledFor);
@@ -590,42 +635,63 @@ async function assertCapAndSelect(supabase, tenantId, count, startAt) {
     }
     capRemaining = Math.min(capRemaining, remaining - planned.count);
   }
-  const leads = await selectUncalledPurchasedLeads(supabase, tenantId, requested);
+  return capRemaining;
+}
+
+async function assertCapAndSelect(supabase, tenantId, count, startAt, countryCode) {
+  const requested = validateCount(count);
+  const schedule = buildScheduledTimes(requested, startAt);
+  const capRemaining = await assertDailyCaps(supabase, tenantId, schedule);
+  const leads = await selectUncalledPurchasedLeads(
+    supabase,
+    tenantId,
+    requested,
+    countryCode
+  );
   return { leads, capRemaining };
 }
 
-export async function startColdBatch(tenantId, count, requestedBy) {
-  return auditedWrite(tenantId, "start_cold_batch", { count }, requestedBy, async (supabase) => {
-    const tenant = await getOutboundTenant(supabase, tenantId);
-    assertOutboundActive(tenant);
-    const withinHours = isWithinBusinessHours();
-    const startAt = withinHours ? new Date() : nextWindowStart();
-    const { leads, capRemaining } = await assertCapAndSelect(
-      supabase,
-      tenantId,
-      count,
-      startAt
-    );
-    const queued = await queueLeadCalls({
-      supabase,
-      tenantId,
-      leadIds: leads.map((lead) => lead.id),
-      startAt,
-      source: "copilot-cold-batch",
-      requestedBy,
-    });
-    const byTimezone = {};
-    for (const lead of leads) {
-      const timezone = getLeadTimezone(`+${lead.wa_id}`);
-      byTimezone[timezone] = (byTimezone[timezone] || 0) + 1;
+export async function startColdBatch(tenantId, count, requestedBy, country) {
+  const countryCode = normalizeCountryCode(country);
+  return auditedWrite(
+    tenantId,
+    "start_cold_batch",
+    { count, country: countryCode },
+    requestedBy,
+    async (supabase) => {
+      const tenant = await getOutboundTenant(supabase, tenantId);
+      assertOutboundActive(tenant);
+      const withinHours = isWithinBusinessHours();
+      const startAt = withinHours ? new Date() : nextWindowStart();
+      const { leads, capRemaining } = await assertCapAndSelect(
+        supabase,
+        tenantId,
+        count,
+        startAt,
+        countryCode
+      );
+      const queued = await queueLeadCalls({
+        supabase,
+        tenantId,
+        leadIds: leads.map((lead) => lead.id),
+        startAt,
+        source: "copilot-cold-batch",
+        requestedBy,
+      });
+      const byTimezone = {};
+      for (const lead of leads) {
+        const timezone = getLeadTimezone(`+${lead.wa_id}`);
+        byTimezone[timezone] = (byTimezone[timezone] || 0) + 1;
+      }
+      return {
+        started: withinHours ? queued.length : 0,
+        scheduled: withinHours ? 0 : queued.length,
+        capRemaining: capRemaining + (Number(count) - queued.length),
+        country: countryCode,
+        byTimezone,
+      };
     }
-    return {
-      started: withinHours ? queued.length : 0,
-      scheduled: withinHours ? 0 : queued.length,
-      capRemaining: capRemaining + (Number(count) - queued.length),
-      byTimezone,
-    };
-  });
+  );
 }
 
 export async function startTargetCall(tenantId, leadId, requestedBy) {
@@ -670,35 +736,77 @@ export async function startTargetCall(tenantId, leadId, requestedBy) {
   );
 }
 
-export async function scheduleBatch(tenantId, count, whenIso, requestedBy) {
+const MAX_SPREAD_DAYS = 14;
+
+function splitAcrossDays(total, days) {
+  const base = Math.floor(total / days);
+  const remainder = total % days;
+  return Array.from({ length: days }, (_, index) =>
+    base + (index < remainder ? 1 : 0)
+  );
+}
+
+export async function scheduleBatch(
+  tenantId,
+  count,
+  whenIso,
+  requestedBy,
+  spreadDays,
+  country
+) {
+  const countryCode = normalizeCountryCode(country);
   return auditedWrite(
     tenantId,
     "schedule_batch",
-    { count, whenIso },
+    { count, whenIso, spreadDays, country: countryCode },
     requestedBy,
     async (supabase) => {
       const tenant = await getOutboundTenant(supabase, tenantId);
       assertOutboundActive(tenant);
       const when = new Date(whenIso);
       if (Number.isNaN(when.getTime())) throw new Error("Invalid whenIso");
-      const { leads, capRemaining } = await assertCapAndSelect(
+      const requested = validateCount(count);
+      const days = spreadDays == null ? 1 : Number(spreadDays);
+      if (!Number.isInteger(days) || days < 1 || days > MAX_SPREAD_DAYS) {
+        throw new Error(`spreadDays must be an integer between 1 and ${MAX_SPREAD_DAYS}`);
+      }
+
+      // Same start time each consecutive day; buildScheduledTimes rolls any
+      // out-of-window start into the next business window.
+      const schedule = [];
+      const perDay = [];
+      const chunks = splitAcrossDays(requested, days);
+      for (let dayIndex = 0; dayIndex < days; dayIndex += 1) {
+        const chunk = chunks[dayIndex];
+        if (!chunk) continue;
+        const dayStart = new Date(when.getTime() + dayIndex * 24 * 60 * 60 * 1000);
+        const times = buildScheduledTimes(chunk, dayStart);
+        schedule.push(...times);
+        perDay.push({ firstScheduledFor: times[0], count: chunk });
+      }
+
+      const capRemaining = await assertDailyCaps(supabase, tenantId, schedule);
+      const leads = await selectUncalledPurchasedLeads(
         supabase,
         tenantId,
-        count,
-        when
+        requested,
+        countryCode
       );
       const queued = await queueLeadCalls({
         supabase,
         tenantId,
         leadIds: leads.map((lead) => lead.id),
-        startAt: when,
+        scheduledTimes: schedule,
         source: "copilot-scheduled-batch",
         requestedBy,
       });
       return {
         scheduled: queued.length,
+        spreadDays: days,
+        perDay,
         firstScheduledFor: queued[0]?.scheduled_for || null,
-        capRemaining: capRemaining + (Number(count) - queued.length),
+        capRemaining: capRemaining + (requested - queued.length),
+        country: countryCode,
       };
     }
   );

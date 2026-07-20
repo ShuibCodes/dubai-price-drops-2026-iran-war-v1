@@ -49,11 +49,15 @@ export async function queueLeadCalls({
   tenantId,
   leadIds,
   startAt,
+  scheduledTimes: explicitTimes,
   source,
   requestedBy,
 }) {
   if (!leadIds.length) return [];
-  const scheduledTimes = buildScheduledTimes(leadIds.length, startAt);
+  const scheduledTimes =
+    explicitTimes && explicitTimes.length >= leadIds.length
+      ? explicitTimes
+      : buildScheduledTimes(leadIds.length, startAt);
   const rows = leadIds.map((leadId, index) => ({
     tenant_id: tenantId,
     lead_id: leadId,
