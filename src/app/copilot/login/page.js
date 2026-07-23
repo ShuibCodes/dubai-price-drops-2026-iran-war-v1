@@ -1,9 +1,7 @@
 "use client";
 
-import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
-import logo from "@/app/images/1416-logo.png";
 
 function homePathForTenant(tenantSlug) {
   const slug = String(tenantSlug || "").trim();
@@ -66,18 +64,14 @@ function LoginForm() {
     <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4 py-12 text-slate-100">
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center text-center">
-          <Image
-            src={logo}
-            alt="1416 Real Estate"
-            width={160}
-            height={64}
-            className="h-auto w-40 max-w-full object-contain"
-            priority
-          />
-          <p className="mt-6 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-400">
+          <h1 className="text-4xl font-extrabold tracking-tight text-emerald-400">
             Operations Copilot
+          </h1>
+          <p className="mt-4 text-sm leading-relaxed text-slate-400">
+            One place to run your cold calls — batch campaigns across
+            timezones, ask questions about any call, and keep dialing around
+            the clock without sleeping or missing a beat.
           </p>
-          <h1 className="mt-1 text-lg font-semibold">Sign in to continue</h1>
         </div>
 
         <form
