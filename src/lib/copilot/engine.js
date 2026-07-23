@@ -94,7 +94,7 @@ export const copilotToolDefinitions = [
   {
     name: "get_lead_story",
     description:
-      "Get one lead's chronological call and message history. Requires a lead ID returned by lead or conversation search.",
+      "Get one lead's chronological call history (summaries, outcomes, CRM notes). Requires a lead ID returned by lead or conversation search.",
     input_schema: {
       type: "object",
       properties: { leadId: { type: "string", format: "uuid" } },
@@ -109,7 +109,7 @@ export const copilotToolDefinitions = [
   {
     name: "search_conversations",
     description:
-      "Search WhatsApp message bodies and call transcripts. Use for questions about what a lead said, then use get_lead_story for full context.",
+      "Search call transcripts. Use for questions about what a lead said on a call, then use get_lead_story or get_call_detail for full context.",
     input_schema: {
       type: "object",
       properties: { query: { type: "string" } },
@@ -246,11 +246,12 @@ async function executeTool({ name, input, tenantId, agentName, messages }) {
     case "search_lead_by_name":
       return searchLeadByName(tenantId, input.name);
     case "get_lead_story":
-      return getLeadStory(tenantId, input.leadId);
+      // Copilot is client-facing: call activity only, never WhatsApp threads.
+      return getLeadStory(tenantId, input.leadId, { includeMessages: false });
     case "get_pending_callbacks":
       return getPendingCallbacks(tenantId);
     case "search_conversations":
-      return searchConversations(tenantId, input.query);
+      return searchConversations(tenantId, input.query, { includeMessages: false });
     case "start_cold_batch":
       if (Number(input.count) > 100 && !hasLargeBatchConfirmation(messages, input.count)) {
         return {

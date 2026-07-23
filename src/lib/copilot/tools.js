@@ -1,4 +1,4 @@
-import { getSupabaseServerClient } from "../supabase/server.js";
+import { getSupabaseServerClient, MESSAGES_TABLE } from "../supabase/server.js";
 import { isWithinBusinessHours, nextWindowStart } from "../calls/business-hours.js";
 import { getLeadTimezone } from "../leads/phone-timezone.js";
 import {
@@ -292,7 +292,7 @@ export async function searchLeadByName(tenantId, name) {
       .in("lead_id", ids)
       .order("created_at", { ascending: false }),
     supabase
-      .from("messages")
+      .from(MESSAGES_TABLE)
       .select("lead_id")
       .eq("tenant_id", tenantId)
       .in("lead_id", ids),
@@ -333,7 +333,10 @@ export async function searchLeadByName(tenantId, name) {
     .slice(0, 10);
 }
 
-export async function getLeadStory(tenantId, leadId) {
+// includeMessages=false keeps WhatsApp chat content out of the result —
+// the client-facing Copilot must only see call activity, never the owner's
+// WhatsApp threads. Jarvis passes true.
+export async function getLeadStory(tenantId, leadId, { includeMessages = true } = {}) {
   const supabase = db();
   const { data: lead, error: leadError } = await supabase
     .from("leads")
@@ -350,11 +353,13 @@ export async function getLeadStory(tenantId, leadId) {
       .select("id, started_at, ended_at, created_at, summary, qualification, recording_url")
       .eq("tenant_id", tenantId)
       .eq("lead_id", leadId),
-    supabase
-      .from("messages")
-      .select("id, direction, body, msg_type, timestamp, created_at")
-      .eq("tenant_id", tenantId)
-      .eq("lead_id", leadId),
+    includeMessages
+      ? supabase
+          .from(MESSAGES_TABLE)
+          .select("id, direction, body, msg_type, timestamp, created_at")
+          .eq("tenant_id", tenantId)
+          .eq("lead_id", leadId)
+      : Promise.resolve({ data: [], error: null }),
   ]);
   if (callsResult.error) throw new Error(`Lead calls query failed: ${callsResult.error.message}`);
   if (messagesResult.error) {
@@ -430,19 +435,23 @@ function snippet(text, query) {
   return value.slice(start, start + 220);
 }
 
-export async function searchConversations(tenantId, query) {
+// includeMessages=false restricts the search to call transcripts — the
+// client-facing Copilot must not read WhatsApp message bodies. Jarvis passes true.
+export async function searchConversations(tenantId, query, { includeMessages = true } = {}) {
   const supabase = db();
   const term = String(query || "").trim();
   if (!term) return [];
 
   const [messagesResult, callsResult] = await Promise.all([
-    supabase
-      .from("messages")
-      .select("id, lead_id, body, direction, timestamp, created_at, leads(push_name)")
-      .eq("tenant_id", tenantId)
-      .ilike("body", `%${term}%`)
-      .order("timestamp", { ascending: false })
-      .limit(10),
+    includeMessages
+      ? supabase
+          .from(MESSAGES_TABLE)
+          .select("id, lead_id, body, direction, timestamp, created_at, leads(push_name)")
+          .eq("tenant_id", tenantId)
+          .ilike("body", `%${term}%`)
+          .order("timestamp", { ascending: false })
+          .limit(10)
+      : Promise.resolve({ data: [], error: null }),
     supabase
       .from("calls")
       .select("id, lead_id, transcript, started_at, created_at, leads(push_name)")
@@ -477,6 +486,27 @@ export async function searchConversations(tenantId, query) {
   ]
     .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
     .slice(0, 10);
+}
+
+export async function getLatestMessages(tenantId, limit = 10) {
+  const supabase = db();
+  const capped = Math.min(Math.max(Number(limit) || 10, 1), 50);
+  const { data, error } = await supabase
+    .from(MESSAGES_TABLE)
+    .select("id, lead_id, direction, body, msg_type, timestamp, created_at, leads(push_name, wa_id)")
+    .eq("tenant_id", tenantId)
+    .order("timestamp", { ascending: false })
+    .limit(capped);
+  if (error) throw new Error(`Latest messages query failed: ${error.message}`);
+
+  return (data || []).map((message) => ({
+    leadId: message.lead_id,
+    leadName: message.leads?.push_name || null,
+    phone: fullPhone(message.leads?.wa_id),
+    direction: message.direction,
+    body: message.body || `[${message.msg_type || "message"}]`,
+    timestamp: message.timestamp || message.created_at,
+  }));
 }
 
 async function batchUsageForDay(supabase, tenantId, date) {

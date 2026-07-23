@@ -1,5 +1,6 @@
 import { cleanupFormatting, limitWords } from "@/lib/kb/engine";
 import { insertMessageIfNew } from "@/lib/ingest/message-ingest";
+import { MESSAGES_TABLE } from "@/lib/supabase/server";
 import { sendWhautomateText } from "@/lib/whautomate/send";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
@@ -41,7 +42,7 @@ function isAutoreplyGloballyEnabled() {
 async function hasRecentHumanOutbound(supabase, leadId) {
   const since = new Date(Date.now() - HUMAN_ACTIVE_MS).toISOString();
   const { data } = await supabase
-    .from("messages")
+    .from(MESSAGES_TABLE)
     .select("id")
     .eq("lead_id", leadId)
     .eq("direction", "outbound")
@@ -54,7 +55,7 @@ async function hasRecentHumanOutbound(supabase, leadId) {
 async function hasRecentBotReply(supabase, leadId) {
   const since = new Date(Date.now() - DEBOUNCE_MS).toISOString();
   const { data } = await supabase
-    .from("messages")
+    .from(MESSAGES_TABLE)
     .select("id")
     .eq("lead_id", leadId)
     .eq("direction", "outbound")
@@ -66,7 +67,7 @@ async function hasRecentBotReply(supabase, leadId) {
 
 async function loadThreadMessages(supabase, leadId, limit = 20) {
   const { data } = await supabase
-    .from("messages")
+    .from(MESSAGES_TABLE)
     .select("direction, body, timestamp")
     .eq("lead_id", leadId)
     .order("timestamp", { ascending: false })

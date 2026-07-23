@@ -1,4 +1,4 @@
-import { getSupabaseServerClient, normalizeWaId } from "@/lib/supabase/server";
+import { getSupabaseServerClient, normalizeWaId, MESSAGES_TABLE } from "@/lib/supabase/server";
 
 function formatRelativeTime(timestamp) {
   if (!timestamp) return "unknown time";
@@ -53,28 +53,54 @@ export async function getRecentConversations(tenantId, { limit = 5, messageLimit
   const supabase = getSupabaseServerClient();
   if (!supabase || !tenantId) return [];
 
+  // Rank threads by actual message rows. Ordering leads by last_message_at is
+  // wrong here: the call pipeline stamps that column on leads that have zero
+  // WhatsApp messages, which crowded real threads out of the snapshot.
+  const { data: recent, error: recentError } = await supabase
+    .from(MESSAGES_TABLE)
+    .select("lead_id, timestamp")
+    .eq("tenant_id", tenantId)
+    .order("timestamp", { ascending: false })
+    .limit(200);
+
+  if (recentError || !recent?.length) return [];
+
+  const leadIds = [];
+  const latestByLead = new Map();
+  for (const row of recent) {
+    if (!row.lead_id) continue;
+    if (!latestByLead.has(row.lead_id)) {
+      latestByLead.set(row.lead_id, row.timestamp);
+      leadIds.push(row.lead_id);
+    }
+    if (leadIds.length >= limit) break;
+  }
+
   const { data: leads, error: leadsError } = await supabase
     .from("leads")
     .select("id, wa_id, push_name, last_message_at")
-    .eq("tenant_id", tenantId)
-    .order("last_message_at", { ascending: false, nullsFirst: false })
-    .limit(limit);
+    .in("id", leadIds);
 
   if (leadsError || !leads?.length) return [];
 
+  const byId = new Map(leads.map((lead) => [lead.id, lead]));
+  const ordered = leadIds.map((id) => byId.get(id)).filter(Boolean);
+
   const conversations = await Promise.all(
-    leads.map(async (lead) => {
+    ordered.map(async (lead) => {
       const { data: messages } = await supabase
-        .from("messages")
+        .from(MESSAGES_TABLE)
         .select("direction, body, msg_type, timestamp")
         .eq("tenant_id", tenantId)
         .eq("lead_id", lead.id)
-        .order("timestamp", { ascending: true })
+        .order("timestamp", { ascending: false })
         .limit(messageLimit);
 
       return {
         ...lead,
-        messages: messages || [],
+        // Real message recency, not the call-pipeline-stamped lead column.
+        last_message_at: latestByLead.get(lead.id) || lead.last_message_at,
+        messages: (messages || []).reverse(),
       };
     })
   );
@@ -108,7 +134,7 @@ export async function getLeadThread(tenantId, waIdOrNameFragment, { messageLimit
 
   const lead = leads[0];
   const { data: messages } = await supabase
-    .from("messages")
+    .from(MESSAGES_TABLE)
     .select("direction, body, msg_type, timestamp")
     .eq("tenant_id", tenantId)
     .eq("lead_id", lead.id)

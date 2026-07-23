@@ -1,6 +1,8 @@
 // Shared lead/message ingest used by the Meta and Whautomate webhooks.
 // Optional fields (whautomateContactId, sentByBot) are additive — Meta path unchanged.
 
+import { MESSAGES_TABLE } from "@/lib/supabase/server";
+
 export async function upsertLead({
   supabase,
   tenantId,
@@ -75,7 +77,7 @@ export async function insertMessageIfNew({
   sentByBot = false,
 }) {
   const { data: existingMessage } = await supabase
-    .from("messages")
+    .from(MESSAGES_TABLE)
     .select("id")
     .eq("wa_message_id", waMessageId)
     .maybeSingle();
@@ -86,7 +88,7 @@ export async function insertMessageIfNew({
   if (direction === "outbound" && !sentByBot && body) {
     const since = new Date(Date.now() - 2 * 60 * 1000).toISOString();
     const { data: botDup } = await supabase
-      .from("messages")
+      .from(MESSAGES_TABLE)
       .select("id")
       .eq("lead_id", leadId)
       .eq("direction", "outbound")
@@ -100,7 +102,7 @@ export async function insertMessageIfNew({
   }
 
   const { data, error } = await supabase
-    .from("messages")
+    .from(MESSAGES_TABLE)
     .insert({
       tenant_id: tenantId,
       lead_id: leadId,

@@ -1,5 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
 
+// WhatsApp message rows live here (table renamed from "messages"; RLS enabled —
+// the service-role client below bypasses it by design).
+export const MESSAGES_TABLE = "whatsapp-messages";
+
 let cachedClient = null;
 
 export function getSupabaseServerClient() {
