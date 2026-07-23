@@ -84,7 +84,7 @@ export const copilotToolDefinitions = [
   {
     name: "search_lead_by_name",
     description:
-      "Fuzzy-search tenant leads by partial name. Use this before requesting one lead's full story or calling a named lead.",
+      "Fuzzy-search tenant leads by partial name or campaign source (e.g. 'Cesar' or 'downtown'). Use this before requesting one lead's full story or calling a named lead.",
     input_schema: {
       type: "object",
       properties: { name: { type: "string" } },
@@ -119,7 +119,7 @@ export const copilotToolDefinitions = [
   {
     name: "start_cold_batch",
     description:
-      "Start or queue calls to the next uncalled Purchased list leads, subject to daily cap and per-lead local business hours. Returns a byTimezone summary — mention when leads will be called in their local daytime (e.g. UK leads). More than 100 requires explicit user confirmation. When the user restricts the batch to a market (e.g. 'UAE leads only', 'call the 971 numbers'), pass country so only leads with that dialing code are selected.",
+      "Start or queue calls to the next uncalled cold-list leads, subject to daily cap and per-lead local business hours. Returns a byTimezone summary — mention when leads will be called in their local daytime (e.g. UK leads). More than 100 requires explicit user confirmation. When the user restricts the batch to a market (e.g. 'UAE leads only', 'call the 971 numbers'), pass country so only leads with that dialing code are selected. When the user names a campaign or list (e.g. 'the downtown batch', 'burj lake owners'), pass source so only leads from matching sources are selected.",
     input_schema: {
       type: "object",
       properties: {
@@ -128,6 +128,11 @@ export const copilotToolDefinitions = [
           type: "string",
           description:
             "Optional country filter: a dialing code ('971') or name ('UAE', 'Saudi', 'UK'). Omit to call all countries.",
+        },
+        source: {
+          type: "string",
+          description:
+            "Optional lead-source filter, substring matched (e.g. 'downtown', 'burj lake', 'purchased'). Omit to use the tenant's full cold list.",
         },
       },
       required: ["count"],
@@ -146,7 +151,7 @@ export const copilotToolDefinitions = [
   {
     name: "schedule_batch",
     description:
-      "Schedule calls to the next uncalled Purchased list leads at 60-second spacing, subject to the daily cap. Set spreadDays to split the total evenly across N consecutive days, each day starting at the same time as whenIso (e.g. 600 calls over 3 days = 200 per day). More than 100 total requires explicit user confirmation.",
+      "Schedule calls to the next uncalled cold-list leads at 60-second spacing, subject to the daily cap. Set spreadDays to split the total evenly across N consecutive days, each day starting at the same time as whenIso (e.g. 600 calls over 3 days = 200 per day). More than 100 total requires explicit user confirmation. When the user names a campaign or list, pass source to restrict lead selection.",
     input_schema: {
       type: "object",
       properties: {
@@ -162,6 +167,11 @@ export const copilotToolDefinitions = [
           type: "string",
           description:
             "Optional country filter: a dialing code ('971') or name ('UAE', 'Saudi', 'UK'). Omit to call all countries.",
+        },
+        source: {
+          type: "string",
+          description:
+            "Optional lead-source filter, substring matched (e.g. 'downtown', 'burj lake', 'purchased'). Omit to use the tenant's full cold list.",
         },
       },
       required: ["count", "whenIso"],
@@ -191,6 +201,7 @@ Rules:
 - Exception: before start_cold_batch or schedule_batch above 100 total calls, ask for an explicit yes. Do not execute until the user confirms.
 - When discussing a specific lead, include their full phone number so the agent can reach them directly.
 - Batches can be restricted to one market: when the user says "UAE leads only", "local numbers", "971 numbers", or names any country, pass that country to start_cold_batch or schedule_batch. UAE = 971. In the reply, state which country the batch was limited to.
+- When the user asks about leads from a campaign, list, or source (e.g. "downtown leads", "burj lake owners"), use search_lead_by_name with that campaign word — it matches lead sources too. Use search_conversations only for what people said on calls. When batching a named campaign, pass it as source to start_cold_batch or schedule_batch.
 - Dates and business hours are Asia/Dubai unless the user specifies otherwise.
 
 ANSWERING ABOUT LEADS AND CALLS:
@@ -260,7 +271,7 @@ async function executeTool({ name, input, tenantId, agentName, messages }) {
           instruction: `Ask the user to explicitly confirm starting ${input.count} cold calls. Do not call the tool again this turn.`,
         };
       }
-      return startColdBatch(tenantId, input.count, agentName, input.country);
+      return startColdBatch(tenantId, input.count, agentName, input.country, input.source);
     case "start_target_call":
       return startTargetCall(tenantId, input.leadId, agentName);
     case "schedule_batch":
@@ -277,7 +288,8 @@ async function executeTool({ name, input, tenantId, agentName, messages }) {
         input.whenIso,
         agentName,
         input.spreadDays,
-        input.country
+        input.country,
+        input.source
       );
     case "pause_tenant":
       return pauseTenant(tenantId, agentName);

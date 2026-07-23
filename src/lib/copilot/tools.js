@@ -273,11 +273,13 @@ export async function searchLeadByName(tenantId, name) {
   const query = String(name || "").trim();
   if (!query) return [];
 
+  // Match names and campaign sources so "downtown leads" style queries work.
+  const term = query.replace(/[%_,()]/g, " ").trim();
   const { data: leads, error } = await supabase
     .from("leads")
     .select("id, push_name, wa_id, source, owns_property, last_message_at")
     .eq("tenant_id", tenantId)
-    .ilike("push_name", `%${query}%`)
+    .or(`push_name.ilike.%${term}%,source.ilike.%${term}%`)
     .order("last_message_at", { ascending: false })
     .limit(30);
   if (error) throw new Error(`Lead search failed: ${error.message}`);
@@ -591,16 +593,60 @@ export function normalizeCountryCode(country) {
   return alias;
 }
 
-async function selectUncalledPurchasedLeads(supabase, tenantId, count, countryCode) {
+async function queryColdCandidates(supabase, tenantId, count, countryCode, applySource) {
   let candidateQuery = supabase
     .from("leads")
     .select("id, push_name, wa_id, source, owns_property, pixxi_lead_id")
-    .eq("tenant_id", tenantId)
-    .ilike("source", "Purchased list");
+    .eq("tenant_id", tenantId);
+  candidateQuery = applySource(candidateQuery);
   if (countryCode) candidateQuery = candidateQuery.eq("country_code", countryCode);
-  const { data: candidates, error } = await candidateQuery
+  return candidateQuery
     .order("first_seen", { ascending: true })
     .limit(Math.max(count * 3, 100));
+}
+
+async function selectUncalledPurchasedLeads(
+  supabase,
+  tenantId,
+  count,
+  countryCode,
+  sourceFilter
+) {
+  const requestedSource = String(sourceFilter || "").trim();
+  let candidates;
+  let error;
+
+  if (requestedSource) {
+    ({ data: candidates, error } = await queryColdCandidates(
+      supabase,
+      tenantId,
+      count,
+      countryCode,
+      (q) => q.ilike("source", `%${requestedSource}%`)
+    ));
+  } else {
+    // Default cold list is the 1416-style "Purchased list". Tenants imported
+    // with named campaign sources (downtown_views, burj_lake_owner, ...) have
+    // no such rows, so fall back to any lead that has a source at all —
+    // organic WhatsApp contacts (source null) are never cold-called.
+    ({ data: candidates, error } = await queryColdCandidates(
+      supabase,
+      tenantId,
+      count,
+      countryCode,
+      (q) => q.ilike("source", "Purchased list")
+    ));
+    if (!error && !candidates?.length) {
+      ({ data: candidates, error } = await queryColdCandidates(
+        supabase,
+        tenantId,
+        count,
+        countryCode,
+        (q) => q.not("source", "is", null)
+      ));
+    }
+  }
+
   if (error) throw new Error(`Cold lead query failed: ${error.message}`);
   if (!candidates?.length) return [];
 
@@ -668,7 +714,7 @@ async function assertDailyCaps(supabase, tenantId, schedule) {
   return capRemaining;
 }
 
-async function assertCapAndSelect(supabase, tenantId, count, startAt, countryCode) {
+async function assertCapAndSelect(supabase, tenantId, count, startAt, countryCode, sourceFilter) {
   const requested = validateCount(count);
   const schedule = buildScheduledTimes(requested, startAt);
   const capRemaining = await assertDailyCaps(supabase, tenantId, schedule);
@@ -676,17 +722,18 @@ async function assertCapAndSelect(supabase, tenantId, count, startAt, countryCod
     supabase,
     tenantId,
     requested,
-    countryCode
+    countryCode,
+    sourceFilter
   );
   return { leads, capRemaining };
 }
 
-export async function startColdBatch(tenantId, count, requestedBy, country) {
+export async function startColdBatch(tenantId, count, requestedBy, country, sourceFilter) {
   const countryCode = normalizeCountryCode(country);
   return auditedWrite(
     tenantId,
     "start_cold_batch",
-    { count, country: countryCode },
+    { count, country: countryCode, source: sourceFilter || null },
     requestedBy,
     async (supabase) => {
       const tenant = await getOutboundTenant(supabase, tenantId);
@@ -698,7 +745,8 @@ export async function startColdBatch(tenantId, count, requestedBy, country) {
         tenantId,
         count,
         startAt,
-        countryCode
+        countryCode,
+        sourceFilter
       );
       const queued = await queueLeadCalls({
         supabase,
@@ -782,13 +830,14 @@ export async function scheduleBatch(
   whenIso,
   requestedBy,
   spreadDays,
-  country
+  country,
+  sourceFilter
 ) {
   const countryCode = normalizeCountryCode(country);
   return auditedWrite(
     tenantId,
     "schedule_batch",
-    { count, whenIso, spreadDays, country: countryCode },
+    { count, whenIso, spreadDays, country: countryCode, source: sourceFilter || null },
     requestedBy,
     async (supabase) => {
       const tenant = await getOutboundTenant(supabase, tenantId);
@@ -820,7 +869,8 @@ export async function scheduleBatch(
         supabase,
         tenantId,
         requested,
-        countryCode
+        countryCode,
+        sourceFilter
       );
       const queued = await queueLeadCalls({
         supabase,
