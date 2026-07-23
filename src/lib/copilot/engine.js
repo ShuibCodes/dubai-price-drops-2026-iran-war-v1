@@ -5,7 +5,9 @@ import {
   getLeadStory,
   getPendingCallbacks,
   listLeads,
+  listLeadSources,
   pauseTenant,
+  queryLeads,
   resumeTenant,
   scheduleBatch,
   searchConversations,
@@ -36,9 +38,42 @@ export const copilotToolDefinitions = [
     input_schema: { type: "object", properties: {} },
   },
   {
-    name: "list_leads",
+    name: "query_leads",
     description:
-      "List actual leads with who they are and what they want. Use whenever the user asks about engaged leads, qualified leads, callbacks, or any group of leads/calls — never answer such questions with counts alone.",
+      "ROSTER tool: count and list leads on the tenant's lead list (imported/purchased contacts), regardless of whether they were ever called. Use for 'how many leads do I have', 'show me downtown leads', 'who is uncalled', or any question about the lead list itself. Returns total plus a page of leads with name, phone, source, and whether each was already called or queued.",
+    input_schema: {
+      type: "object",
+      properties: {
+        source: {
+          type: "string",
+          description:
+            "Optional campaign/source filter, substring matched (e.g. 'downtown', 'burj lake').",
+        },
+        country: {
+          type: "string",
+          description:
+            "Optional country filter: dialing code ('971') or name ('UAE', 'Saudi', 'UK').",
+        },
+        uncalledOnly: {
+          type: "boolean",
+          default: false,
+          description: "Only leads never called and not currently queued.",
+        },
+        limit: { type: "integer", minimum: 1, maximum: 50, default: 5 },
+        offset: { type: "integer", minimum: 0, default: 0 },
+      },
+    },
+  },
+  {
+    name: "list_lead_sources",
+    description:
+      "ROSTER tool: list this tenant's distinct lead campaign sources with counts (e.g. downtown_views, burj_lake_owner). Use when the user mentions a campaign vaguely or asks what lists they have.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "list_call_activity",
+    description:
+      "CALL ACTIVITY tool: list leads that have been CALLED, with outcomes and qualification. Use for questions about engaged/qualified leads, callbacks, or reviewing calls in a period. Never use this to count or list the lead roster — use query_leads for that.",
     input_schema: {
       type: "object",
       properties: {
@@ -201,18 +236,24 @@ Rules:
 - Exception: before start_cold_batch or schedule_batch above 100 total calls, ask for an explicit yes. Do not execute until the user confirms.
 - When discussing a specific lead, include their full phone number so the agent can reach them directly.
 - Batches can be restricted to one market: when the user says "UAE leads only", "local numbers", "971 numbers", or names any country, pass that country to start_cold_batch or schedule_batch. UAE = 971. In the reply, state which country the batch was limited to.
-- When the user asks about leads from a campaign, list, or source (e.g. "downtown leads", "burj lake owners"), use search_lead_by_name with that campaign word — it matches lead sources too. Use search_conversations only for what people said on calls. When batching a named campaign, pass it as source to start_cold_batch or schedule_batch.
+- When batching a named campaign, pass it as source to start_cold_batch or schedule_batch. If unsure what campaigns exist, call list_lead_sources first.
 - Dates and business hours are Asia/Dubai unless the user specifies otherwise.
 
+ROSTER vs CALL ACTIVITY — hard routing rules:
+- "leads", "my list", "how many leads", "uncalled", or any campaign/source question ("downtown leads", "burj lake owners") → ROSTER tools only: query_leads and list_lead_sources. Pass the campaign word as the source filter to query_leads.
+- "calls", "today's activity", "outcomes", "callbacks", "engaged", "qualified", "what did they say" → CALL tools only: todays_digest, count_calls_since, list_call_activity, get_pending_callbacks, get_call_detail.
+- NEVER use call tools to answer how many leads exist or to list the roster; call counts are not the lead list.
+- After start_cold_batch or schedule_batch, the result includes queuedLeads with the exact people queued — list them from there instead of running another lookup.
+
 ANSWERING ABOUT LEADS AND CALLS:
-- Whenever the user asks about leads, calls, engagement, or qualification — even phrased as "how many" — answer with BOTH the headline numbers and a named breakdown of the FIRST 5 leads. Use the relevant count/digest tool and list_leads; never answer with counts alone.
+- Whenever the user asks about leads, calls, engagement, or qualification — even phrased as "how many" — answer with BOTH the headline numbers and a named breakdown of the FIRST 5 leads. Use the routing rules above to pick the roster or call tool; never answer with counts alone.
 - Use a Markdown table ONLY for the numeric stat summary (the metric/count block). Never put leads or any non-numeric listing in a table; replies must stay readable on a phone screen.
 - Format the lead breakdown as short bullets, one lead per line: name, then what they wanted (intent + budget + areas + timeline in one natural line), callback time if present, and distressed-deals interest if present.
 - Build that one-line breakdown from the structured intent, budget, areas, timeline, callbackTime, and wantsDistressedDeals fields. Do not infer a callback time from the outcome, and do not add placeholders such as "no details captured", "callback pending", or "unknown"; if a field is empty, omit it.
 - After the breakdown always add exactly: "Full details for every lead are on the CRM."
 - If total is greater than the number shown, state how many more there are and offer the next batch.
 - Specific person exception: when asked about one person or one lead, use search_lead_by_name and get_lead_story without the group-list cap. If asked for their broader story or history, give the relevant history. If asked what they said or how a call went, also use get_call_detail and follow the stricter specific-call rule below.
-- Specific review-window exception: for a day or date range the user wants reviewed, call list_leads with both time bounds and limit 10.
+- Specific review-window exception: for a day or date range the user wants reviewed, call list_call_activity with both time bounds and limit 10.
 - When summarising a specific call from its transcript, write 1-5 substantive lines covering what they wanted, notable objections or reactions, concrete budget/area/timing details, and the outcome. Quote at most one short telling phrase. Never paste or reproduce the transcript.
 - If the request is specifically about one latest or identified call, the 1-5 line rule OVERRIDES the broader person-history guidance. The ENTIRE reply must be 1-5 lines about that call only.
 - In a specific-call summary, mention only facts directly supported by non-empty tool fields or dialogue. It is forbidden to mention absent/uncaptured fields, infer why the call ended from missing data or a transcript stopping, discuss other calls, append an assessment or recommendation, or add the group-list CRM boilerplate.
@@ -250,8 +291,12 @@ async function executeTool({ name, input, tenantId, agentName, messages }) {
       return countCallsSince(tenantId, input.sinceIso);
     case "todays_digest":
       return todaysDigest(tenantId);
-    case "list_leads":
+    case "list_call_activity":
       return listLeads(tenantId, input);
+    case "query_leads":
+      return queryLeads(tenantId, input);
+    case "list_lead_sources":
+      return listLeadSources(tenantId);
     case "get_call_detail":
       return getCallDetail(tenantId, input);
     case "search_lead_by_name":

@@ -234,6 +234,150 @@ export async function listLeads(
   return { total: count || 0, showing: leads.length, leads };
 }
 
+// Roster tool: queries the leads table directly (who is on my list), as
+// opposed to listLeads/todaysDigest which report call ACTIVITY. Keeping the
+// two separate is what lets "how many leads do I have?" work for tenants
+// that have imported lists but few calls.
+export async function queryLeads(
+  tenantId,
+  { source, country, uncalledOnly = false, limit = 5, offset = 0 } = {}
+) {
+  const supabase = db();
+  const countryCode = normalizeCountryCode(country);
+  const pageSize = Math.min(50, Math.max(1, Number.parseInt(limit, 10) || 5));
+  const pageOffset = Math.max(0, Number.parseInt(offset, 10) || 0);
+  const sourceTerm = String(source || "").trim();
+
+  const applyFilters = (query) => {
+    let q = query.eq("tenant_id", tenantId);
+    if (sourceTerm) q = q.ilike("source", `%${sourceTerm}%`);
+    if (countryCode) q = q.eq("country_code", countryCode);
+    return q;
+  };
+
+  const { count: total, error: countError } = await applyFilters(
+    supabase.from("leads").select("id", { count: "exact", head: true })
+  );
+  if (countError) throw new Error(`Lead count failed: ${countError.message}`);
+
+  const annotateCalled = async (rows) => {
+    const ids = rows.map((lead) => lead.id);
+    if (!ids.length) return new Set();
+    const calledRows = await fetchInChunks(ids, (chunk) =>
+      supabase.from("calls").select("lead_id").eq("tenant_id", tenantId).in("lead_id", chunk)
+    );
+    const queuedRows = await fetchInChunks(ids, (chunk) =>
+      supabase
+        .from("call_queue")
+        .select("lead_id")
+        .eq("tenant_id", tenantId)
+        .eq("processed", false)
+        .in("lead_id", chunk)
+    );
+    return new Set([
+      ...calledRows.map((row) => row.lead_id),
+      ...queuedRows.map((row) => row.lead_id),
+    ]);
+  };
+
+  const toLead = (lead, calledIds) => ({
+    id: lead.id,
+    name: lead.push_name || null,
+    phone: fullPhone(lead.wa_id),
+    source: lead.source || null,
+    countryCode: lead.country_code || null,
+    calledOrQueued: calledIds.has(lead.id),
+  });
+
+  const leads = [];
+  // When uncalledOnly, keep paging past called/queued leads until the page is
+  // full (early rows are often exactly the ones already batched).
+  const SCAN_PAGE = uncalledOnly ? Math.max(pageSize, 100) : pageSize;
+  const MAX_SCANNED = 1000;
+  let cursor = pageOffset;
+  let scanned = 0;
+  while (leads.length < pageSize && scanned < MAX_SCANNED) {
+    const { data: rows, error } = await applyFilters(
+      supabase
+        .from("leads")
+        .select("id, push_name, wa_id, source, country_code, first_seen")
+    )
+      .order("first_seen", { ascending: true })
+      .range(cursor, cursor + SCAN_PAGE - 1);
+    if (error) throw new Error(`Lead query failed: ${error.message}`);
+    if (!rows?.length) break;
+    const calledIds = await annotateCalled(rows);
+    for (const row of rows) {
+      const lead = toLead(row, calledIds);
+      if (uncalledOnly && lead.calledOrQueued) continue;
+      leads.push(lead);
+      if (leads.length >= pageSize) break;
+    }
+    cursor += rows.length;
+    scanned += rows.length;
+    if (rows.length < SCAN_PAGE) break;
+    if (!uncalledOnly) break;
+  }
+
+  return {
+    total: total || 0,
+    showing: leads.length,
+    uncalledOnly: Boolean(uncalledOnly),
+    leads,
+  };
+}
+
+// Distinct campaign sources for this tenant with exact counts, so the model
+// knows which list names exist before filtering or batching by source.
+// Discovers distinct names by scanning ordered pages, then runs an exact
+// count per source, so counts stay right even for large rosters.
+export async function listLeadSources(tenantId) {
+  const supabase = db();
+  const names = new Set();
+  const MAX_SOURCES = 100;
+
+  const { count: nullCount, error: nullError } = await supabase
+    .from("leads")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", tenantId)
+    .is("source", null);
+  if (nullError) throw new Error(`Lead sources query failed: ${nullError.message}`);
+  if (nullCount > 0) names.add(null);
+
+  // Walk distinct source values: one query per value via source > lastSeen.
+  let lastSeen = null;
+  while (names.size < MAX_SOURCES) {
+    let query = supabase
+      .from("leads")
+      .select("source")
+      .eq("tenant_id", tenantId)
+      .not("source", "is", null)
+      .order("source", { ascending: true })
+      .limit(1);
+    if (lastSeen !== null) query = query.gt("source", lastSeen);
+    const { data, error } = await query;
+    if (error) throw new Error(`Lead sources query failed: ${error.message}`);
+    const next = data?.[0]?.source;
+    if (next === undefined || next === null) break;
+    names.add(next);
+    lastSeen = next;
+  }
+
+  const sources = [];
+  for (const name of names) {
+    let query = supabase
+      .from("leads")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", tenantId);
+    query = name === null ? query.is("source", null) : query.eq("source", name);
+    const { count, error } = await query;
+    if (error) throw new Error(`Source count failed: ${error.message}`);
+    sources.push({ source: name || "(no source)", count: count || 0 });
+  }
+  sources.sort((a, b) => b.count - a.count);
+  return { sources };
+}
+
 export async function getCallDetail(tenantId, { leadId, callId } = {}) {
   const supabase = db();
   if (!leadId && !callId) throw new Error("leadId or callId is required");
@@ -686,6 +830,21 @@ function validateCount(count) {
   return value;
 }
 
+// Batch tools return the actual people they queued so "list them here" never
+// needs a second (calls-table) lookup. Capped to keep tool payloads small.
+const QUEUED_LEADS_PREVIEW_CAP = 25;
+
+function summarizeQueuedLeads(leads = []) {
+  return {
+    total: leads.length,
+    preview: leads.slice(0, QUEUED_LEADS_PREVIEW_CAP).map((lead) => ({
+      name: lead.push_name || null,
+      phone: fullPhone(lead.wa_id),
+      source: lead.source || null,
+    })),
+  };
+}
+
 function dubaiDayKey(date) {
   const shifted = new Date(new Date(date).getTime() + 4 * 60 * 60 * 1000);
   return shifted.toISOString().slice(0, 10);
@@ -767,6 +926,7 @@ export async function startColdBatch(tenantId, count, requestedBy, country, sour
         capRemaining: capRemaining + (Number(count) - queued.length),
         country: countryCode,
         byTimezone,
+        queuedLeads: summarizeQueuedLeads(leads),
       };
     }
   );
@@ -887,6 +1047,7 @@ export async function scheduleBatch(
         firstScheduledFor: queued[0]?.scheduled_for || null,
         capRemaining: capRemaining + (requested - queued.length),
         country: countryCode,
+        queuedLeads: summarizeQueuedLeads(leads),
       };
     }
   );
