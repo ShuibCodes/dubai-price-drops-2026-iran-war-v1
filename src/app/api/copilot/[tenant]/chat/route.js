@@ -1,6 +1,7 @@
 import { runCopilotTurn } from "@/lib/copilot/engine";
 import {
   COPILOT_SESSION_COOKIE,
+  sessionAllowsTenant,
   verifyCopilotSessionToken,
 } from "@/lib/copilot-auth";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
@@ -12,11 +13,16 @@ export const maxDuration = 60;
 export async function POST(request, { params }) {
   try {
     const sessionToken = request.cookies.get(COPILOT_SESSION_COOKIE)?.value;
-    if (!sessionToken || !verifyCopilotSessionToken(sessionToken)) {
+    const session = sessionToken ? verifyCopilotSessionToken(sessionToken) : null;
+    if (!session) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const slug = String(params?.tenant || "").trim();
+    if (!sessionAllowsTenant(session, slug)) {
+      return Response.json({ error: "Forbidden for this tenant." }, { status: 403 });
+    }
+
     const supabase = getSupabaseServerClient();
     if (!supabase) {
       return Response.json({ error: "Supabase not configured" }, { status: 500 });
@@ -39,7 +45,7 @@ export async function POST(request, { params }) {
       tenantId: tenant.id,
       tenantName: tenant.name || tenant.slug,
       messages: body.messages,
-      agentName: String(body.agentName || "").trim() || "Team member",
+      agentName: String(body.agentName || "").trim() || session.username || "Team member",
     });
 
     return Response.json({ message: result.text });

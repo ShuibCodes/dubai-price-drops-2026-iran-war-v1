@@ -12,15 +12,22 @@ export async function POST(request) {
   try {
     const body = await request.json().catch(() => ({}));
 
-    if (!verifyCopilotCredentials(body?.username, body?.password)) {
+    const user = verifyCopilotCredentials(body?.username, body?.password);
+    if (!user) {
       return NextResponse.json(
         { ok: false, error: "Invalid login." },
         { status: 401 }
       );
     }
 
-    const token = createCopilotSessionToken();
-    const response = NextResponse.json({ ok: true });
+    const token = createCopilotSessionToken({
+      username: user.username,
+      tenantSlug: user.tenantSlug,
+    });
+    const response = NextResponse.json({
+      ok: true,
+      tenantSlug: user.tenantSlug,
+    });
     response.cookies.set(COPILOT_SESSION_COOKIE, token, copilotSessionCookieOptions());
     return response;
   } catch (error) {

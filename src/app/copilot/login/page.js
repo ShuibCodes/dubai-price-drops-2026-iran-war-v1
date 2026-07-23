@@ -5,18 +5,29 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import logo from "@/app/images/1416-logo.png";
 
-function safeNextPath(raw) {
-  // Only allow same-site copilot paths to avoid open redirects.
-  if (typeof raw === "string" && raw.startsWith("/copilot/") && !raw.startsWith("//")) {
+function homePathForTenant(tenantSlug) {
+  const slug = String(tenantSlug || "").trim();
+  if (!slug) return "/copilot/login";
+  return `/copilot/${encodeURIComponent(slug)}`;
+}
+
+/** Only honor ?next= when it targets the signed-in user's tenant. */
+function safeNextPath(raw, tenantSlug) {
+  const home = homePathForTenant(tenantSlug);
+  if (typeof raw !== "string" || !raw.startsWith("/copilot/") || raw.startsWith("//")) {
+    return home;
+  }
+  const expectedPrefix = `/copilot/${encodeURIComponent(String(tenantSlug || "").trim())}`;
+  if (raw === expectedPrefix || raw.startsWith(`${expectedPrefix}/`)) {
     return raw;
   }
-  return "/copilot/1416";
+  return home;
 }
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const next = safeNextPath(searchParams.get("next"));
+  const requestedNext = searchParams.get("next");
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -42,6 +53,7 @@ function LoginForm() {
         return;
       }
 
+      const next = safeNextPath(requestedNext, data.tenantSlug);
       router.replace(next);
       router.refresh();
     } catch {

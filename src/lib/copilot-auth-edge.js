@@ -22,28 +22,60 @@ async function hmacSha256Hex(secret, message) {
   return toHex(sig);
 }
 
+function safeEqualHex(a, b) {
+  if (a.length !== b.length) return false;
+  let match = true;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) match = false;
+  }
+  return match;
+}
+
+/**
+ * @returns {Promise<{ v: number, exp: number, username: string, tenantSlug: string } | null>}
+ */
 export async function verifyCopilotSessionTokenEdge(token) {
   const secret = process.env.COPILOT_SESSION_SECRET;
-  if (!secret || !token) return false;
+  if (!secret || !token) return null;
 
   const sep = token.lastIndexOf("|");
-  if (sep === -1) return false;
+  if (sep === -1) return null;
 
   const body = token.slice(0, sep);
   const sig = token.slice(sep + 1);
   const expected = await hmacSha256Hex(secret, body);
-  if (sig.length !== expected.length) return false;
-
-  let match = true;
-  for (let i = 0; i < sig.length; i++) {
-    if (sig[i] !== expected[i]) match = false;
-  }
-  if (!match) return false;
+  if (!safeEqualHex(sig, expected)) return null;
 
   try {
     const payload = JSON.parse(body);
-    return Boolean(payload?.exp && Date.now() <= payload.exp);
+    if (!payload?.exp || Date.now() > payload.exp) return null;
+    const tenantSlug = String(payload.tenantSlug || "").trim();
+    const username = String(payload.username || "").trim();
+    if (!tenantSlug || !username) return null;
+    return {
+      v: Number(payload.v) || 2,
+      exp: payload.exp,
+      username,
+      tenantSlug,
+    };
   } catch {
-    return false;
+    return null;
   }
+}
+
+export function tenantSlugFromCopilotPath(pathname) {
+  const path = String(pathname || "");
+  const pageMatch = path.match(/^\/copilot\/([^/]+)(?:\/|$)/);
+  if (pageMatch) {
+    const segment = decodeURIComponent(pageMatch[1]);
+    if (segment === "login") return null;
+    return segment;
+  }
+  const apiMatch = path.match(/^\/api\/copilot\/([^/]+)(?:\/|$)/);
+  if (apiMatch) {
+    const segment = decodeURIComponent(apiMatch[1]);
+    if (segment === "auth") return null;
+    return segment;
+  }
+  return null;
 }
