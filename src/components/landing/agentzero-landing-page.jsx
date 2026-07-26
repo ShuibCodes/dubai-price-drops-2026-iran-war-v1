@@ -3,7 +3,31 @@
 import { animate, useInView } from "framer-motion";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
+import logo1416 from "@/app/images/1416-logo.png";
+import logoCondCity from "@/app/images/cond-city-logo.png";
 import dubaiMap from "@/app/images/dubai-map.webp";
+import logoSterling from "@/app/images/sterling.jpg";
+
+const CLIENT_LOGOS = [
+  {
+    src: logo1416,
+    alt: "14:16",
+    name: "14:16",
+    className: "h-8 w-auto sm:h-10 lg:h-11",
+  },
+  {
+    src: logoSterling,
+    alt: "Sterling Boulevard",
+    name: "Sterling Boulevard",
+    className: "h-11 w-11 rounded-md object-cover sm:h-14 sm:w-14 lg:h-16 lg:w-16",
+  },
+  {
+    src: logoCondCity,
+    alt: "Cond City",
+    name: "Cond City",
+    className: "h-8 w-auto max-w-[85%] object-contain sm:h-10 lg:h-11",
+  },
+];
 
 const WHATSAPP_URL = "https://wa.me/971585690693";
 
@@ -92,12 +116,17 @@ export default function AgentZeroLandingPage() {
       </section>
 
       <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-        <div className="max-w-5xl">
+        <div>
           <div className="inline-flex rounded-full border border-[#ff2d55]/25 bg-[#ff2d55]/10 px-4 py-2 text-[11px] uppercase tracking-[0.28em] text-[#ff9ab0]">
             For Dubai real estate brokerages
           </div>
-          <h1 className="mt-8 text-4xl font-semibold leading-tight sm:text-6xl">
-            A broker&apos;s brain that never sleeps
+          <h1 className="mt-8 text-balance text-[2rem] font-semibold leading-[1.15] tracking-tight sm:text-5xl sm:leading-[1.12] lg:text-[4.25rem] lg:leading-[1.08]">
+            Either you get{" "}
+            <em className="italic text-[#ff2d55]">25% more conversions</em>{" "}
+            <span className="lg:block">
+              in 45 days — or{" "}
+              <em className="whitespace-nowrap italic">we work for free.</em>
+            </span>
           </h1>
           <p className="mt-6 max-w-4xl text-base leading-8 text-white/65 sm:text-lg">
             Remembers every lead and conversation — and acts on it.
@@ -120,6 +149,20 @@ export default function AgentZeroLandingPage() {
           <div className="mono text-[11px] uppercase tracking-[0.32em] text-white/35">
             Proven in the market
           </div>
+        </div>
+        <div className="mb-10 grid grid-cols-3 gap-3 sm:gap-5">
+          {CLIENT_LOGOS.map((logo) => (
+            <div
+              key={logo.name}
+              className="flex h-16 items-center justify-center rounded-2xl bg-white px-2 sm:h-20 sm:rounded-[20px] sm:px-5 lg:h-24"
+            >
+              <Image
+                src={logo.src}
+                alt={logo.alt}
+                className={logo.className}
+              />
+            </div>
+          ))}
         </div>
         <div className="grid gap-6 lg:grid-cols-2">
           <article className="rounded-[32px] border border-[#ff2d55]/20 bg-[#ff2d55]/[0.06] p-8 sm:p-10">
