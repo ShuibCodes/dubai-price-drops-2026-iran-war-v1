@@ -10,22 +10,22 @@ import logoSterling from "@/app/images/sterling.jpg";
 
 const CLIENT_LOGOS = [
   {
-    src: logo1416,
-    alt: "14:16",
-    name: "14:16",
-    className: "h-8 w-auto sm:h-10 lg:h-11",
-  },
-  {
     src: logoSterling,
     alt: "Sterling Boulevard",
     name: "Sterling Boulevard",
-    className: "h-11 w-11 rounded-md object-cover sm:h-14 sm:w-14 lg:h-16 lg:w-16",
+    className: "h-10 w-10 rounded-md object-cover sm:h-12 sm:w-12",
+  },
+  {
+    src: logo1416,
+    alt: "14:16",
+    name: "14:16",
+    className: "h-8 w-auto max-h-10 object-contain sm:h-10",
   },
   {
     src: logoCondCity,
     alt: "Cond City",
     name: "Cond City",
-    className: "h-8 w-auto max-w-[85%] object-contain sm:h-10 lg:h-11",
+    className: "h-8 w-auto max-h-10 max-w-[9.5rem] object-contain sm:h-10 sm:max-w-[11rem]",
   },
 ];
 
@@ -71,8 +71,8 @@ const BROKERAGE_FEATURES = [
 const PLAN_FEATURES = [
   "Full CRM integration (Property Finder, Bayut, and more)",
   "AI lead nurturing",
-  "30 AI calls a day",
-  "Native WhatsApp ... no app, no login, your agents just text a new contact",
+  "40-60 AI calls a day",
+  "Native WhatsApp, or custom platform login",
 ];
 
 function GoldCheck() {
@@ -115,28 +115,28 @@ export default function AgentZeroLandingPage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
+      <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
         <div>
-          <div className="inline-flex rounded-full border border-[#ff2d55]/25 bg-[#ff2d55]/10 px-4 py-2 text-[11px] uppercase tracking-[0.28em] text-[#ff9ab0]">
+          <div className="inline-flex max-w-full rounded-full border border-[#ff2d55]/25 bg-[#ff2d55]/10 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-[#ff9ab0] sm:px-4 sm:text-[11px] sm:tracking-[0.28em]">
             For Dubai real estate brokerages
           </div>
-          <h1 className="mt-8 text-balance text-[2rem] font-semibold leading-[1.15] tracking-tight sm:text-5xl sm:leading-[1.12] lg:text-[4.25rem] lg:leading-[1.08]">
+          <h1 className="mt-6 text-balance text-[1.9rem] font-semibold leading-[1.18] tracking-tight sm:mt-8 sm:text-5xl sm:leading-[1.12] lg:text-[4.25rem] lg:leading-[1.08]">
             Either you get{" "}
             <em className="italic text-[#ff2d55]">25% more conversions</em>{" "}
             <span className="lg:block">
               in 45 days — or{" "}
-              <em className="whitespace-nowrap italic">we work for free.</em>
+              <em className="italic">we work for free.</em>
             </span>
           </h1>
-          <p className="mt-6 max-w-4xl text-base leading-8 text-white/65 sm:text-lg">
+          <p className="mt-5 max-w-4xl text-base leading-7 text-white/65 sm:mt-6 sm:text-lg sm:leading-8">
             Remembers every lead and conversation — and acts on it.
           </p>
-          <div className="mt-8 flex flex-wrap gap-3">
+          <div className="mt-7 flex flex-wrap gap-3 sm:mt-8">
             <a
               href={WHATSAPP_URL}
               target="_blank"
               rel="noreferrer"
-              className="rounded-full bg-[#ff2d55] px-6 py-3 text-sm font-semibold text-white transition hover:opacity-90"
+              className="inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
             >
               Book a call
             </a>
@@ -144,17 +144,17 @@ export default function AgentZeroLandingPage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 pb-20 sm:px-6 lg:px-8">
-        <div className="mb-8">
-          <div className="mono text-[11px] uppercase tracking-[0.32em] text-white/35">
+      <section className="mx-auto max-w-7xl px-4 pb-14 sm:px-6 sm:pb-20 lg:px-8">
+        <div className="mb-6 sm:mb-8">
+          <div className="text-sm font-bold uppercase tracking-[0.18em] text-white sm:text-base">
             Proven in the market
           </div>
         </div>
-        <div className="mb-10 grid grid-cols-3 gap-3 sm:gap-5">
+        <div className="mb-8 flex flex-col items-center gap-3 sm:mb-10 sm:flex-row sm:items-center sm:gap-5">
           {CLIENT_LOGOS.map((logo) => (
             <div
               key={logo.name}
-              className="flex h-16 items-center justify-center rounded-2xl bg-white px-2 sm:h-20 sm:rounded-[20px] sm:px-5 lg:h-24"
+              className="flex h-20 w-40 shrink-0 items-center justify-center rounded-2xl bg-white p-5 sm:h-28 sm:w-52 sm:rounded-[20px] sm:p-7"
             >
               <Image
                 src={logo.src}
@@ -164,104 +164,104 @@ export default function AgentZeroLandingPage() {
             </div>
           ))}
         </div>
-        <div className="grid gap-6 lg:grid-cols-2">
-          <article className="rounded-[32px] border border-[#ff2d55]/20 bg-[#ff2d55]/[0.06] p-8 sm:p-10">
+        <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
+          <article className="rounded-[28px] border border-[#ff2d55]/20 bg-[#ff2d55]/[0.06] p-6 sm:rounded-[32px] sm:p-10">
             <div className="flex flex-wrap items-baseline gap-x-2 font-semibold leading-none text-white">
-              <span className="text-2xl text-white/70 sm:text-3xl">AED</span>
-              <span className="text-5xl tracking-tight text-[#ff2d55] sm:text-6xl">
+              <span className="text-xl text-white/70 sm:text-3xl">AED</span>
+              <span className="text-4xl tracking-tight text-[#ff2d55] sm:text-6xl">
                 <CountUp
                   to={7500000}
                   format={(v) => Math.round(v).toLocaleString()}
                 />
               </span>
-              <span className="text-4xl text-[#ff2d55] sm:text-5xl">+</span>
+              <span className="text-3xl text-[#ff2d55] sm:text-5xl">+</span>
             </div>
-            <p className="mt-5 text-lg leading-7 text-white/65">
+            <p className="mt-4 text-base leading-7 text-white/65 sm:mt-5 sm:text-lg">
               Sold with AI
             </p>
           </article>
 
-          <article className="rounded-[32px] border border-white/10 bg-white/[0.03] p-8 sm:p-10">
-            <div className="text-5xl font-semibold leading-none tracking-tight text-[#ffd60a] sm:text-6xl">
+          <article className="rounded-[28px] border border-white/10 bg-white/[0.03] p-6 sm:rounded-[32px] sm:p-10">
+            <div className="text-4xl font-semibold leading-none tracking-tight text-[#ffd60a] sm:text-6xl">
               <CountUp to={7} />
             </div>
-            <p className="mt-5 text-lg leading-7 text-white/65">
+            <p className="mt-4 text-base leading-7 text-white/65 sm:mt-5 sm:text-lg">
               years of broker experience, built in
             </p>
           </article>
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 pb-20 sm:px-6 lg:px-8">
-        <div className="grid gap-10 lg:grid-cols-2 lg:items-center">
+      <section className="mx-auto max-w-7xl px-4 pb-14 sm:px-6 sm:pb-20 lg:px-8">
+        <div className="grid gap-8 lg:grid-cols-2 lg:items-center lg:gap-10">
           <div>
             <div className="mono text-[11px] uppercase tracking-[0.32em] text-white/35">
               How it works
             </div>
-            <h2 className="mt-4 text-3xl font-semibold text-white sm:text-4xl">
+            <h2 className="mt-4 text-[1.7rem] font-semibold leading-tight text-white sm:text-4xl">
               Text it like a colleague. It does the rest.
             </h2>
-            <p className="mt-5 text-base leading-8 text-white/75 sm:text-lg">
+            <p className="mt-5 text-base leading-7 text-white/75 sm:text-lg sm:leading-8">
               Every brokerage&apos;s know-how is scattered — in people&apos;s heads, old
               emails, WhatsApp threads. AgentZero pulls it together and keeps it current —{" "}
               <span className="font-semibold text-[#ffd60a]">then puts it to work</span>:
               calling leads by AI voice, emailing listing packs, and following up across
               channels, all on your behalf.
             </p>
-            <div className="mt-8 flex flex-wrap gap-3">
+            <div className="mt-7 flex flex-wrap gap-3 sm:mt-8">
               <a
                 href={WHATSAPP_URL}
                 target="_blank"
                 rel="noreferrer"
-                className="rounded-full bg-[#ff2d55] px-6 py-3 text-sm font-semibold text-white transition hover:opacity-90"
+                className="inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
               >
                 Request access
               </a>
             </div>
           </div>
-          <div className="overflow-hidden rounded-[28px] border border-white/10 bg-black">
+          <div className="overflow-hidden rounded-[24px] border border-white/10 bg-black sm:rounded-[28px]">
             <iframe
               src="/agentzero-chat.html"
               title="AgentZero animated demo"
               loading="lazy"
               scrolling="no"
               sandbox="allow-scripts allow-same-origin"
-              className="h-[420px] w-full lg:h-[520px]"
+              className="h-[380px] w-full sm:h-[420px] lg:h-[520px]"
             />
           </div>
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 pb-20 sm:px-6 lg:px-8">
-        <div className="grid gap-10 lg:grid-cols-2 lg:items-center">
-          <div className="overflow-hidden rounded-[28px] border border-white/10 bg-black lg:order-1">
+      <section className="mx-auto max-w-7xl px-4 pb-14 sm:px-6 sm:pb-20 lg:px-8">
+        <div className="grid gap-8 lg:grid-cols-2 lg:items-center lg:gap-10">
+          <div className="order-2 overflow-hidden rounded-[24px] border border-white/10 bg-black sm:rounded-[28px] lg:order-1">
             <iframe
               src="/AgentZero-chat-2.html"
               title="AgentZero predictive lead demo"
               loading="lazy"
               scrolling="no"
               sandbox="allow-scripts allow-same-origin"
-              className="h-[420px] w-full lg:h-[520px]"
+              className="h-[380px] w-full sm:h-[420px] lg:h-[520px]"
             />
           </div>
-          <div className="lg:order-2">
+          <div className="order-1 lg:order-2">
             <div className="mono text-[11px] uppercase tracking-[0.32em] text-white/35">
               Why it wins
             </div>
-            <h2 className="mt-4 text-3xl font-semibold text-white sm:text-4xl">
+            <h2 className="mt-4 text-[1.7rem] font-semibold leading-tight text-white sm:text-4xl">
               Your rivals are calling the same leads. You&apos;ll call the right one first.
             </h2>
-            <p className="mt-5 text-base leading-8 text-white/75 sm:text-lg">
+            <p className="mt-5 text-base leading-7 text-white/75 sm:text-lg sm:leading-8">
               AgentZero reads across every chat, email and call to predict your next most
               likely close — then contacts and nurtures them for you, without you ever
               leaving WhatsApp.
             </p>
-            <div className="mt-8 flex flex-wrap gap-3">
+            <div className="mt-7 flex flex-wrap gap-3 sm:mt-8">
               <a
                 href={WHATSAPP_URL}
                 target="_blank"
                 rel="noreferrer"
-                className="rounded-full bg-[#ff2d55] px-6 py-3 text-sm font-semibold text-white transition hover:opacity-90"
+                className="inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
               >
                 Get access
               </a>
@@ -270,64 +270,66 @@ export default function AgentZeroLandingPage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 pb-20 sm:px-6 lg:px-8">
-        <div className="grid gap-10 lg:grid-cols-2 lg:items-center">
+      <section className="mx-auto max-w-7xl px-4 pb-14 sm:px-6 sm:pb-20 lg:px-8">
+        <div className="grid gap-8 lg:grid-cols-2 lg:items-center lg:gap-10">
           <div>
             <div className="mono text-[11px] uppercase tracking-[0.32em] text-white/35">
               Compounding edge
             </div>
-            <h2 className="mt-4 text-3xl font-semibold text-white sm:text-4xl">
+            <h2 className="mt-4 text-[1.7rem] font-semibold leading-tight text-white sm:text-4xl">
               Month one, it answers. Month six, it predicts.
             </h2>
-            <p className="mt-5 text-base leading-8 text-white/75 sm:text-lg">
+            <p className="mt-5 text-base leading-7 text-white/75 sm:text-lg sm:leading-8">
               Every chat, call and closed deal feeds one brain. AgentZero learns
               which communities are moving, what buyers actually pay there, and
               which of today&apos;s leads look like your last ten closes... then
               points your agents at them first.
             </p>
-            <p className="mt-8 text-lg font-semibold text-[#ffd60a] sm:text-xl">
+            <p className="mt-7 text-lg font-semibold text-[#ffd60a] sm:mt-8 sm:text-xl">
               6 months AI-native = 2 years ahead.
             </p>
           </div>
-          <div className="overflow-hidden rounded-[28px] border border-white/10 bg-black">
+          <div className="overflow-hidden rounded-[24px] border border-white/10 bg-black sm:rounded-[28px]">
             <Image
               src={dubaiMap}
               alt="AgentZero mapping which Dubai communities are moving"
-              className="h-[320px] w-full object-cover object-[50%_22%] sm:h-[380px] lg:h-[440px]"
+              className="h-[280px] w-full object-cover object-[50%_22%] sm:h-[380px] lg:h-[440px]"
               placeholder="blur"
             />
           </div>
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 pb-20 sm:px-6 lg:px-8">
-        <div className="mb-8">
+      <section className="mx-auto max-w-7xl px-4 pb-14 sm:px-6 sm:pb-20 lg:px-8">
+        <div className="mb-6 sm:mb-8">
           <div className="mono text-[11px] uppercase tracking-[0.32em] text-white/35">
             Product stack
           </div>
-          <h2 className="mt-4 text-3xl font-semibold text-white">
+          <h2 className="mt-4 text-[1.7rem] font-semibold text-white sm:text-3xl">
             What brokerages get
           </h2>
         </div>
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-4">
           {BROKERAGE_FEATURES.map((item) => (
             <article
               key={item.name}
-              className="rounded-[28px] border border-white/10 bg-white/[0.03] p-7"
+              className="rounded-[24px] border border-white/10 bg-white/[0.03] p-6 sm:rounded-[28px] sm:p-7"
             >
-              <div className="text-sm uppercase tracking-[0.28em] text-[#ffd60a]">✅ {item.name}</div>
-              <p className="mt-5 text-sm leading-7 text-white/75">{item.description}</p>
+              <div className="text-xs uppercase tracking-[0.22em] text-[#ffd60a] sm:text-sm sm:tracking-[0.28em]">
+                ✅ {item.name}
+              </div>
+              <p className="mt-4 text-sm leading-7 text-white/75 sm:mt-5">{item.description}</p>
             </article>
           ))}
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 pb-20 sm:px-6 lg:px-8">
-        <div className="rounded-[32px] border border-[#ff2d55]/20 bg-[#ff2d55]/[0.06] p-7 sm:p-10">
-          <p className="text-2xl font-semibold leading-tight text-white sm:text-3xl">
+      <section className="mx-auto max-w-7xl px-4 pb-14 sm:px-6 sm:pb-20 lg:px-8">
+        <div className="rounded-[28px] border border-[#ff2d55]/20 bg-[#ff2d55]/[0.06] p-6 sm:rounded-[32px] sm:p-10">
+          <p className="text-xl font-semibold leading-tight text-white sm:text-3xl">
             Most AI tools are built on your data but owned by someone else. This one isn&apos;t.
           </p>
-          <p className="mt-5 text-base leading-8 text-white/75 sm:text-lg">
+          <p className="mt-4 text-base leading-7 text-white/75 sm:mt-5 sm:text-lg sm:leading-8">
             Every deal trains the system — so when a new agent joins, their AgentZero
             already knows your clients, your market, and how your best people close. They
             ramp in days, not months.
@@ -335,32 +337,32 @@ export default function AgentZeroLandingPage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 pb-20 sm:px-6 lg:px-8">
-        <div className="mb-8">
+      <section className="mx-auto max-w-7xl px-4 pb-14 sm:px-6 sm:pb-20 lg:px-8">
+        <div className="mb-6 sm:mb-8">
           <div className="mono text-[11px] uppercase tracking-[0.32em] text-[#ffd60a]">
             Pricing
           </div>
-          <h2 className="mt-4 text-3xl font-semibold text-white sm:text-4xl">
+          <h2 className="mt-4 text-[1.7rem] font-semibold leading-tight text-white sm:text-4xl">
             Plans that scale with your roster
           </h2>
         </div>
 
-        <div className="grid items-stretch gap-6 lg:grid-cols-2">
-          <article className="flex flex-col rounded-[32px] border border-[#ffd60a]/40 bg-white/[0.03] p-8 transition hover:-translate-y-1 sm:p-10">
-            <div className="flex items-center gap-3">
+        <div className="grid items-stretch gap-4 sm:gap-6 lg:grid-cols-2">
+          <article className="flex flex-col rounded-[28px] border border-[#ffd60a]/40 bg-white/[0.03] p-6 transition hover:-translate-y-1 sm:rounded-[32px] sm:p-10">
+            <div className="flex flex-wrap items-center gap-3">
               <h3 className="text-xl font-semibold text-white">Per Agent</h3>
               <span className="rounded-full bg-[#ffd60a] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-black">
                 Most popular
               </span>
             </div>
-            <div className="mt-6 flex items-baseline gap-2">
-              <span className="text-5xl font-semibold leading-none text-white">
+            <div className="mt-5 flex items-baseline gap-2 sm:mt-6">
+              <span className="text-4xl font-semibold leading-none text-white sm:text-5xl">
                 AED 750
               </span>
             </div>
             <p className="mt-2 text-sm text-[#a1a1a1]">/ agent / month</p>
 
-            <ul className="mt-8 space-y-4">
+            <ul className="mt-7 space-y-4 sm:mt-8">
               {PLAN_FEATURES.map((feature) => (
                 <li key={feature} className="flex items-start gap-3">
                   <GoldCheck />
@@ -369,28 +371,28 @@ export default function AgentZeroLandingPage() {
               ))}
             </ul>
 
-            <div className="mt-auto pt-10">
+            <div className="mt-auto pt-8 sm:pt-10">
               <a
                 href={WHATSAPP_URL}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex w-full justify-center rounded-full bg-[#ffd60a] px-6 py-3 text-sm font-semibold text-black transition hover:opacity-90"
+                className="inline-flex w-full justify-center rounded-full bg-[#ffd60a] px-6 py-3.5 text-sm font-semibold text-black transition hover:opacity-90 sm:py-3"
               >
                 Get started
               </a>
             </div>
           </article>
 
-          <article className="flex flex-col rounded-[32px] border border-[#ffd60a]/10 bg-white/[0.03] p-8 transition hover:-translate-y-1 sm:p-10">
+          <article className="flex flex-col rounded-[28px] border border-[#ffd60a]/10 bg-white/[0.03] p-6 transition hover:-translate-y-1 sm:rounded-[32px] sm:p-10">
             <h3 className="text-xl font-semibold text-white">Brokerage</h3>
-            <div className="mt-6 flex items-baseline gap-2">
-              <span className="text-5xl font-semibold leading-none text-white">
+            <div className="mt-5 flex items-baseline gap-2 sm:mt-6">
+              <span className="text-4xl font-semibold leading-none text-white sm:text-5xl">
                 Custom
               </span>
             </div>
             <p className="mt-2 text-sm text-[#a1a1a1]">tailored to your roster</p>
 
-            <ul className="mt-8 space-y-4">
+            <ul className="mt-7 space-y-4 sm:mt-8">
               {PLAN_FEATURES.map((feature) => (
                 <li key={feature} className="flex items-start gap-3">
                   <GoldCheck />
@@ -399,12 +401,12 @@ export default function AgentZeroLandingPage() {
               ))}
             </ul>
 
-            <div className="mt-auto pt-10">
+            <div className="mt-auto pt-8 sm:pt-10">
               <a
                 href={WHATSAPP_URL}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex w-full justify-center rounded-full border border-[#ffd60a]/60 px-6 py-3 text-sm font-semibold text-[#ffd60a] transition hover:bg-[#ffd60a]/10"
+                className="inline-flex w-full justify-center rounded-full border border-[#ffd60a]/60 px-6 py-3.5 text-sm font-semibold text-[#ffd60a] transition hover:bg-[#ffd60a]/10 sm:py-3"
               >
                 Request pricing
               </a>
@@ -412,7 +414,7 @@ export default function AgentZeroLandingPage() {
           </article>
         </div>
 
-        <div className="mt-6 rounded-[20px] border-l-2 border-[#ffd60a] bg-[#ffd60a]/[0.06] px-6 py-5 text-center">
+        <div className="mt-5 rounded-[20px] border-l-2 border-[#ffd60a] bg-[#ffd60a]/[0.06] px-5 py-4 text-center sm:mt-6 sm:px-6 sm:py-5">
           <p className="text-base leading-7 text-white/85 sm:text-lg">
             Don&apos;t close a deal within 6 weeks?{" "}
             <span className="font-semibold text-[#ffd60a]">Pay nothing.</span>
@@ -420,17 +422,17 @@ export default function AgentZeroLandingPage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 pb-20 sm:px-6 lg:px-8">
-        <div className="rounded-[32px] border border-white/10 bg-white/[0.03] p-8 text-center sm:p-12">
-          <p className="text-2xl font-semibold leading-tight text-white sm:text-4xl">
+      <section className="mx-auto max-w-7xl px-4 pb-14 sm:px-6 sm:pb-20 lg:px-8">
+        <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-7 text-center sm:rounded-[32px] sm:p-12">
+          <p className="text-xl font-semibold leading-tight text-white sm:text-4xl">
             Your best agent can&apos;t be everywhere. AgentZero can.
           </p>
-          <div className="mt-8">
+          <div className="mt-7 sm:mt-8">
             <a
               href={WHATSAPP_URL}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex rounded-full bg-[#ff2d55] px-8 py-3 text-sm font-semibold text-white transition hover:opacity-90"
+              className="inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-8 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
             >
               Book a call
             </a>
