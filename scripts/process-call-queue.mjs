@@ -9,17 +9,31 @@ import {
 
 applyEnv(loadEnvFile());
 
-const MAX_DIALS_PER_RUN = 15;
+const MAX_DIALS_PER_RUN = Number(process.env.CALL_QUEUE_MAX_DIALS_PER_RUN || 30);
 const DIAL_DELAY_MS = Number(process.env.CALL_QUEUE_DIAL_DELAY_MS || 1500);
-let runSummary = { processed: 0, skipped: 0, rescheduled: 0, failed: 0 };
+const RETRY_DELAY_MIN = Number(process.env.CALL_QUEUE_RETRY_DELAY_MIN || 5);
+// After this many consecutive concurrency rejections, Vapi is saturated —
+// stop burning the rest of the run and let the next tick pick the queue up.
+const MAX_CONSECUTIVE_CONCURRENCY_ERRORS = 3;
+let runSummary = { processed: 0, skipped: 0, rescheduled: 0, failed: 0, retried: 0 };
+
+// Vapi rejections that resolve on their own: over-concurrency (calls in
+// flight) and 5xx. These rows are retried later, never permanently failed.
+function isTransientDialError(message) {
+  const text = String(message || "");
+  return (
+    /over concurrency limit/i.test(text) ||
+    /\((5\d\d)\)/.test(text)
+  );
+}
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function logSummary({ processed, skipped, rescheduled, failed }, suffix = "") {
+function logSummary({ processed, skipped, rescheduled, failed, retried }, suffix = "") {
   console.log(
-    `call_queue summary processed=${processed} skipped=${skipped} rescheduled=${rescheduled} failed=${failed}${suffix}`
+    `call_queue summary processed=${processed} skipped=${skipped} rescheduled=${rescheduled} failed=${failed} retried=${retried}${suffix}`
   );
 }
 
@@ -42,7 +56,7 @@ async function claimQueueRow(supabase, id) {
 }
 
 async function main({ dryRun = false } = {}) {
-  runSummary = { processed: 0, skipped: 0, rescheduled: 0, failed: 0 };
+  runSummary = { processed: 0, skipped: 0, rescheduled: 0, failed: 0, retried: 0 };
   const summary = runSummary;
 
   // No global business-hours exit: the worker runs 24/7 and each row is gated
@@ -76,9 +90,14 @@ async function main({ dryRun = false } = {}) {
   }
 
   let dialAttempts = 0;
+  let consecutiveConcurrencyErrors = 0;
 
   for (const item of queueRows) {
     if (dialAttempts >= MAX_DIALS_PER_RUN) break;
+    if (consecutiveConcurrencyErrors >= MAX_CONSECUTIVE_CONCURRENCY_ERRORS) {
+      console.log("call_queue: Vapi concurrency saturated, ending run early");
+      break;
+    }
 
     const lead = item.leads;
     const tenant = await getOutboundTenant(supabase, item.tenant_id);
@@ -140,11 +159,28 @@ async function main({ dryRun = false } = {}) {
         processed_at: new Date().toISOString(),
       });
       summary.processed += 1;
+      consecutiveConcurrencyErrors = 0;
     } catch (error) {
+      const message = String(error.message || "Dial failed");
+      if (isTransientDialError(message)) {
+        // Release the claim and push the row out so a later run retries it.
+        await updateQueueRow(supabase, item.id, {
+          processing_started_at: null,
+          scheduled_for: new Date(
+            Date.now() + RETRY_DELAY_MIN * 60 * 1000
+          ).toISOString(),
+          failure_reason: `retrying: ${message}`.slice(0, 1000),
+        });
+        summary.retried += 1;
+        if (/over concurrency limit/i.test(message)) {
+          consecutiveConcurrencyErrors += 1;
+        }
+        continue;
+      }
       await updateQueueRow(supabase, item.id, {
         processed: true,
         failed_at: new Date().toISOString(),
-        failure_reason: String(error.message || "Dial failed").slice(0, 1000),
+        failure_reason: message.slice(0, 1000),
       });
       summary.failed += 1;
     }

@@ -175,8 +175,8 @@ CSV headers are matched case-insensitively against `PIXXI_COLUMN_MAP` in the scr
 ## 8. Queue drainer (cron)
 
 Outside business hours, inbound leads and batch rows are queued. The drainer claims
-due rows oldest-first, attempts at most 15 calls, and exits. For a safe read-only
-local check:
+due rows oldest-first, attempts at most `CALL_QUEUE_MAX_DIALS_PER_RUN` calls
+(default 30), and exits. For a safe read-only local check:
 
 ```bash
 node scripts/process-call-queue.mjs --dry-run
@@ -192,8 +192,14 @@ Create a second Railway service from this same repository:
 - **Required variables:** `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
   `VAPI_API_KEY`, `VAPI_ASSISTANT_ID`, and `VAPI_PHONE_NUMBER_ID`
 - **Optional variables:** `VAPI_BASE_URL`, `VAPI_CALL_CREATE_PATH`,
-  `CALLS_BUSINESS_HOURS_START`, `CALLS_BUSINESS_HOURS_END`, and
-  `CALL_QUEUE_DIAL_DELAY_MS`
+  `CALLS_BUSINESS_HOURS_START`, `CALLS_BUSINESS_HOURS_END`,
+  `CALL_QUEUE_DIAL_DELAY_MS`, `CALL_QUEUE_MAX_DIALS_PER_RUN` (default 30),
+  and `CALL_QUEUE_RETRY_DELAY_MIN` (default 5)
+
+Transient Vapi rejections ("Over Concurrency Limit", 5xx) are NOT marked
+failed: the row is released and rescheduled `CALL_QUEUE_RETRY_DELAY_MIN`
+minutes out, and after 3 consecutive concurrency rejections the run ends
+early to let in-flight calls finish before the next tick.
 
 Apply the call-queue cron-state migration before enabling the service. Business
 hours are enforced per lead in the LEAD's local timezone (derived from the phone
