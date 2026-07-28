@@ -1,16 +1,16 @@
 import Anthropic from "@anthropic-ai/sdk";
-import {
-  getCallDetail,
-  getLatestMessages,
-  getLeadStory,
-  getPendingCallbacks,
-  searchConversations,
-  searchLeadByName,
-  startColdBatch,
-  startTargetCall,
-} from "@/lib/copilot/tools";
+import { startColdBatch } from "@/lib/copilot/tools";
 import { draftLeadEmail, sendDraftEmail } from "@/lib/jarvis/email";
-import { getRecentConversations, formatLiveContext } from "@/lib/kb/live-conversations";
+import {
+  getJarvisCallDetail,
+  getJarvisLatestMessages,
+  getJarvisLeadStory,
+  getJarvisPendingCallbacks,
+  searchJarvisConversations,
+  searchJarvisLeadByName,
+  startJarvisTargetCall,
+} from "@/lib/jarvis/leads-tools";
+import { getJarvisRecentConversations, formatLiveContext } from "@/lib/kb/live-conversations";
 
 const MODEL = "claude-sonnet-4-6";
 const MAX_TOOL_ROUNDS = 5;
@@ -204,17 +204,17 @@ function previousAssistantMentioned(messages, pattern) {
 async function executeTool({ name, input, tenantId, agentName, messages }) {
   switch (name) {
     case "get_latest_messages":
-      return getLatestMessages(tenantId, input.limit);
+      return getJarvisLatestMessages(tenantId, input.limit);
     case "search_lead_by_name":
-      return searchLeadByName(tenantId, input.name);
+      return searchJarvisLeadByName(tenantId, input.name);
     case "get_lead_story":
-      return getLeadStory(tenantId, input.leadId);
+      return getJarvisLeadStory(tenantId, input.leadId);
     case "search_conversations":
-      return searchConversations(tenantId, input.query);
+      return searchJarvisConversations(tenantId, input.query);
     case "get_call_detail":
-      return getCallDetail(tenantId, input);
+      return getJarvisCallDetail(tenantId, input);
     case "get_pending_callbacks":
-      return getPendingCallbacks(tenantId);
+      return getJarvisPendingCallbacks(tenantId);
     case "start_target_call": {
       if (
         !latestUserAffirmed(messages) ||
@@ -227,7 +227,7 @@ async function executeTool({ name, input, tenantId, agentName, messages }) {
             "Ask the user to confirm the call (name + phone). Do not call the tool again this turn.",
         };
       }
-      return startTargetCall(tenantId, input.leadId, agentName || "Jarvis");
+      return startJarvisTargetCall(tenantId, input.leadId, agentName || "Jarvis");
     }
     case "start_cold_batch": {
       const count = Number(input.count);
@@ -280,7 +280,7 @@ export async function runJarvisTurn({ tenantId, messages, agentName }) {
 
   let liveContext = "";
   try {
-    const conversations = await getRecentConversations(tenantId, {
+    const conversations = await getJarvisRecentConversations(tenantId, {
       limit: 5,
       messageLimit: 8,
     });

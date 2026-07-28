@@ -1,4 +1,5 @@
 import { getSupabaseServerClient, normalizeWaId, MESSAGES_TABLE } from "@/lib/supabase/server";
+import { JARVIS_LEADS_TABLE } from "@/lib/ingest/jarvis-ingest";
 
 function formatRelativeTime(timestamp) {
   if (!timestamp) return "unknown time";
@@ -53,13 +54,11 @@ export async function getRecentConversations(tenantId, { limit = 5, messageLimit
   const supabase = getSupabaseServerClient();
   if (!supabase || !tenantId) return [];
 
-  // Rank threads by actual message rows. Ordering leads by last_message_at is
-  // wrong here: the call pipeline stamps that column on leads that have zero
-  // WhatsApp messages, which crowded real threads out of the snapshot.
   const { data: recent, error: recentError } = await supabase
     .from(MESSAGES_TABLE)
     .select("lead_id, timestamp")
     .eq("tenant_id", tenantId)
+    .not("lead_id", "is", null)
     .order("timestamp", { ascending: false })
     .limit(200);
 
@@ -98,7 +97,66 @@ export async function getRecentConversations(tenantId, { limit = 5, messageLimit
 
       return {
         ...lead,
-        // Real message recency, not the call-pipeline-stamped lead column.
+        last_message_at: latestByLead.get(lead.id) || lead.last_message_at,
+        messages: (messages || []).reverse(),
+      };
+    })
+  );
+
+  return conversations;
+}
+
+/** Personal WhatsApp inbox path — jarvis_leads only. */
+export async function getJarvisRecentConversations(
+  tenantId,
+  { limit = 5, messageLimit = 10 } = {}
+) {
+  const supabase = getSupabaseServerClient();
+  if (!supabase || !tenantId) return [];
+
+  const { data: recent, error: recentError } = await supabase
+    .from(MESSAGES_TABLE)
+    .select("jarvis_lead_id, timestamp")
+    .eq("tenant_id", tenantId)
+    .not("jarvis_lead_id", "is", null)
+    .order("timestamp", { ascending: false })
+    .limit(200);
+
+  if (recentError || !recent?.length) return [];
+
+  const leadIds = [];
+  const latestByLead = new Map();
+  for (const row of recent) {
+    if (!row.jarvis_lead_id) continue;
+    if (!latestByLead.has(row.jarvis_lead_id)) {
+      latestByLead.set(row.jarvis_lead_id, row.timestamp);
+      leadIds.push(row.jarvis_lead_id);
+    }
+    if (leadIds.length >= limit) break;
+  }
+
+  const { data: leads, error: leadsError } = await supabase
+    .from(JARVIS_LEADS_TABLE)
+    .select("id, wa_id, push_name, last_message_at")
+    .in("id", leadIds);
+
+  if (leadsError || !leads?.length) return [];
+
+  const byId = new Map(leads.map((lead) => [lead.id, lead]));
+  const ordered = leadIds.map((id) => byId.get(id)).filter(Boolean);
+
+  const conversations = await Promise.all(
+    ordered.map(async (lead) => {
+      const { data: messages } = await supabase
+        .from(MESSAGES_TABLE)
+        .select("direction, body, msg_type, timestamp")
+        .eq("tenant_id", tenantId)
+        .eq("jarvis_lead_id", lead.id)
+        .order("timestamp", { ascending: false })
+        .limit(messageLimit);
+
+      return {
+        ...lead,
         last_message_at: latestByLead.get(lead.id) || lead.last_message_at,
         messages: (messages || []).reverse(),
       };

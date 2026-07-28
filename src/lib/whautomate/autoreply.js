@@ -1,5 +1,8 @@
 import { cleanupFormatting, limitWords } from "@/lib/kb/engine";
-import { insertMessageIfNew } from "@/lib/ingest/message-ingest";
+import {
+  insertJarvisMessageIfNew,
+  JARVIS_LEADS_TABLE,
+} from "@/lib/ingest/jarvis-ingest";
 import { MESSAGES_TABLE } from "@/lib/supabase/server";
 import { sendWhautomateText } from "@/lib/whautomate/send";
 
@@ -39,12 +42,12 @@ function isAutoreplyGloballyEnabled() {
   return String(process.env.WHAUTOMATE_AUTOREPLY || "").toLowerCase() === "true";
 }
 
-async function hasRecentHumanOutbound(supabase, leadId) {
+async function hasRecentHumanOutbound(supabase, jarvisLeadId) {
   const since = new Date(Date.now() - HUMAN_ACTIVE_MS).toISOString();
   const { data } = await supabase
     .from(MESSAGES_TABLE)
     .select("id")
-    .eq("lead_id", leadId)
+    .eq("jarvis_lead_id", jarvisLeadId)
     .eq("direction", "outbound")
     .eq("sent_by_bot", false)
     .gte("timestamp", since)
@@ -52,12 +55,12 @@ async function hasRecentHumanOutbound(supabase, leadId) {
   return Boolean(data?.length);
 }
 
-async function hasRecentBotReply(supabase, leadId) {
+async function hasRecentBotReply(supabase, jarvisLeadId) {
   const since = new Date(Date.now() - DEBOUNCE_MS).toISOString();
   const { data } = await supabase
     .from(MESSAGES_TABLE)
     .select("id")
-    .eq("lead_id", leadId)
+    .eq("jarvis_lead_id", jarvisLeadId)
     .eq("direction", "outbound")
     .eq("sent_by_bot", true)
     .gte("timestamp", since)
@@ -65,11 +68,11 @@ async function hasRecentBotReply(supabase, leadId) {
   return Boolean(data?.length);
 }
 
-async function loadThreadMessages(supabase, leadId, limit = 20) {
+async function loadThreadMessages(supabase, jarvisLeadId, limit = 20) {
   const { data } = await supabase
     .from(MESSAGES_TABLE)
     .select("direction, body, timestamp")
-    .eq("lead_id", leadId)
+    .eq("jarvis_lead_id", jarvisLeadId)
     .order("timestamp", { ascending: false })
     .limit(limit);
 
@@ -127,9 +130,12 @@ async function generateReply({ systemPrompt, messages }) {
   return limitWords(cleanupFormatting(rawText), 75);
 }
 
-async function pauseBot(supabase, leadId) {
+async function pauseBot(supabase, jarvisLeadId) {
   const until = new Date(Date.now() + BOT_PAUSE_MS).toISOString();
-  await supabase.from("leads").update({ bot_paused_until: until }).eq("id", leadId);
+  await supabase
+    .from(JARVIS_LEADS_TABLE)
+    .update({ bot_paused_until: until })
+    .eq("id", jarvisLeadId);
   return until;
 }
 
@@ -196,10 +202,10 @@ export async function maybeAutoReply({ supabase, tenant, lead, inboundBody }) {
   }
 
   const waMessageId = `bot-${lead.id}-${Date.now()}`;
-  await insertMessageIfNew({
+  await insertJarvisMessageIfNew({
     supabase,
     tenantId: tenant.id,
-    leadId: lead.id,
+    jarvisLeadId: lead.id,
     waMessageId,
     direction: "outbound",
     body: replyText,

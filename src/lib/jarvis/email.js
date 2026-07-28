@@ -1,5 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { getLeadStory, searchLeadByName } from "@/lib/copilot/tools";
+import {
+  getJarvisLeadStory,
+  searchJarvisLeadByName,
+} from "@/lib/jarvis/leads-tools";
 import { sendLeadEmail } from "@/lib/email/resend-client";
 
 const MODEL = "claude-sonnet-4-6";
@@ -26,12 +29,12 @@ function formatThread(events = []) {
 
 async function resolveLead(tenantId, { leadId, name }) {
   if (leadId) {
-    const story = await getLeadStory(tenantId, leadId);
+    const story = await getJarvisLeadStory(tenantId, leadId);
     if (!story?.lead) throw new Error("Lead not found");
     return story;
   }
 
-  const matches = await searchLeadByName(tenantId, name);
+  const matches = await searchJarvisLeadByName(tenantId, name);
   if (!matches.length) throw new Error(`No lead found matching "${name}"`);
   if (matches.length > 1) {
     return {
@@ -45,7 +48,7 @@ async function resolveLead(tenantId, { leadId, name }) {
     };
   }
 
-  return getLeadStory(tenantId, matches[0].id);
+  return getJarvisLeadStory(tenantId, matches[0].id);
 }
 
 export async function draftLeadEmail(tenantId, { leadId, name, to, subject, body, intent }) {

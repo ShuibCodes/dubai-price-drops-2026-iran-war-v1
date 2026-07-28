@@ -88,6 +88,7 @@ export async function dialLeadNow({
   lead,
   fields = {},
   source,
+  jarvisLead = false,
 }) {
   assertOutboundActive(tenant);
 
@@ -118,21 +119,29 @@ export async function dialLeadNow({
     },
     metadata: {
       tenantId: tenant.id,
-      leadId: lead.id,
+      leadId: jarvisLead ? null : lead.id,
+      jarvisLeadId: jarvisLead ? lead.id : null,
       pixxiLeadId: lead.pixxi_lead_id,
       source,
     },
   });
 
-  const { error } = await supabase.from("calls").insert({
+  const callRow = {
     tenant_id: tenant.id,
-    lead_id: lead.id,
     vapi_call_id: result.callId,
     direction: "outbound",
     status: "initiated",
     source,
     raw: result.raw,
-  });
+  };
+  if (jarvisLead) {
+    callRow.lead_id = null;
+    callRow.jarvis_lead_id = lead.id;
+  } else {
+    callRow.lead_id = lead.id;
+  }
+
+  const { error } = await supabase.from("calls").insert(callRow);
   if (error) throw new Error(`Call insert failed: ${error.message}`);
 
   return { callId: result.callId, status: result.status };

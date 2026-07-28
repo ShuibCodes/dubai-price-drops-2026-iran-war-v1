@@ -75,7 +75,7 @@ async function main({ dryRun = false } = {}) {
 
   const { data: queueRows, error } = await supabase
     .from("call_queue")
-    .select("id, tenant_id, lead_id, scheduled_for, source, leads(*)")
+    .select("id, tenant_id, lead_id, jarvis_lead_id, scheduled_for, source, leads(*), jarvis_leads(*)")
     .eq("processed", false)
     .is("processing_started_at", null)
     .lte("scheduled_for", now)
@@ -99,7 +99,8 @@ async function main({ dryRun = false } = {}) {
       break;
     }
 
-    const lead = item.leads;
+    const lead = item.jarvis_leads || item.leads;
+    const jarvisLead = Boolean(item.jarvis_lead_id);
     const tenant = await getOutboundTenant(supabase, item.tenant_id);
 
     if (tenant.outbound_paused) {
@@ -152,6 +153,7 @@ async function main({ dryRun = false } = {}) {
         tenant,
         lead,
         source: item.source || "pixxi-queue",
+        jarvisLead,
       });
 
       await updateQueueRow(supabase, item.id, {

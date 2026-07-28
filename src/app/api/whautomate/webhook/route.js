@@ -1,5 +1,8 @@
 import { getSupabaseServerClient, normalizeWaId } from "@/lib/supabase/server";
-import { upsertLead, insertMessageIfNew } from "@/lib/ingest/message-ingest";
+import {
+  upsertJarvisLead,
+  insertJarvisMessageIfNew,
+} from "@/lib/ingest/jarvis-ingest";
 import { timingSafeEqual } from "@/lib/security/timing-safe";
 import { scheduleAutoReply } from "@/lib/whautomate/autoreply";
 
@@ -147,7 +150,7 @@ export async function POST(request) {
       return Response.json({ ok: true, ingested: false, reason: "invalid_phone" });
     }
 
-    const lead = await upsertLead({
+    const lead = await upsertJarvisLead({
       supabase,
       tenantId: tenant.id,
       waId,
@@ -158,10 +161,10 @@ export async function POST(request) {
 
     const waMessageId = mapped.messageId || `whautomate-${waId}-${mapped.timestamp}`;
 
-    await insertMessageIfNew({
+    await insertJarvisMessageIfNew({
       supabase,
       tenantId: tenant.id,
-      leadId: lead.id,
+      jarvisLeadId: lead.id,
       waMessageId,
       direction: mapped.direction,
       body: mapped.body,
