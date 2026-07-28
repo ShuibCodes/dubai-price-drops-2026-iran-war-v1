@@ -63,10 +63,10 @@ function summarizeCalls(rows = []) {
       if (q.lead_engaged === true) totals.engaged += 1;
       if (q.outcome === "qualified") totals.qualified += 1;
       if (q.outcome === "callback") totals.callbacks += 1;
-      if (call.results_synced === true) totals.notesToPixxi += 1;
+      if (call.results_synced === true) totals.resultsSyncedToCrm += 1;
       return totals;
     },
-    { dialed: 0, answered: 0, engaged: 0, qualified: 0, callbacks: 0, notesToPixxi: 0 }
+    { dialed: 0, answered: 0, engaged: 0, qualified: 0, callbacks: 0, resultsSyncedToCrm: 0 }
   );
 }
 
