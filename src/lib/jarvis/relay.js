@@ -1,9 +1,11 @@
 import { getDubaiParts } from "@/lib/calls/business-hours";
 import { JARVIS_LEADS_TABLE } from "@/lib/ingest/jarvis-ingest";
+import { upsertCallableJarvisContact } from "@/lib/jarvis/contacts";
 import {
   ensureJarvisInferredNames,
   formatJarvisLeadName,
 } from "@/lib/jarvis/infer-name";
+import { clearPendingContact } from "@/lib/jarvis/pending-contact";
 import {
   clearPendingRelay,
   getPendingRelay,
@@ -16,6 +18,8 @@ import {
   cleanJarvisSearchName,
   jarvisNameSearchTerms,
 } from "@/lib/jarvis/name-search";
+import { isJarvisSenderAllowed } from "@/lib/jarvis/sender-allowlist";
+import { normalizePhone, phoneToWaId } from "@/lib/leads/normalize";
 import { getSupabaseServerClient, normalizeWaId } from "@/lib/supabase/server";
 import { startRelayCall } from "@/lib/vapi/client";
 
@@ -50,7 +54,12 @@ User: "call Ahmed and ask if he's free Thursday"
 → task: "he wants to know if you're free on Thursday"
 
 If the user's request is too vague to turn into a clear spoken message, do not
-call this tool — ask them what they want said.`;
+call this tool — ask them what they want said.
+
+NEW CONTACTS:
+If the person is not in the address book and the user gave a phone number, call
+this tool WITH phone set. Confirmation will save them into jarvis_leads and dial.
+If not found and no phone was given, ask for the number (or use save_jarvis_contact).`;
 
 export { PLACE_RELAY_CALL_DESCRIPTION };
 
@@ -78,19 +87,12 @@ function isRelayWithinHours(date = new Date()) {
   return hour >= RELAY_HOURS_START && hour < RELAY_HOURS_END;
 }
 
-function jarvisAllowlist() {
-  return String(process.env.JARVIS_WHATSAPP_WA_IDS || "")
-    .split(",")
-    .map((value) => value.replace(/\D/g, ""))
-    .filter(Boolean);
+export function isRelaySenderAllowed(senderPhone) {
+  return isJarvisSenderAllowed(senderPhone);
 }
 
-export function isRelaySenderAllowed(senderPhone) {
-  const key = normalizeSenderPhone(senderPhone);
-  if (!key) return false;
-  const allow = jarvisAllowlist();
-  if (!allow.length) return false;
-  return allow.includes(key);
+export function formatRelayNewContactConfirmation({ name, phone, task }) {
+  return `Save ${name} at ${phone} and call them saying: "${task}"? Reply yes.`;
 }
 
 function normalizeTask(task) {
@@ -304,32 +306,48 @@ export async function placeRelayCall({
   const spokenTask = taskCheck.task;
 
   const resolved = await resolveRelayLead(tenantId, name, phone);
+  let lead = null;
+  let createContact = false;
+
   if (resolved.status === "not_found") {
-    return {
-      status: "not_found",
-      error: `No contact found for "${name}". Ask for the phone number.`,
+    const phoneE164 = normalizePhone(phone);
+    const waId = phoneToWaId(phone);
+    if (!phoneE164 || !waId) {
+      return {
+        status: "not_found",
+        error: `No contact found for "${name}". Ask for their phone number, then call place_relay_call again with phone set — or use save_jarvis_contact first.`,
+      };
+    }
+    // New number: confirm save + dial in one step.
+    createContact = true;
+    lead = {
+      id: null,
+      name: String(name || "").trim() || "there",
+      phone: phoneE164,
+      push_name: String(name || "").trim() || null,
+      inferred_name: null,
     };
-  }
-  if (resolved.status === "multiple") {
+  } else if (resolved.status === "multiple") {
     return {
       status: "multiple_matches",
       matches: resolved.matches,
       instruction: "Ask which contact. Never guess.",
     };
+  } else {
+    lead = resolved.lead;
   }
 
-  const lead = resolved.lead;
-  if (!lead.phone) {
+  if (!lead?.phone) {
     return {
       status: "not_found",
-      error: `Contact "${lead.name || name}" has no phone number.`,
+      error: `Contact "${lead?.name || name}" has no phone number.`,
     };
   }
 
   const hasName = Boolean(
     String(lead.push_name || "").trim() || String(lead.inferred_name || "").trim()
   );
-  if (!hasName && !normalizeWaId(phone)) {
+  if (!createContact && !hasName && !normalizeWaId(phone)) {
     return {
       status: "unnamed_lead",
       phone: lead.phone,
@@ -361,26 +379,38 @@ export async function placeRelayCall({
     };
   }
 
+  // Avoid "yes" matching a leftover contact-only pending.
+  await clearPendingContact(senderPhone).catch(() => null);
+
+  const displayName = lead.name || name || "there";
   await setPendingRelay({
     senderPhone,
     tenantId,
     leadId: lead.id,
     phoneE164: lead.phone,
-    customerName: lead.name || name || "there",
+    customerName: displayName,
     task: spokenTask,
+    createContact,
   });
 
   return {
     status: "needs_confirmation",
     leadId: lead.id,
-    name: lead.name || name || "there",
+    name: displayName,
     phone: lead.phone,
     task: spokenTask,
-    confirmationPrompt: formatRelayConfirmation({
-      name: lead.name || name || "there",
-      phone: lead.phone,
-      task: spokenTask,
-    }),
+    createContact,
+    confirmationPrompt: createContact
+      ? formatRelayNewContactConfirmation({
+          name: displayName,
+          phone: lead.phone,
+          task: spokenTask,
+        })
+      : formatRelayConfirmation({
+          name: displayName,
+          phone: lead.phone,
+          task: spokenTask,
+        }),
   };
 }
 
@@ -414,18 +444,37 @@ export async function handleRelayConfirmationMessage({
   }
 
   try {
+    let leadId = pending.lead_id;
+    let customerName = pending.customer_name;
+    const phoneE164 = pending.phone_e164;
+    const tid = pending.tenant_id || tenantId;
+
+    if (pending.create_contact) {
+      const saved = await upsertCallableJarvisContact({
+        tenantId: tid,
+        name: customerName,
+        phoneE164,
+        waId: phoneToWaId(phoneE164),
+      });
+      leadId = saved.id;
+      customerName = saved.name;
+    }
+
     const dialed = await dialAndLogRelay({
-      tenantId: pending.tenant_id || tenantId,
+      tenantId: tid,
       senderPhone,
-      leadId: pending.lead_id,
-      phoneE164: pending.phone_e164,
-      customerName: pending.customer_name,
+      leadId,
+      phoneE164,
+      customerName,
       task: pending.task,
     });
     await clearPendingRelay(senderPhone);
+    const savedNote = pending.create_contact
+      ? ` Saved ${dialed.name} to your contacts.`
+      : "";
     return {
       handled: true,
-      text: `Calling ${dialed.name} at ${dialed.phone} now — I'll relay: "${dialed.task}"`,
+      text: `Calling ${dialed.name} at ${dialed.phone} now — I'll relay: "${dialed.task}"${savedNote}`,
       dialed,
     };
   } catch (error) {

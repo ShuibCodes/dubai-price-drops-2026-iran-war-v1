@@ -19,7 +19,7 @@ export async function getPendingRelay(senderPhone) {
   const { data, error } = await supabase
     .from("jarvis_pending_relays")
     .select(
-      "sender_phone, tenant_id, lead_id, phone_e164, customer_name, task, expires_at, created_at"
+      "sender_phone, tenant_id, lead_id, phone_e164, customer_name, task, create_contact, expires_at, created_at"
     )
     .eq("sender_phone", key)
     .maybeSingle();
@@ -40,6 +40,7 @@ export async function setPendingRelay({
   phoneE164,
   customerName,
   task,
+  createContact = false,
 }) {
   const key = normalizeSenderPhone(senderPhone);
   if (!key) throw new Error("senderPhone is required for pending relay");
@@ -52,6 +53,7 @@ export async function setPendingRelay({
     phone_e164: phoneE164,
     customer_name: customerName,
     task,
+    create_contact: Boolean(createContact),
     expires_at: expiresAt,
     created_at: new Date().toISOString(),
   };
@@ -59,7 +61,7 @@ export async function setPendingRelay({
     .from("jarvis_pending_relays")
     .upsert(row, { onConflict: "sender_phone" })
     .select(
-      "sender_phone, tenant_id, lead_id, phone_e164, customer_name, task, expires_at, created_at"
+      "sender_phone, tenant_id, lead_id, phone_e164, customer_name, task, create_contact, expires_at, created_at"
     )
     .single();
   if (error) throw new Error(`Pending relay save failed: ${error.message}`);

@@ -2,6 +2,8 @@ import twilio from "twilio";
 import { waitUntil } from "@vercel/functions";
 import { defaultKbState, runKbTurn } from "@/lib/kb/engine";
 import { JARVIS_TENANT_SLUG, runJarvisTurn } from "@/lib/jarvis/engine";
+import { handleContactConfirmationMessage } from "@/lib/jarvis/contacts";
+import { getPendingContact } from "@/lib/jarvis/pending-contact";
 import { getPendingRelay } from "@/lib/jarvis/pending-relay";
 import { handleRelayConfirmationMessage } from "@/lib/jarvis/relay";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
@@ -72,8 +74,27 @@ async function runJarvisAndReply({
     const tenant = await resolveJarvisTenant();
     const senderPhone = from.replace(/^whatsapp:/i, "").replace(/\D/g, "");
 
-    // Pending relay confirmations live in Supabase (not in-memory) so "yes"
+    // Pending confirmations live in Supabase (not in-memory) so "yes"
     // on a later webhook invocation still finds them.
+    const contactConfirm = await handleContactConfirmationMessage({
+      tenantId: tenant.id,
+      senderPhone,
+      message: userText,
+    });
+    if (contactConfirm?.handled) {
+      const replyText = truncateWhatsAppBody(contactConfirm.text);
+      await sendWhatsAppText({ to: from, from: to, body: replyText });
+      setSenderState(from, {
+        ...state,
+        mode: "jarvis",
+        messages: [
+          ...nextMessages,
+          { role: "assistant", content: replyText },
+        ].slice(-30),
+      });
+      return;
+    }
+
     const relayConfirm = await handleRelayConfirmationMessage({
       tenantId: tenant.id,
       senderPhone,
@@ -102,10 +123,12 @@ async function runJarvisAndReply({
     const replyText = truncateWhatsAppBody(result.text);
     await sendWhatsAppText({ to: from, from: to, body: replyText });
     const pendingRelay = await getPendingRelay(senderPhone).catch(() => null);
+    const pendingContact = await getPendingContact(senderPhone).catch(() => null);
     setSenderState(from, {
       ...state,
       mode: "jarvis",
       pendingRelay,
+      pendingContact,
       messages: [...nextMessages, { role: "assistant", content: replyText }].slice(
         -30
       ),
@@ -196,21 +219,30 @@ export async function POST(request) {
 
     if (useJarvis) {
       const tenant = await resolveJarvisTenant();
-      const relayConfirm = await handleRelayConfirmationMessage({
+      const contactConfirm = await handleContactConfirmationMessage({
         tenantId: tenant.id,
         senderPhone: callerWaId,
         message: body,
       });
-      if (relayConfirm?.handled) {
-        replyText = truncateWhatsAppBody(relayConfirm.text);
+      if (contactConfirm?.handled) {
+        replyText = truncateWhatsAppBody(contactConfirm.text);
       } else {
-        const result = await runJarvisTurn({
+        const relayConfirm = await handleRelayConfirmationMessage({
           tenantId: tenant.id,
-          messages: nextMessages,
-          agentName: "Shuayb",
           senderPhone: callerWaId,
+          message: body,
         });
-        replyText = truncateWhatsAppBody(result.text);
+        if (relayConfirm?.handled) {
+          replyText = truncateWhatsAppBody(relayConfirm.text);
+        } else {
+          const result = await runJarvisTurn({
+            tenantId: tenant.id,
+            messages: nextMessages,
+            agentName: "Shuayb",
+            senderPhone: callerWaId,
+          });
+          replyText = truncateWhatsAppBody(result.text);
+        }
       }
       nextState = {
         ...state,

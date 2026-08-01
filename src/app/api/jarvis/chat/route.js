@@ -1,3 +1,4 @@
+import { handleContactConfirmationMessage } from "@/lib/jarvis/contacts";
 import { JARVIS_TENANT_SLUG, runJarvisTurn } from "@/lib/jarvis/engine";
 import { handleRelayConfirmationMessage } from "@/lib/jarvis/relay";
 import { timingSafeEqual } from "@/lib/security/timing-safe";
@@ -52,6 +53,15 @@ export async function POST(request) {
       .reverse()
       .find((message) => message?.role === "user");
     const latestText = String(latestUser?.content || "");
+
+    const contactConfirm = await handleContactConfirmationMessage({
+      tenantId: tenant.id,
+      senderPhone,
+      message: latestText,
+    });
+    if (contactConfirm?.handled) {
+      return Response.json({ message: contactConfirm.text });
+    }
 
     const relayConfirm = await handleRelayConfirmationMessage({
       tenantId: tenant.id,

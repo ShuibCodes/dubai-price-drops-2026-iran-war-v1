@@ -16,6 +16,11 @@ import {
   startJarvisTargetCall,
 } from "@/lib/jarvis/leads-tools";
 import {
+  SAVE_JARVIS_CONTACT_DESCRIPTION,
+  formatContactConfirmation,
+  saveJarvisContact,
+} from "@/lib/jarvis/contacts";
+import {
   PLACE_RELAY_CALL_DESCRIPTION,
   formatRelayConfirmation,
   placeRelayCall,
@@ -151,6 +156,24 @@ export const jarvisToolDefinitions = [
     },
   },
   {
+    name: "save_jarvis_contact",
+    description: SAVE_JARVIS_CONTACT_DESCRIPTION,
+    input_schema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "Contact name exactly as the user wants it saved",
+        },
+        phone: {
+          type: "string",
+          description: "Phone in any international format (e.g. +4477…, 9715…)",
+        },
+      },
+      required: ["name", "phone"],
+    },
+  },
+  {
     name: "place_relay_call",
     description: PLACE_RELAY_CALL_DESCRIPTION,
     input_schema: {
@@ -267,7 +290,9 @@ LOOKUPS:
 - "What did anyone say about X" → search_conversations, then get_lead_story / get_call_detail.
 - Call recaps → get_call_detail; summarize 1-5 lines; never paste transcripts.
 - Callbacks → get_pending_callbacks.
-- Saving/confirming a contact name → set_lead_name (user-supplied only; never invent).
+- Saving/confirming a contact name on an EXISTING lead → set_lead_name (user-supplied only; never invent).
+- Adding a NEW contact (name + phone) → save_jarvis_contact. Show the confirmationPrompt (name + number) and wait for yes — do not claim they are saved until the yes handler completes.
+- If place_relay_call returns not_found, ask for the phone. Once they give it, call place_relay_call again WITH phone (that path saves + dials on yes), or save_jarvis_contact then place_relay_call.
 
 ACTIONS — CALLS (Vapi):
 - "call X and tell/ask them Y" → ALWAYS place_relay_call (relay assistant). Rewrite Y into the spoken task per the tool description. Never use start_target_call for a relay/message.
@@ -276,7 +301,8 @@ ACTIONS — CALLS (Vapi):
 - start_target_call dials one lead with tenants.vapi_assistant_id_jarvis ONLY.
 - start_cold_batch queues/dials Purchased-list leads through that same Vapi path.
 - NEVER place a call on the first ask. For lead calls: restate name + phone, ask: "Ready to call {Name} at {phone} — reply yes to place the Vapi call."
-- For relays: confirmation is handled after place_relay_call returns needs_confirmation — show name, number, and the exact task line.
+- For relays / new-contact relays: confirmation is handled after place_relay_call returns needs_confirmation — show the confirmationPrompt (name, number, task). Reply yes completes save (if new) + dial.
+- For save_jarvis_contact: show confirmationPrompt; yes upserts jarvis_leads.
 - Only call start_target_call / start_cold_batch after the user's latest message is an explicit yes/confirm/go ahead.
 - For cold batches over 100, restate the count and require an explicit yes.
 - If outside the lead's local business hours, the tool may queue — explain that clearly.
@@ -346,6 +372,13 @@ async function executeTool({ name, input, tenantId, agentName, messages, senderP
       return getJarvisInboxStats(tenantId, input);
     case "set_lead_name":
       return setJarvisLeadName(tenantId, input);
+    case "save_jarvis_contact":
+      return saveJarvisContact({
+        tenantId,
+        senderPhone,
+        name: input.name,
+        phone: input.phone,
+      });
     case "place_relay_call": {
       const result = await placeRelayCall({
         tenantId,
@@ -494,6 +527,17 @@ export async function runJarvisTurn({ tenantId, messages, agentName, senderPhone
     }
 
     if (confirmation) {
+      if (confirmation.action === "save_contact") {
+        return {
+          text:
+            confirmation.confirmationPrompt ||
+            formatContactConfirmation({
+              name: confirmation.name,
+              phone: confirmation.phone,
+            }),
+          toolRounds: round + 1,
+        };
+      }
       if (confirmation.action === "relay") {
         return {
           text:
