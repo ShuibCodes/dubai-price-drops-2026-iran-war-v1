@@ -271,6 +271,7 @@ LOOKUPS:
 
 ACTIONS — CALLS (Vapi):
 - "call X and tell/ask them Y" → ALWAYS place_relay_call (relay assistant). Rewrite Y into the spoken task per the tool description. Never use start_target_call for a relay/message.
+- After relays, use get_lead_story / get_call_detail — there may be multiple recent relay calls. Prefer the latest completed one with a transcript; do not say "no recording" if a later/earlier call has one.
 - "call X" with no message to relay → start_target_call (Jarvis personal assistant only). Never the Allan/Pixxi cold-call assistant.
 - start_target_call dials one lead with tenants.vapi_assistant_id_jarvis ONLY.
 - start_cold_batch queues/dials Purchased-list leads through that same Vapi path.

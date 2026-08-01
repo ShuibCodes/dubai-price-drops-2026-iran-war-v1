@@ -162,12 +162,17 @@ export async function startRelayCall({ phoneE164, customerName, task, metadata =
   const spokenTask = String(task || "").trim();
   if (!spokenTask) throw new Error("task is required for relay calls");
 
+  // Bake firstMessage at dial-time so Vapi never speaks a literal "{{task}}"
+  // placeholder if template substitution fails.
+  const firstMessage = `Hi, I've got a quick message from Shuayb: ${spokenTask}`;
+
   const payload = {
     assistantId,
     phoneNumberId,
     customer: {
       number,
-      name,
+      // Don't put the contact name on the customer object for TTS — unnamed /
+      // bad WhatsApp names get spoken awkwardly. Number is enough to dial.
     },
     metadata: {
       kind: "relay",
@@ -176,6 +181,7 @@ export async function startRelayCall({ phoneE164, customerName, task, metadata =
       ...metadata,
     },
     assistantOverrides: {
+      firstMessage,
       variableValues: {
         customerName: name,
         task: spokenTask,

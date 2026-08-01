@@ -39,15 +39,15 @@ Refer to the user in the THIRD person by name (Shuayb), never "I" or "me".
 Address the recipient in the SECOND person ("you", "your").
 Keep it short and speakable. No greetings, no sign-off — the assistant handles those.
 
-Examples:
+Examples (opening already says "message from Shuayb", so do NOT start task with "Shuayb…"):
 User: "call Tom and tell him to meet me at Dubai Mall at 2pm"
-→ task: "Shuayb would like to meet you at Dubai Mall at 2pm"
+→ task: "he'd like to meet you at Dubai Mall at 2pm"
 User: "ring Tom, I'm running 10 late"
-→ task: "Shuayb is running about 10 minutes late"
+→ task: "he's running about 10 minutes late"
 User: "call Sarah and say the offer's been accepted"
 → task: "your offer has been accepted"
 User: "call Ahmed and ask if he's free Thursday"
-→ task: "Shuayb wants to know if you're free on Thursday"
+→ task: "he wants to know if you're free on Thursday"
 
 If the user's request is too vague to turn into a clear spoken message, do not
 call this tool — ask them what they want said.`;
