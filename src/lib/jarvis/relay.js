@@ -441,6 +441,7 @@ export async function updateRelayCallFromWebhook({
   vapiCallId,
   status,
   summary,
+  transcript,
 }) {
   if (!vapiCallId) return null;
   const supabase = db();
@@ -456,15 +457,84 @@ export async function updateRelayCallFromWebhook({
   }
   if (!existing) return null;
 
+  const patch = {
+    status: status || "completed",
+  };
+  if (summary) patch.summary = summary;
+  else if (transcript) {
+    patch.summary = `Relay delivered: "${existing.task}"`;
+  }
+
   const { data, error } = await supabase
     .from("relay_calls")
-    .update({
-      status: status || "completed",
-      summary: summary || null,
-    })
+    .update(patch)
     .eq("id", existing.id)
     .select("*")
     .single();
   if (error) throw new Error(`relay_calls update failed: ${error.message}`);
+  return data;
+}
+
+/**
+ * Mirror a completed relay into `calls` so Jarvis lead story / call detail can see it.
+ */
+export async function upsertRelayIntoCallsTable({
+  details,
+  relay,
+}) {
+  if (!details?.callId || !relay?.tenant_id) return null;
+  const supabase = db();
+
+  const summary =
+    details.summary ||
+    (relay.task ? `Relay: ${relay.task}` : null) ||
+    null;
+
+  const row = {
+    tenant_id: relay.tenant_id,
+    lead_id: null,
+    jarvis_lead_id: relay.lead_id || null,
+    vapi_call_id: details.callId,
+    direction: "outbound",
+    status: "completed",
+    started_at: details.startedAt || null,
+    ended_at: details.endedAt || null,
+    duration_seconds: details.durationSeconds,
+    recording_url: details.recordingUrl || null,
+    transcript: details.transcript || null,
+    summary,
+    qualification: {
+      outcome: "relay",
+      task: relay.task || null,
+      passback: details.summary || null,
+    },
+    source: "jarvis-relay",
+    lead_name: relay.customer_name || null,
+    raw: details.raw || null,
+  };
+
+  const { data: existing } = await supabase
+    .from("calls")
+    .select("id")
+    .eq("vapi_call_id", details.callId)
+    .maybeSingle();
+
+  if (existing?.id) {
+    const { data, error } = await supabase
+      .from("calls")
+      .update(row)
+      .eq("id", existing.id)
+      .select("id, vapi_call_id")
+      .single();
+    if (error) throw new Error(`Relay call update failed: ${error.message}`);
+    return data;
+  }
+
+  const { data, error } = await supabase
+    .from("calls")
+    .insert(row)
+    .select("id, vapi_call_id")
+    .single();
+  if (error) throw new Error(`Relay call insert failed: ${error.message}`);
   return data;
 }

@@ -1,7 +1,10 @@
 import { extractCallRecord, writeCallRecord } from "@/lib/kb/calls";
 import { clearKbCache } from "@/lib/kb/loader";
 import { resolveQualification } from "@/lib/calls/qualification";
-import { updateRelayCallFromWebhook } from "@/lib/jarvis/relay";
+import {
+  updateRelayCallFromWebhook,
+  upsertRelayIntoCallsTable,
+} from "@/lib/jarvis/relay";
 import { phoneToWaId } from "@/lib/leads/normalize";
 import { sendAgentSummary } from "@/lib/notify/agent";
 import { postCallResult } from "@/lib/notify/results-hook";
@@ -216,8 +219,16 @@ async function processRelayCallEnd(details) {
     vapiCallId: details.callId,
     status: details.endedReason || "completed",
     summary: details.summary || null,
+    transcript: details.transcript || null,
   });
   if (!relay) return null;
+
+  // Jarvis reads `calls` (not relay_calls) for lead story / transcripts.
+  try {
+    await upsertRelayIntoCallsTable({ details, relay });
+  } catch (error) {
+    console.error("[vapi/webhook] relay→calls upsert failed:", error.message);
+  }
 
   if (twilioRestConfigured() && relay.sender_phone) {
     const from = twilioWhatsAppFrom();
@@ -225,12 +236,13 @@ async function processRelayCallEnd(details) {
     if (from && to) {
       const summaryLine =
         details.summary ||
+        details.transcript ||
         "Call ended with no summary yet — ask me again in a minute if you need the recap.";
       const body = truncateWhatsAppBody(
         [
           `Relay to ${relay.customer_name} (${relay.phone_e164}) finished.`,
           `Task: "${relay.task}"`,
-          `Summary: ${summaryLine}`,
+          `Summary: ${summaryLine}`.slice(0, 900),
         ].join("\n")
       );
       try {
@@ -309,19 +321,18 @@ export async function POST(request) {
     }
 
     const record = extractCallRecord(payload);
-    if (!record.summary && !record.transcript) {
-      return Response.json({
-        ok: true,
-        persisted: false,
-        eventType,
-        reason: "No summary or transcript yet",
-      });
-    }
+    const details = extractVapiCallDetails(payload);
+    const hasContent = Boolean(
+      record.summary ||
+        record.transcript ||
+        details.summary ||
+        details.transcript ||
+        details.endedReason
+    );
 
-    const { fileName, fullPath } = writeCallRecord(record);
-    clearKbCache();
-
-    if (isEndOfCallReport(payload)) {
+    // Always run the DB pipeline for end-of-call — do not block on local file writes
+    // (Vercel FS can fail and previously skipped relay/call persistence entirely).
+    if (isEndOfCallReport(payload) || details.endedReason) {
       try {
         pipelineResult = await processPipelineCall(payload);
       } catch (pipelineError) {
@@ -330,11 +341,34 @@ export async function POST(request) {
       }
     }
 
+    if (!hasContent && !pipelineResult?.processed) {
+      return Response.json({
+        ok: true,
+        persisted: false,
+        eventType,
+        reason: "No summary or transcript yet",
+        pipeline: pipelineResult,
+      });
+    }
+
+    let fileName = null;
+    let fullPath = null;
+    if (record.summary || record.transcript) {
+      try {
+        const written = writeCallRecord(record);
+        fileName = written.fileName;
+        fullPath = written.fullPath;
+        clearKbCache();
+      } catch (fileError) {
+        console.warn("[vapi/webhook] local call file write skipped:", fileError.message);
+      }
+    }
+
     return Response.json({
       ok: true,
-      persisted: true,
+      persisted: Boolean(pipelineResult?.processed || fileName),
       eventType,
-      callId: record.callId,
+      callId: record.callId || details.callId,
       leadName: record.leadName,
       fileName,
       fullPath,

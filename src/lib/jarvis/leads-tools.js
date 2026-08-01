@@ -456,15 +456,19 @@ export async function getJarvisLeadStory(tenantId, leadId) {
   }
 
   const events = [
-    ...(callsResult.data || []).map((call) => ({
-      type: "call",
-      timestamp: callTime(call),
-      callId: call.id,
-      summary: call.summary || null,
-      outcome: qualification(call).outcome || null,
-      crmNote: qualification(call).crm_note || null,
-      recordingUrl: call.recording_url || null,
-    })),
+    ...(callsResult.data || []).map((call) => {
+      const q = qualification(call);
+      const relayTask = q.task ? `Task: ${q.task}` : null;
+      return {
+        type: "call",
+        timestamp: callTime(call),
+        callId: call.id,
+        summary: [call.summary || null, relayTask].filter(Boolean).join(" | ") || null,
+        outcome: q.outcome || null,
+        crmNote: q.crm_note || q.passback || null,
+        recordingUrl: call.recording_url || null,
+      };
+    }),
     ...(messagesResult.data || []).map((message) => ({
       type: "message",
       timestamp: message.timestamp || message.created_at,
