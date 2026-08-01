@@ -1,11 +1,17 @@
 import { extractCallRecord, writeCallRecord } from "@/lib/kb/calls";
 import { clearKbCache } from "@/lib/kb/loader";
 import { resolveQualification } from "@/lib/calls/qualification";
+import { updateRelayCallFromWebhook } from "@/lib/jarvis/relay";
 import { phoneToWaId } from "@/lib/leads/normalize";
 import { sendAgentSummary } from "@/lib/notify/agent";
 import { postCallResult } from "@/lib/notify/results-hook";
 import { timingSafeEqual } from "@/lib/security/timing-safe";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import {
+  sendWhatsAppText,
+  truncateWhatsAppBody,
+  twilioRestConfigured,
+} from "@/lib/whatsapp/twilio-send";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -193,9 +199,62 @@ async function upsertCompletedCall(details, qualification) {
   return { call: callRecord, lead };
 }
 
+function twilioWhatsAppFrom() {
+  const configured = String(process.env.TWILIO_WHATSAPP_FROM || "").trim();
+  if (configured) {
+    return configured.startsWith("whatsapp:")
+      ? configured
+      : `whatsapp:${configured}`;
+  }
+  const phone = String(process.env.TWILIO_PHONE_NUMBER || "").trim();
+  if (!phone) return null;
+  return phone.startsWith("whatsapp:") ? phone : `whatsapp:${phone}`;
+}
+
+async function processRelayCallEnd(details) {
+  const relay = await updateRelayCallFromWebhook({
+    vapiCallId: details.callId,
+    status: details.endedReason || "completed",
+    summary: details.summary || null,
+  });
+  if (!relay) return null;
+
+  if (twilioRestConfigured() && relay.sender_phone) {
+    const from = twilioWhatsAppFrom();
+    const to = `whatsapp:+${String(relay.sender_phone).replace(/\D/g, "")}`;
+    if (from && to) {
+      const summaryLine =
+        details.summary ||
+        "Call ended with no summary yet — ask me again in a minute if you need the recap.";
+      const body = truncateWhatsAppBody(
+        [
+          `Relay to ${relay.customer_name} (${relay.phone_e164}) finished.`,
+          `Task: "${relay.task}"`,
+          `Summary: ${summaryLine}`,
+        ].join("\n")
+      );
+      try {
+        await sendWhatsAppText({ to, from, body });
+      } catch (error) {
+        console.error("[vapi/webhook] relay WhatsApp summary failed:", error.message);
+      }
+    }
+  }
+
+  return { processed: true, kind: "relay", callId: details.callId, relayId: relay.id };
+}
+
 async function processPipelineCall(payload) {
   const details = extractVapiCallDetails(payload);
   if (!details.callId) return { processed: false, reason: "missing_call_id" };
+
+  // Relay path first — do not run lead-qualification CRM sync for these.
+  try {
+    const relayResult = await processRelayCallEnd(details);
+    if (relayResult) return relayResult;
+  } catch (error) {
+    console.error("[vapi/webhook] relay path error:", error.message);
+  }
 
   const qualification = await resolveQualification({
     structuredData: details.structuredData,

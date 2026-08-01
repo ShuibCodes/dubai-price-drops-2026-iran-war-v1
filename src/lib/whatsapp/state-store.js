@@ -53,6 +53,7 @@ function emptyState() {
     pendingEmailDraft: null,
     pendingCallRequest: null,
     pendingConfirmationExpiry: null,
+    pendingRelay: null,
     lastPlacedCall: null,
     pendingSummaryRequest: null,
     pendingSummaryExpiry: null,
@@ -74,6 +75,7 @@ export function getSenderState(sender) {
       typeof existing.pendingConfirmationExpiry === "number"
         ? existing.pendingConfirmationExpiry
         : null,
+    pendingRelay: existing.pendingRelay ?? null,
     lastPlacedCall: existing.lastPlacedCall ?? null,
     pendingSummaryRequest: existing.pendingSummaryRequest ?? null,
     pendingSummaryExpiry:
@@ -96,6 +98,7 @@ export function setSenderState(sender, nextState) {
       typeof nextState?.pendingConfirmationExpiry === "number"
         ? nextState.pendingConfirmationExpiry
         : null,
+    pendingRelay: nextState?.pendingRelay ?? null,
     lastPlacedCall: nextState?.lastPlacedCall ?? null,
     pendingSummaryRequest: nextState?.pendingSummaryRequest ?? null,
     pendingSummaryExpiry:

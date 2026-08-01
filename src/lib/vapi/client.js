@@ -145,6 +145,67 @@ export async function startTargetLeadCall() {
   };
 }
 
+/**
+ * Outbound relay call — dedicated assistant, no KB/lead context.
+ * Injects customerName + task as call-time variableValues.
+ */
+export async function startRelayCall({ phoneE164, customerName, task, metadata = {} }) {
+  const { apiKey, phoneNumberId, baseUrl, createPath } = getVapiConfig();
+  const assistantId = process.env.VAPI_RELAY_ASSISTANT_ID;
+  if (!assistantId) {
+    throw new Error("Missing required environment variable: VAPI_RELAY_ASSISTANT_ID");
+  }
+
+  const number = String(phoneE164 || "").trim();
+  if (!number) throw new Error("phoneE164 is required for relay calls");
+  const name = String(customerName || "there").trim() || "there";
+  const spokenTask = String(task || "").trim();
+  if (!spokenTask) throw new Error("task is required for relay calls");
+
+  const payload = {
+    assistantId,
+    phoneNumberId,
+    customer: {
+      number,
+      name,
+    },
+    metadata: {
+      kind: "relay",
+      customerName: name,
+      task: spokenTask,
+      ...metadata,
+    },
+    assistantOverrides: {
+      variableValues: {
+        customerName: name,
+        task: spokenTask,
+      },
+    },
+  };
+
+  const response = await fetch(`${baseUrl}${createPath}`, {
+    method: "POST",
+    headers: getAuthHeaders(apiKey),
+    body: JSON.stringify(payload),
+  });
+
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const detail =
+      body?.message ||
+      body?.error ||
+      (typeof body === "string" ? body : JSON.stringify(body)) ||
+      "Unknown error";
+    throw new Error(`Vapi relay call start failed (${response.status}): ${detail}`);
+  }
+
+  return {
+    callId: body?.id || body?.callId || null,
+    status: body?.status || "queued",
+    raw: body,
+  };
+}
+
 export async function getLatestTargetLeadCallSummary() {
   const { apiKey, baseUrl, callsPath } = getVapiConfig();
   const response = await fetch(`${baseUrl}${callsPath}?limit=30`, {

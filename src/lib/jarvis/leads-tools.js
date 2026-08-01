@@ -358,10 +358,21 @@ export async function searchJarvisLeadByName(tenantId, name) {
     );
   }
 
+  const needle = String(term || "")
+    .trim()
+    .split(/\s+/)[0]
+    .toLowerCase();
+
   return leads
     .map((lead) => {
       const enriched = enrichedMap.get(lead.id) || lead;
       const formatted = formatJarvisLeadName(enriched);
+      const pushFirst = String(enriched.push_name || "")
+        .trim()
+        .split(/\s+/)[0]
+        .toLowerCase();
+      // Rank exact push_name matches first so "Shuayb" doesn't lose to noise.
+      const exactPush = needle && pushFirst === needle ? 1 : 0;
       return {
         id: lead.id,
         name: formatted.displayName,
@@ -373,9 +384,13 @@ export async function searchJarvisLeadByName(tenantId, name) {
         lastCallOutcome: latestOutcome.get(lead.id) || null,
         lastMessageAt: lead.last_message_at || null,
         messageCount: messageCounts.get(lead.id) || 0,
+        exactPush,
       };
     })
-    .sort((a, b) => (b.messageCount > 0) - (a.messageCount > 0))
+    .sort((a, b) => {
+      if (b.exactPush !== a.exactPush) return b.exactPush - a.exactPush;
+      return (b.messageCount > 0) - (a.messageCount > 0);
+    })
     .slice(0, 10);
 }
 

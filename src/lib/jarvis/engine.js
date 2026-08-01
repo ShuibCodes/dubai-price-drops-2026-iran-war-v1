@@ -15,6 +15,11 @@ import {
   setJarvisLeadName,
   startJarvisTargetCall,
 } from "@/lib/jarvis/leads-tools";
+import {
+  PLACE_RELAY_CALL_DESCRIPTION,
+  formatRelayConfirmation,
+  placeRelayCall,
+} from "@/lib/jarvis/relay";
 import { getJarvisRecentConversations, formatLiveContext } from "@/lib/kb/live-conversations";
 
 const MODEL = "claude-sonnet-4-6";
@@ -143,9 +148,41 @@ export const jarvisToolDefinitions = [
     },
   },
   {
+    name: "place_relay_call",
+    description: PLACE_RELAY_CALL_DESCRIPTION,
+    input_schema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "Who to call, as the user said it",
+        },
+        task: {
+          type: "string",
+          description:
+            "Rewritten speakable message for the recipient (see tool description rules)",
+        },
+        phone: {
+          type: "string",
+          description: "Optional E.164 / digits if the user gave a number",
+        },
+        forceAfterHours: {
+          type: "boolean",
+          description: "Set true only after user explicitly overrides the 08:00–21:00 Gulf window",
+        },
+        forceCooldown: {
+          type: "boolean",
+          description:
+            "Set true only after user insists on a second relay to the same number within 10 minutes",
+        },
+      },
+      required: ["name", "task"],
+    },
+  },
+  {
     name: "start_target_call",
     description:
-      "Place a Vapi outbound call to one lead using the configured cold-call assistant. ONLY after the user explicitly confirmed in the latest message.",
+      "Place a Vapi outbound call to one lead using the configured cold-call assistant. ONLY after the user explicitly confirmed in the latest message. Do NOT use when the user wants a message relayed — use place_relay_call.",
     input_schema: {
       type: "object",
       properties: { leadId: { type: "string", format: "uuid" } },
@@ -230,12 +267,16 @@ LOOKUPS:
 - Saving/confirming a contact name → set_lead_name (user-supplied only; never invent).
 
 ACTIONS — CALLS (Vapi):
+- "call X and tell/ask them Y" → place_relay_call (message-relay assistant). Rewrite Y into the spoken task per the tool description. Never dial on the first ask — restates name, number, and the exact spoken task, then wait for yes.
+- "call X" with no message to relay → start_target_call (lead / qualification flow), NOT place_relay_call.
 - start_target_call dials one lead with the Jarvis Vapi assistant (vapi_assistant_id_jarvis) + the configured Twilio/Vapi phone number.
 - start_cold_batch queues/dials Purchased-list leads through that same Vapi path.
-- NEVER place a call on the first ask. First resolve the lead, restate name + phone, and ask: "Ready to call {Name} at {phone} — reply yes to place the Vapi call."
+- NEVER place a call on the first ask. For lead calls: restate name + phone, ask: "Ready to call {Name} at {phone} — reply yes to place the Vapi call."
+- For relays: confirmation is handled after place_relay_call returns needs_confirmation — show name, number, and the exact task line.
 - Only call start_target_call / start_cold_batch after the user's latest message is an explicit yes/confirm/go ahead.
 - For cold batches over 100, restate the count and require an explicit yes.
 - If outside the lead's local business hours, the tool may queue — explain that clearly.
+- Relay calls are blocked 21:00–08:00 Gulf time unless the user explicitly overrides.
 
 ACTIONS — EMAIL (Resend):
 - draft_email first (never send on the first ask). Show To / Subject / Body.
@@ -277,7 +318,7 @@ function previousAssistantMentioned(messages, pattern) {
   return previous ? pattern.test(previous.content) : false;
 }
 
-async function executeTool({ name, input, tenantId, agentName, messages }) {
+async function executeTool({ name, input, tenantId, agentName, messages, senderPhone }) {
   switch (name) {
     case "get_latest_messages":
       return getJarvisLatestMessages(tenantId, input.limit);
@@ -301,6 +342,25 @@ async function executeTool({ name, input, tenantId, agentName, messages }) {
       return getJarvisInboxStats(tenantId, input);
     case "set_lead_name":
       return setJarvisLeadName(tenantId, input);
+    case "place_relay_call": {
+      const result = await placeRelayCall({
+        tenantId,
+        senderPhone,
+        name: input.name,
+        task: input.task,
+        phone: input.phone,
+        forceAfterHours: Boolean(input.forceAfterHours),
+        forceCooldown: Boolean(input.forceCooldown),
+      });
+      if (result?.status === "needs_confirmation") {
+        return {
+          ...result,
+          requiresConfirmation: true,
+          action: "relay",
+        };
+      }
+      return result;
+    }
     case "start_target_call": {
       if (
         !latestUserAffirmed(messages) ||
@@ -359,7 +419,7 @@ async function executeTool({ name, input, tenantId, agentName, messages }) {
   }
 }
 
-export async function runJarvisTurn({ tenantId, messages, agentName }) {
+export async function runJarvisTurn({ tenantId, messages, agentName, senderPhone }) {
   if (!tenantId) throw new Error("Resolved tenant ID is required");
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not configured");
@@ -411,6 +471,7 @@ export async function runJarvisTurn({ tenantId, messages, agentName }) {
           tenantId,
           agentName,
           messages,
+          senderPhone,
         });
         if (result?.requiresConfirmation) confirmation = result;
         results.push({
@@ -429,6 +490,18 @@ export async function runJarvisTurn({ tenantId, messages, agentName }) {
     }
 
     if (confirmation) {
+      if (confirmation.action === "relay") {
+        return {
+          text:
+            confirmation.confirmationPrompt ||
+            formatRelayConfirmation({
+              name: confirmation.name,
+              phone: confirmation.phone,
+              task: confirmation.task,
+            }),
+          toolRounds: round + 1,
+        };
+      }
       if (confirmation.action === "cold_batch") {
         return {
           text: `You’re about to start a cold batch of ${confirmation.count} Vapi calls. Reply “yes” to confirm.`,

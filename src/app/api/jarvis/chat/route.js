@@ -1,4 +1,5 @@
 import { JARVIS_TENANT_SLUG, runJarvisTurn } from "@/lib/jarvis/engine";
+import { handleRelayConfirmationMessage } from "@/lib/jarvis/relay";
 import { timingSafeEqual } from "@/lib/security/timing-safe";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -11,6 +12,13 @@ function verifyAccess(request) {
   // No key configured: open in dev only, locked in production.
   if (!expected) return process.env.NODE_ENV !== "production";
   return timingSafeEqual(request.headers.get("x-jarvis-key"), expected);
+}
+
+function defaultJarvisSenderPhone() {
+  return String(process.env.JARVIS_WHATSAPP_WA_IDS || "")
+    .split(",")
+    .map((value) => value.replace(/\D/g, ""))
+    .filter(Boolean)[0] || null;
 }
 
 export async function POST(request) {
@@ -38,10 +46,27 @@ export async function POST(request) {
       return Response.json({ error: "messages must be an array" }, { status: 400 });
     }
 
+    const senderPhone =
+      String(body.senderPhone || "").replace(/\D/g, "") || defaultJarvisSenderPhone();
+    const latestUser = [...body.messages]
+      .reverse()
+      .find((message) => message?.role === "user");
+    const latestText = String(latestUser?.content || "");
+
+    const relayConfirm = await handleRelayConfirmationMessage({
+      tenantId: tenant.id,
+      senderPhone,
+      message: latestText,
+    });
+    if (relayConfirm?.handled) {
+      return Response.json({ message: relayConfirm.text });
+    }
+
     const result = await runJarvisTurn({
       tenantId: tenant.id,
       messages: body.messages,
       agentName: String(body.agentName || "").trim() || "Jarvis user",
+      senderPhone,
     });
 
     return Response.json({ message: result.text });

@@ -1,6 +1,6 @@
 const DUBAI_OFFSET_MS = 4 * 60 * 60 * 1000;
 
-function getDubaiParts(date = new Date()) {
+export function getDubaiParts(date = new Date()) {
   const dubaiMs = date.getTime() + DUBAI_OFFSET_MS;
   const dubai = new Date(dubaiMs);
   return {
