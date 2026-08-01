@@ -3,18 +3,23 @@ import { startColdBatch } from "@/lib/copilot/tools";
 import { draftLeadEmail, sendDraftEmail } from "@/lib/jarvis/email";
 import {
   getJarvisCallDetail,
+  getJarvisInboxActivity,
+  getJarvisInboxStats,
   getJarvisLatestMessages,
   getJarvisLeadStory,
   getJarvisPendingCallbacks,
+  getJarvisStaleConversations,
+  getJarvisUnrepliedConversations,
   searchJarvisConversations,
   searchJarvisLeadByName,
+  setJarvisLeadName,
   startJarvisTargetCall,
 } from "@/lib/jarvis/leads-tools";
 import { getJarvisRecentConversations, formatLiveContext } from "@/lib/kb/live-conversations";
 
 const MODEL = "claude-sonnet-4-6";
 const MAX_TOOL_ROUNDS = 5;
-export const JARVIS_TENANT_SLUG = "1416";
+export const JARVIS_TENANT_SLUG = "sterling";
 
 export const jarvisToolDefinitions = [
   {
@@ -74,6 +79,68 @@ export const jarvisToolDefinitions = [
     name: "get_pending_callbacks",
     description: "List leads whose latest call outcome is a callback with a callback time.",
     input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "get_unreplied_conversations",
+    description:
+      "List WhatsApp threads that need a reply: latest message in the window is inbound. Use for 'who do I need to reply to?', 'anyone waiting on me?', 'unanswered in 72h'. Prefer this over get_latest_messages for unreplied scans. Returns at most `limit` (default 15).",
+    input_schema: {
+      type: "object",
+      properties: {
+        hours: { type: "integer", minimum: 1, maximum: 336, default: 72 },
+        limit: { type: "integer", minimum: 1, maximum: 30, default: 15 },
+      },
+    },
+  },
+  {
+    name: "get_inbox_activity",
+    description:
+      "List distinct WhatsApp threads active in a time window, newest first. Set inboundOnly for 'who texted me today/overnight'. Use for overnight/activity scans — not for unreplied (use get_unreplied_conversations).",
+    input_schema: {
+      type: "object",
+      properties: {
+        hours: { type: "integer", minimum: 1, maximum: 336, default: 72 },
+        limit: { type: "integer", minimum: 1, maximum: 30, default: 15 },
+        inboundOnly: { type: "boolean", default: false },
+      },
+    },
+  },
+  {
+    name: "get_stale_conversations",
+    description:
+      "List threads where the latest message is outbound and older than `hours` — you messaged them and they have not replied. Use for 'who hasn't replied?', 'cold/stale conversations'.",
+    input_schema: {
+      type: "object",
+      properties: {
+        hours: { type: "integer", minimum: 1, maximum: 336, default: 72 },
+        limit: { type: "integer", minimum: 1, maximum: 30, default: 15 },
+      },
+    },
+  },
+  {
+    name: "get_inbox_stats",
+    description:
+      "Aggregate inbox counts for a window: messages, threads, inbound, outbound, unreplied, staleOutbound. Use for 'how many chats/unanswered in 72h?'",
+    input_schema: {
+      type: "object",
+      properties: {
+        hours: { type: "integer", minimum: 1, maximum: 336, default: 72 },
+      },
+    },
+  },
+  {
+    name: "set_lead_name",
+    description:
+      "Save an authoritative first name for a WhatsApp contact (writes push_name). Use when the user confirms a medium guess (Name?) or explicitly names a contact. Pass leadId and/or phone plus name.",
+    input_schema: {
+      type: "object",
+      properties: {
+        leadId: { type: "string", format: "uuid" },
+        phone: { type: "string" },
+        name: { type: "string" },
+      },
+      required: ["name"],
+    },
   },
   {
     name: "start_target_call",
@@ -143,18 +210,27 @@ RESPONSE STYLE:
 - Be clear, practical, and conversational — a capable teammate, not a dashboard.
 - Lead with the answer. Use short bullets when listing people.
 - Include full phone numbers when discussing a specific lead (E.164, e.g. +971...).
+- When leadName is null, say Unknown and lead with the phone number.
+- leadName ending with "?" means medium-confidence inferred name — a working label, not certain. Offer once: "I think +971… is Tom — want me to save that?" On yes, call set_lead_name.
+- High-confidence inferred names (no "?") are fine as working labels; do not claim them as verified CRM facts.
 - When quoting WhatsApp, keep excerpts short and attribute direction (lead vs me) plus rough recency.
 - Markdown is fine. No emojis unless the user uses them first.
 
 LOOKUPS:
 - "Last/latest message", "who messaged recently", "anything new" → get_latest_messages FIRST. Do not answer recency questions from the snapshot alone.
+- "Who do I need to reply to", "anyone waiting on me", "unanswered / unreplied in N hours" → get_unreplied_conversations FIRST (pass hours). Never scan with N× get_lead_story.
+- "Who texted me / overnight / activity in the last N hours" → get_inbox_activity (inboundOnly when they only want inbound).
+- "Who hasn't replied", "stale / cold conversations" → get_stale_conversations.
+- "How many chats / unanswered / inbox stats" → get_inbox_stats.
+- When listing people from inbox tools, show at most ~15 bullets (name + phone + short snippet + age). Keep WhatsApp-friendly length.
 - Name questions → search_lead_by_name, then get_lead_story.
 - "What did anyone say about X" → search_conversations, then get_lead_story / get_call_detail.
 - Call recaps → get_call_detail; summarize 1-5 lines; never paste transcripts.
 - Callbacks → get_pending_callbacks.
+- Saving/confirming a contact name → set_lead_name (user-supplied only; never invent).
 
 ACTIONS — CALLS (Vapi):
-- start_target_call dials one lead with the SAME Vapi assistant + Twilio/Vapi phone number already configured for cold calling.
+- start_target_call dials one lead with the Jarvis Vapi assistant (vapi_assistant_id_jarvis) + the configured Twilio/Vapi phone number.
 - start_cold_batch queues/dials Purchased-list leads through that same Vapi path.
 - NEVER place a call on the first ask. First resolve the lead, restate name + phone, and ask: "Ready to call {Name} at {phone} — reply yes to place the Vapi call."
 - Only call start_target_call / start_cold_batch after the user's latest message is an explicit yes/confirm/go ahead.
@@ -215,6 +291,16 @@ async function executeTool({ name, input, tenantId, agentName, messages }) {
       return getJarvisCallDetail(tenantId, input);
     case "get_pending_callbacks":
       return getJarvisPendingCallbacks(tenantId);
+    case "get_unreplied_conversations":
+      return getJarvisUnrepliedConversations(tenantId, input);
+    case "get_inbox_activity":
+      return getJarvisInboxActivity(tenantId, input);
+    case "get_stale_conversations":
+      return getJarvisStaleConversations(tenantId, input);
+    case "get_inbox_stats":
+      return getJarvisInboxStats(tenantId, input);
+    case "set_lead_name":
+      return setJarvisLeadName(tenantId, input);
     case "start_target_call": {
       if (
         !latestUserAffirmed(messages) ||

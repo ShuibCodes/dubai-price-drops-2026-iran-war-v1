@@ -1,4 +1,5 @@
 import twilio from "twilio";
+import { waitUntil } from "@vercel/functions";
 import { defaultKbState, runKbTurn } from "@/lib/kb/engine";
 import { JARVIS_TENANT_SLUG, runJarvisTurn } from "@/lib/jarvis/engine";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
@@ -8,18 +9,21 @@ import {
   markProcessedMessageSid,
   setSenderState,
 } from "@/lib/whatsapp/state-store";
+import {
+  sendWhatsAppText,
+  truncateWhatsAppBody,
+  twilioRestConfigured,
+} from "@/lib/whatsapp/twilio-send";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-export const maxDuration = 30;
-
-const MAX_REPLY_LENGTH = 1500;
+export const maxDuration = 90;
 
 function makeTwiml(text = "") {
   const response = new twilio.twiml.MessagingResponse();
   const safe = String(text || "").trim();
   if (safe) {
-    response.message(safe.slice(0, MAX_REPLY_LENGTH));
+    response.message(safe);
   }
   return response.toString();
 }
@@ -32,13 +36,6 @@ function xmlResponse(xml) {
       "Cache-Control": "no-store",
     },
   });
-}
-
-function truncateForWhatsApp(text) {
-  const body = String(text || "").trim();
-  if (body.length <= MAX_REPLY_LENGTH) return body;
-  const tail = "\n\n(truncated — ask for more)";
-  return `${body.slice(0, MAX_REPLY_LENGTH - tail.length)}${tail}`;
 }
 
 function jarvisWaIds() {
@@ -61,12 +58,55 @@ async function resolveJarvisTenant() {
   return tenant;
 }
 
+async function runJarvisAndReply({
+  from,
+  to,
+  nextMessages,
+  state,
+  messageSid,
+}) {
+  try {
+    const tenant = await resolveJarvisTenant();
+    const result = await runJarvisTurn({
+      tenantId: tenant.id,
+      messages: nextMessages,
+      agentName: "Shuayb",
+    });
+    const replyText = truncateWhatsAppBody(result.text);
+    await sendWhatsAppText({ to: from, from: to, body: replyText });
+    setSenderState(from, {
+      ...state,
+      mode: "jarvis",
+      messages: [...nextMessages, { role: "assistant", content: replyText }].slice(
+        -30
+      ),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("WhatsApp Jarvis async error:", message, error);
+    try {
+      await sendWhatsAppText({
+        to: from,
+        from: to,
+        body: "I hit a temporary issue. Please try again in a moment.",
+      });
+    } catch (sendError) {
+      console.error("WhatsApp Jarvis failure reply failed:", sendError);
+    }
+  } finally {
+    if (messageSid) {
+      markProcessedMessageSid(from, messageSid);
+    }
+  }
+}
+
 export async function GET() {
   return Response.json({
     ok: true,
     message: "Twilio WhatsApp webhook is healthy.",
     anthropicConfigured: Boolean(process.env.ANTHROPIC_API_KEY),
     jarvisWaIds: jarvisWaIds().length,
+    twilioRestConfigured: twilioRestConfigured(),
   });
 }
 
@@ -74,6 +114,7 @@ export async function POST(request) {
   try {
     const form = await request.formData();
     const from = String(form.get("From") || "").trim();
+    const to = String(form.get("To") || "").trim();
     const body = String(form.get("Body") || "").trim();
     const messageSid = String(form.get("MessageSid") || "").trim();
 
@@ -92,10 +133,33 @@ export async function POST(request) {
 
     const state = getSenderState(from) ?? defaultKbState();
     const previousMessages = Array.isArray(state.messages) ? state.messages : [];
-    const nextMessages = [...previousMessages, { role: "user", content: body }].slice(-30);
+    const nextMessages = [...previousMessages, { role: "user", content: body }].slice(
+      -30
+    );
 
     const callerWaId = from.replace(/^whatsapp:/i, "").replace(/\D/g, "");
     const useJarvis = callerWaId && jarvisWaIds().includes(callerWaId);
+
+    if (useJarvis && twilioRestConfigured() && to) {
+      // Ack Twilio immediately; finish Jarvis + REST reply in waitUntil (up to maxDuration).
+      if (messageSid) markProcessedMessageSid(from, messageSid);
+      waitUntil(
+        runJarvisAndReply({
+          from,
+          to,
+          nextMessages,
+          state,
+          messageSid: null, // already marked above
+        })
+      );
+      return xmlResponse(makeTwiml(""));
+    }
+
+    if (useJarvis && !twilioRestConfigured()) {
+      console.warn(
+        "Jarvis WhatsApp: TWILIO_ACCOUNT_SID/AUTH_TOKEN missing — falling back to sync TwiML (Twilio ~15s risk)."
+      );
+    }
 
     let replyText;
     let nextState = state;
@@ -107,11 +171,13 @@ export async function POST(request) {
         messages: nextMessages,
         agentName: "Shuayb",
       });
-      replyText = truncateForWhatsApp(result.text);
+      replyText = truncateWhatsAppBody(result.text);
       nextState = {
         ...state,
         mode: "jarvis",
-        messages: [...nextMessages, { role: "assistant", content: replyText }].slice(-30),
+        messages: [...nextMessages, { role: "assistant", content: replyText }].slice(
+          -30
+        ),
       };
     } else {
       const result = await runKbTurn({
@@ -119,10 +185,12 @@ export async function POST(request) {
         state,
         callerWaId: callerWaId || null,
       });
-      replyText = truncateForWhatsApp(result.text);
+      replyText = truncateWhatsAppBody(result.text);
       nextState = {
         ...(result.nextState ?? state),
-        messages: [...nextMessages, { role: "assistant", content: replyText }].slice(-30),
+        messages: [...nextMessages, { role: "assistant", content: replyText }].slice(
+          -30
+        ),
       };
     }
 

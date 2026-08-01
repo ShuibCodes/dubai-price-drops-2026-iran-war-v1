@@ -30,7 +30,7 @@ export async function POST(request) {
       .maybeSingle();
     if (tenantError) throw new Error(`Tenant lookup failed: ${tenantError.message}`);
     if (!tenant) {
-      return Response.json({ error: "Tenant 1416 not found" }, { status: 404 });
+      return Response.json({ error: `Tenant ${JARVIS_TENANT_SLUG} not found` }, { status: 404 });
     }
 
     const body = await request.json().catch(() => ({}));

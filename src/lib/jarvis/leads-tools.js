@@ -1,4 +1,4 @@
-import { getSupabaseServerClient, MESSAGES_TABLE } from "@/lib/supabase/server";
+import { getSupabaseServerClient, MESSAGES_TABLE, normalizeWaId } from "@/lib/supabase/server";
 import {
   assertOutboundActive,
   dialLeadNow,
@@ -7,6 +7,14 @@ import {
   nextLeadWindowStart,
 } from "@/lib/calls/outbound";
 import { JARVIS_LEADS_TABLE } from "@/lib/ingest/jarvis-ingest";
+import {
+  ensureJarvisInferredName,
+  ensureJarvisInferredNames,
+  formatJarvisLeadName,
+} from "@/lib/jarvis/infer-name";
+
+const JARVIS_LEAD_NAME_SELECT =
+  "push_name, wa_id, inferred_name, inferred_name_confidence, inferred_name_at";
 
 function db() {
   const supabase = getSupabaseServerClient();
@@ -37,13 +45,53 @@ function snippet(text, term) {
   return body.slice(start, start + 140);
 }
 
+function leadNameFields(jarvisLead) {
+  return {
+    id: null,
+    push_name: jarvisLead?.push_name || null,
+    inferred_name: jarvisLead?.inferred_name || null,
+    inferred_name_confidence: jarvisLead?.inferred_name_confidence || null,
+    inferred_name_at: jarvisLead?.inferred_name_at || null,
+    wa_id: jarvisLead?.wa_id || null,
+  };
+}
+
+async function enrichConversationSlice(tenantId, conversations) {
+  const supabase = db();
+  const candidates = conversations.map((row) => ({
+    id: row.leadId,
+    push_name: row.push_name,
+    inferred_name: row.inferred_name,
+    inferred_name_confidence: row.inferred_name_confidence,
+    inferred_name_at: row.inferred_name_at,
+    wa_id: row.wa_id,
+  }));
+  const enriched = await ensureJarvisInferredNames(supabase, tenantId, candidates);
+
+  return conversations.map((row) => {
+    const lead = enriched.get(row.leadId) || row;
+    const formatted = formatJarvisLeadName(lead);
+    return {
+      leadId: row.leadId,
+      leadName: formatted.displayName,
+      nameSource: formatted.nameSource,
+      nameConfidence: formatted.nameConfidence,
+      phone: row.phone || fullPhone(lead.wa_id),
+      direction: row.direction,
+      snippet: row.snippet,
+      lastAt: row.lastAt,
+      age: row.age,
+    };
+  });
+}
+
 export async function getJarvisLatestMessages(tenantId, limit = 10) {
   const supabase = db();
   const capped = Math.min(Math.max(Number(limit) || 10, 1), 50);
   const { data, error } = await supabase
     .from(MESSAGES_TABLE)
     .select(
-      "id, jarvis_lead_id, direction, body, msg_type, timestamp, created_at, jarvis_leads(push_name, wa_id)"
+      `id, jarvis_lead_id, direction, body, msg_type, timestamp, created_at, jarvis_leads(${JARVIS_LEAD_NAME_SELECT})`
     )
     .eq("tenant_id", tenantId)
     .not("jarvis_lead_id", "is", null)
@@ -51,14 +99,206 @@ export async function getJarvisLatestMessages(tenantId, limit = 10) {
     .limit(capped);
   if (error) throw new Error(`Latest messages query failed: ${error.message}`);
 
-  return (data || []).map((message) => ({
-    leadId: message.jarvis_lead_id,
-    leadName: message.jarvis_leads?.push_name || null,
-    phone: fullPhone(message.jarvis_leads?.wa_id),
-    direction: message.direction,
-    body: message.body || `[${message.msg_type || "message"}]`,
-    timestamp: message.timestamp || message.created_at,
-  }));
+  const rows = data || [];
+  const uniqueLeads = new Map();
+  for (const message of rows) {
+    if (!message.jarvis_lead_id || uniqueLeads.has(message.jarvis_lead_id)) continue;
+    uniqueLeads.set(message.jarvis_lead_id, {
+      id: message.jarvis_lead_id,
+      ...leadNameFields(message.jarvis_leads),
+    });
+  }
+  const enriched = await ensureJarvisInferredNames(
+    supabase,
+    tenantId,
+    [...uniqueLeads.values()]
+  );
+
+  return rows.map((message) => {
+    const lead =
+      enriched.get(message.jarvis_lead_id) || leadNameFields(message.jarvis_leads);
+    const formatted = formatJarvisLeadName(lead);
+    return {
+      leadId: message.jarvis_lead_id,
+      leadName: formatted.displayName,
+      nameSource: formatted.nameSource,
+      nameConfidence: formatted.nameConfidence,
+      phone: fullPhone(lead.wa_id || message.jarvis_leads?.wa_id),
+      direction: message.direction,
+      body: message.body || `[${message.msg_type || "message"}]`,
+      timestamp: message.timestamp || message.created_at,
+    };
+  });
+}
+
+function clampHours(hours, fallback = 72) {
+  const n = Number(hours);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.min(Math.max(Math.floor(n), 1), 24 * 14);
+}
+
+function clampLimit(limit, fallback = 15, max = 30) {
+  const n = Number(limit);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.min(Math.max(Math.floor(n), 1), max);
+}
+
+function formatAge(timestamp) {
+  if (!timestamp) return null;
+  const ms = Date.now() - new Date(timestamp).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return null;
+  const minutes = Math.floor(ms / 60000);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
+}
+
+function bodySnippet(message) {
+  const text = String(message?.body || "").trim();
+  if (text) return text.slice(0, 140);
+  return `[${message?.msg_type || "message"}]`;
+}
+
+/**
+ * Load recent jarvis WhatsApp rows and reduce to latest-per-thread + counts.
+ * Bounded query — no migration/RPC required.
+ */
+async function loadJarvisInboxWindow(tenantId, hours = 72) {
+  const supabase = db();
+  const windowHours = clampHours(hours);
+  const since = new Date(Date.now() - windowHours * 60 * 60 * 1000).toISOString();
+
+  const { data, error } = await supabase
+    .from(MESSAGES_TABLE)
+    .select(
+      `id, jarvis_lead_id, direction, body, msg_type, timestamp, created_at, jarvis_leads(${JARVIS_LEAD_NAME_SELECT})`
+    )
+    .eq("tenant_id", tenantId)
+    .not("jarvis_lead_id", "is", null)
+    .gte("timestamp", since)
+    .order("timestamp", { ascending: false })
+    .limit(2000);
+  if (error) throw new Error(`Inbox window query failed: ${error.message}`);
+
+  const rows = data || [];
+  const latestByLead = new Map();
+  let inbound = 0;
+  let outbound = 0;
+
+  for (const row of rows) {
+    if (row.direction === "inbound") inbound += 1;
+    else if (row.direction === "outbound") outbound += 1;
+
+    if (!row.jarvis_lead_id || latestByLead.has(row.jarvis_lead_id)) continue;
+    const fields = leadNameFields(row.jarvis_leads);
+    latestByLead.set(row.jarvis_lead_id, {
+      leadId: row.jarvis_lead_id,
+      push_name: fields.push_name,
+      inferred_name: fields.inferred_name,
+      inferred_name_confidence: fields.inferred_name_confidence,
+      inferred_name_at: fields.inferred_name_at,
+      wa_id: fields.wa_id,
+      phone: fullPhone(fields.wa_id),
+      direction: row.direction,
+      snippet: bodySnippet(row),
+      lastAt: row.timestamp || row.created_at,
+      age: formatAge(row.timestamp || row.created_at),
+    });
+  }
+
+  const threads = [...latestByLead.values()];
+  return {
+    hours: windowHours,
+    since,
+    messageCount: rows.length,
+    inbound,
+    outbound,
+    threads,
+    unreplied: threads.filter((t) => t.direction === "inbound"),
+    staleOutbound: threads.filter((t) => t.direction === "outbound"),
+  };
+}
+
+/** Threads whose latest message in the window is inbound (needs a reply). */
+export async function getJarvisUnrepliedConversations(
+  tenantId,
+  { hours = 72, limit = 15 } = {}
+) {
+  const window = await loadJarvisInboxWindow(tenantId, hours);
+  const capped = clampLimit(limit);
+  const slice = window.unreplied.slice(0, capped);
+  const conversations = await enrichConversationSlice(tenantId, slice);
+  return {
+    hours: window.hours,
+    count: window.unreplied.length,
+    conversations,
+  };
+}
+
+/** Distinct threads active in the window, newest first. */
+export async function getJarvisInboxActivity(
+  tenantId,
+  { hours = 72, limit = 15, inboundOnly = false } = {}
+) {
+  const window = await loadJarvisInboxWindow(tenantId, hours);
+  const capped = clampLimit(limit);
+  const list = inboundOnly
+    ? window.threads.filter((t) => t.direction === "inbound")
+    : window.threads;
+  const slice = list.slice(0, capped);
+  const conversations = await enrichConversationSlice(tenantId, slice);
+  return {
+    hours: window.hours,
+    inboundOnly: Boolean(inboundOnly),
+    count: list.length,
+    conversations,
+  };
+}
+
+/**
+ * Threads whose latest message is outbound and older than `hours`
+ * (you messaged them; they haven't replied since).
+ * Always looks back 14 days so threads idle longer than `hours` still surface.
+ */
+export async function getJarvisStaleConversations(
+  tenantId,
+  { hours = 72, limit = 15 } = {}
+) {
+  const staleHours = clampHours(hours);
+  const lookbackHours = 24 * 14;
+  const window = await loadJarvisInboxWindow(tenantId, lookbackHours);
+  const cutoff = Date.now() - staleHours * 60 * 60 * 1000;
+  const capped = clampLimit(limit);
+  const stale = window.staleOutbound.filter((t) => {
+    const ts = new Date(t.lastAt).getTime();
+    return Number.isFinite(ts) && ts <= cutoff;
+  });
+  const conversations = await enrichConversationSlice(
+    tenantId,
+    stale.slice(0, capped)
+  );
+  return {
+    hours: staleHours,
+    lookbackHours,
+    count: stale.length,
+    conversations,
+  };
+}
+
+/** Aggregate inbox counts for a time window. */
+export async function getJarvisInboxStats(tenantId, { hours = 72 } = {}) {
+  const window = await loadJarvisInboxWindow(tenantId, hours);
+  return {
+    hours: window.hours,
+    since: window.since,
+    messages: window.messageCount,
+    threads: window.threads.length,
+    inbound: window.inbound,
+    outbound: window.outbound,
+    unreplied: window.unreplied.length,
+    staleOutbound: window.staleOutbound.length,
+  };
 }
 
 export async function searchJarvisLeadByName(tenantId, name) {
@@ -69,16 +309,20 @@ export async function searchJarvisLeadByName(tenantId, name) {
   const term = query.replace(/[%_,()]/g, " ").trim();
   const { data: leads, error } = await supabase
     .from(JARVIS_LEADS_TABLE)
-    .select("id, push_name, wa_id, source, owns_property, last_message_at")
+    .select(
+      "id, push_name, wa_id, source, owns_property, last_message_at, inferred_name, inferred_name_confidence, inferred_name_at"
+    )
     .eq("tenant_id", tenantId)
-    .or(`push_name.ilike.%${term}%,source.ilike.%${term}%`)
+    .or(
+      `push_name.ilike.%${term}%,inferred_name.ilike.%${term}%,source.ilike.%${term}%`
+    )
     .order("last_message_at", { ascending: false })
     .limit(30);
   if (error) throw new Error(`Lead search failed: ${error.message}`);
   if (!leads?.length) return [];
 
   const ids = leads.map((lead) => lead.id);
-  const [callsResult, messagesResult] = await Promise.all([
+  const [callsResult, messagesResult, enrichedMap] = await Promise.all([
     supabase
       .from("calls")
       .select("jarvis_lead_id, qualification, created_at")
@@ -90,6 +334,7 @@ export async function searchJarvisLeadByName(tenantId, name) {
       .select("jarvis_lead_id")
       .eq("tenant_id", tenantId)
       .in("jarvis_lead_id", ids),
+    ensureJarvisInferredNames(supabase, tenantId, leads),
   ]);
   if (callsResult.error) {
     throw new Error(`Lead calls query failed: ${callsResult.error.message}`);
@@ -114,16 +359,22 @@ export async function searchJarvisLeadByName(tenantId, name) {
   }
 
   return leads
-    .map((lead) => ({
-      id: lead.id,
-      name: lead.push_name || null,
-      phone: fullPhone(lead.wa_id),
-      source: lead.source || null,
-      ownsProperty: lead.owns_property || null,
-      lastCallOutcome: latestOutcome.get(lead.id) || null,
-      lastMessageAt: lead.last_message_at || null,
-      messageCount: messageCounts.get(lead.id) || 0,
-    }))
+    .map((lead) => {
+      const enriched = enrichedMap.get(lead.id) || lead;
+      const formatted = formatJarvisLeadName(enriched);
+      return {
+        id: lead.id,
+        name: formatted.displayName,
+        nameSource: formatted.nameSource,
+        nameConfidence: formatted.nameConfidence,
+        phone: fullPhone(lead.wa_id),
+        source: lead.source || null,
+        ownsProperty: lead.owns_property || null,
+        lastCallOutcome: latestOutcome.get(lead.id) || null,
+        lastMessageAt: lead.last_message_at || null,
+        messageCount: messageCounts.get(lead.id) || 0,
+      };
+    })
     .sort((a, b) => (b.messageCount > 0) - (a.messageCount > 0))
     .slice(0, 10);
 }
@@ -132,14 +383,16 @@ export async function getJarvisLeadStory(tenantId, leadId) {
   const supabase = db();
   const { data: lead, error: leadError } = await supabase
     .from(JARVIS_LEADS_TABLE)
-    .select("id, push_name, wa_id, source, owns_property")
+    .select(
+      "id, push_name, wa_id, source, owns_property, inferred_name, inferred_name_confidence, inferred_name_at"
+    )
     .eq("tenant_id", tenantId)
     .eq("id", leadId)
     .maybeSingle();
   if (leadError) throw new Error(`Lead lookup failed: ${leadError.message}`);
   if (!lead) return null;
 
-  const [callsResult, messagesResult] = await Promise.all([
+  const [callsResult, messagesResult, enrichedLead] = await Promise.all([
     supabase
       .from("calls")
       .select("id, started_at, ended_at, created_at, summary, qualification, recording_url")
@@ -150,6 +403,7 @@ export async function getJarvisLeadStory(tenantId, leadId) {
       .select("id, direction, body, msg_type, timestamp, created_at")
       .eq("tenant_id", tenantId)
       .eq("jarvis_lead_id", leadId),
+    ensureJarvisInferredName(supabase, tenantId, lead),
   ]);
   if (callsResult.error) throw new Error(`Lead calls query failed: ${callsResult.error.message}`);
   if (messagesResult.error) {
@@ -174,10 +428,13 @@ export async function getJarvisLeadStory(tenantId, leadId) {
     })),
   ].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
+  const formatted = formatJarvisLeadName(enrichedLead || lead);
   return {
     lead: {
       id: lead.id,
-      name: lead.push_name || null,
+      name: formatted.displayName,
+      nameSource: formatted.nameSource,
+      nameConfidence: formatted.nameConfidence,
       phone: fullPhone(lead.wa_id),
       source: lead.source || null,
       ownsProperty: lead.owns_property || null,
@@ -194,7 +451,7 @@ export async function searchJarvisConversations(tenantId, query) {
   const { data: messages, error } = await supabase
     .from(MESSAGES_TABLE)
     .select(
-      "id, jarvis_lead_id, direction, body, timestamp, created_at, jarvis_leads(push_name, wa_id)"
+      `id, jarvis_lead_id, direction, body, timestamp, created_at, jarvis_leads(${JARVIS_LEAD_NAME_SELECT})`
     )
     .eq("tenant_id", tenantId)
     .not("jarvis_lead_id", "is", null)
@@ -203,15 +460,37 @@ export async function searchJarvisConversations(tenantId, query) {
     .limit(20);
   if (error) throw new Error(`Conversation search failed: ${error.message}`);
 
-  return (messages || []).map((message) => ({
-    type: "message",
-    leadId: message.jarvis_lead_id,
-    leadName: message.jarvis_leads?.push_name || null,
-    phone: fullPhone(message.jarvis_leads?.wa_id),
-    direction: message.direction,
-    timestamp: message.timestamp || message.created_at,
-    snippet: snippet(message.body, term),
-  }));
+  const rows = messages || [];
+  const uniqueLeads = new Map();
+  for (const message of rows) {
+    if (!message.jarvis_lead_id || uniqueLeads.has(message.jarvis_lead_id)) continue;
+    uniqueLeads.set(message.jarvis_lead_id, {
+      id: message.jarvis_lead_id,
+      ...leadNameFields(message.jarvis_leads),
+    });
+  }
+  const enriched = await ensureJarvisInferredNames(
+    supabase,
+    tenantId,
+    [...uniqueLeads.values()]
+  );
+
+  return rows.map((message) => {
+    const lead =
+      enriched.get(message.jarvis_lead_id) || leadNameFields(message.jarvis_leads);
+    const formatted = formatJarvisLeadName(lead);
+    return {
+      type: "message",
+      leadId: message.jarvis_lead_id,
+      leadName: formatted.displayName,
+      nameSource: formatted.nameSource,
+      nameConfidence: formatted.nameConfidence,
+      phone: fullPhone(lead.wa_id || message.jarvis_leads?.wa_id),
+      direction: message.direction,
+      timestamp: message.timestamp || message.created_at,
+      snippet: snippet(message.body, term),
+    };
+  });
 }
 
 export async function getJarvisCallDetail(tenantId, { leadId, callId } = {}) {
@@ -219,7 +498,7 @@ export async function getJarvisCallDetail(tenantId, { leadId, callId } = {}) {
   let query = supabase
     .from("calls")
     .select(
-      "id, jarvis_lead_id, started_at, ended_at, created_at, duration_seconds, transcript, recording_url, qualification, summary, jarvis_leads(push_name, wa_id)"
+      `id, jarvis_lead_id, started_at, ended_at, created_at, duration_seconds, transcript, recording_url, qualification, summary, jarvis_leads(${JARVIS_LEAD_NAME_SELECT})`
     )
     .eq("tenant_id", tenantId)
     .not("jarvis_lead_id", "is", null);
@@ -234,12 +513,20 @@ export async function getJarvisCallDetail(tenantId, { leadId, callId } = {}) {
   if (error) throw new Error(`Call detail query failed: ${error.message}`);
   if (!data) return null;
 
+  const leadFields = {
+    id: data.jarvis_lead_id,
+    ...leadNameFields(data.jarvis_leads),
+  };
+  const enriched = await ensureJarvisInferredName(supabase, tenantId, leadFields);
+  const formatted = formatJarvisLeadName(enriched || leadFields);
   const q = qualification(data);
   return {
     callId: data.id,
     leadId: data.jarvis_lead_id,
-    leadName: data.jarvis_leads?.push_name || null,
-    phone: fullPhone(data.jarvis_leads?.wa_id),
+    leadName: formatted.displayName,
+    nameSource: formatted.nameSource,
+    nameConfidence: formatted.nameConfidence,
+    phone: fullPhone(enriched?.wa_id || data.jarvis_leads?.wa_id),
     startedAt: data.started_at || data.created_at,
     endedAt: data.ended_at || null,
     durationSeconds: data.duration_seconds || null,
@@ -256,7 +543,7 @@ export async function getJarvisPendingCallbacks(tenantId) {
   const { data, error } = await supabase
     .from("calls")
     .select(
-      "id, jarvis_lead_id, created_at, qualification, jarvis_leads(push_name, wa_id)"
+      `id, jarvis_lead_id, created_at, qualification, jarvis_leads(${JARVIS_LEAD_NAME_SELECT})`
     )
     .eq("tenant_id", tenantId)
     .not("jarvis_lead_id", "is", null)
@@ -266,20 +553,105 @@ export async function getJarvisPendingCallbacks(tenantId) {
   if (error) throw new Error(`Callbacks query failed: ${error.message}`);
 
   const seen = new Set();
-  const out = [];
+  const pending = [];
   for (const call of data || []) {
     if (!call.jarvis_lead_id || seen.has(call.jarvis_lead_id)) continue;
     seen.add(call.jarvis_lead_id);
     const q = qualification(call);
-    out.push({
+    pending.push({
       leadId: call.jarvis_lead_id,
-      leadName: call.jarvis_leads?.push_name || null,
+      ...leadNameFields(call.jarvis_leads),
       phone: fullPhone(call.jarvis_leads?.wa_id),
       callbackTime: q.callback_time || null,
       calledAt: call.created_at,
     });
   }
-  return out;
+
+  const enriched = await ensureJarvisInferredNames(
+    supabase,
+    tenantId,
+    pending.map((row) => ({
+      id: row.leadId,
+      push_name: row.push_name,
+      inferred_name: row.inferred_name,
+      inferred_name_confidence: row.inferred_name_confidence,
+      inferred_name_at: row.inferred_name_at,
+      wa_id: row.wa_id,
+    }))
+  );
+
+  return pending.map((row) => {
+    const lead = enriched.get(row.leadId) || row;
+    const formatted = formatJarvisLeadName(lead);
+    return {
+      leadId: row.leadId,
+      leadName: formatted.displayName,
+      nameSource: formatted.nameSource,
+      nameConfidence: formatted.nameConfidence,
+      phone: row.phone,
+      callbackTime: row.callbackTime,
+      calledAt: row.calledAt,
+    };
+  });
+}
+
+/**
+ * Persist an authoritative contact name (user-confirmed).
+ * Writes push_name only — never invents; Vapi dials use this field.
+ */
+export async function setJarvisLeadName(tenantId, { leadId, phone, name } = {}) {
+  const supabase = db();
+  const cleanedName = String(name || "")
+    .trim()
+    .split(/\s+/)[0];
+  if (!cleanedName || cleanedName.length < 2) {
+    throw new Error("A valid first name is required");
+  }
+  if (!/^[A-Za-z][A-Za-z'-]*$/.test(cleanedName)) {
+    throw new Error("Name must be letters only (first name)");
+  }
+  const normalized =
+    cleanedName.charAt(0).toUpperCase() + cleanedName.slice(1);
+
+  let query = supabase
+    .from(JARVIS_LEADS_TABLE)
+    .select(
+      "id, push_name, wa_id, inferred_name, inferred_name_confidence, inferred_name_at"
+    )
+    .eq("tenant_id", tenantId);
+
+  if (leadId) {
+    query = query.eq("id", leadId);
+  } else {
+    const digits = normalizeWaId(phone);
+    if (!digits) throw new Error("leadId or phone is required");
+    query = query.eq("wa_id", digits);
+  }
+
+  const { data: lead, error: lookupError } = await query.maybeSingle();
+  if (lookupError) throw new Error(`Lead lookup failed: ${lookupError.message}`);
+  if (!lead) throw new Error("Lead not found");
+
+  const { data: updated, error } = await supabase
+    .from(JARVIS_LEADS_TABLE)
+    .update({ push_name: normalized })
+    .eq("id", lead.id)
+    .select(
+      "id, push_name, wa_id, inferred_name, inferred_name_confidence, inferred_name_at"
+    )
+    .single();
+  if (error) throw new Error(`Failed to set lead name: ${error.message}`);
+
+  const formatted = formatJarvisLeadName(updated);
+  return {
+    ok: true,
+    leadId: updated.id,
+    name: formatted.displayName,
+    nameSource: formatted.nameSource,
+    nameConfidence: formatted.nameConfidence,
+    phone: fullPhone(updated.wa_id),
+    previousPushName: lead.push_name || null,
+  };
 }
 
 async function dialJarvisLeadNow({ supabase, tenant, lead, source }) {

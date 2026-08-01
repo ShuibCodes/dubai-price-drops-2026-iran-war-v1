@@ -22,7 +22,7 @@ export async function getOutboundTenant(supabase, tenantId) {
   const { data, error } = await supabase
     .from("tenants")
     .select(
-      "id, name, slug, outbound_paused, vapi_assistant_id, vapi_assistant_id_meta, vapi_phone_number_id"
+      "id, name, slug, outbound_paused, vapi_assistant_id, vapi_assistant_id_meta, vapi_assistant_id_jarvis, vapi_phone_number_id"
     )
     .eq("id", tenantId)
     .single();
@@ -104,10 +104,14 @@ export async function dialLeadNow({
     );
   }
 
+  const assistantId = jarvisLead
+    ? tenant.vapi_assistant_id_jarvis || tenant.vapi_assistant_id
+    : tenant.vapi_assistant_id;
+
   const result = await startLeadCall({
     name: leadName,
     phone,
-    assistantId: tenant.vapi_assistant_id,
+    assistantId,
     phoneNumberId: tenant.vapi_phone_number_id,
     variableValues: {
       leadName,
