@@ -104,9 +104,19 @@ export async function dialLeadNow({
     );
   }
 
-  const assistantId = jarvisLead
-    ? tenant.vapi_assistant_id_jarvis || tenant.vapi_assistant_id
-    : tenant.vapi_assistant_id;
+  // Jarvis personal dials must NEVER fall back to Pixxi/Allan (vapi_assistant_id).
+  let assistantId = tenant.vapi_assistant_id;
+  if (jarvisLead) {
+    if (!tenant.vapi_assistant_id_jarvis) {
+      throw new Error(
+        "Missing tenants.vapi_assistant_id_jarvis — refuse to dial with the cold-call assistant"
+      );
+    }
+    assistantId = tenant.vapi_assistant_id_jarvis;
+  }
+  if (!assistantId) {
+    throw new Error("Missing Vapi assistant id for this tenant");
+  }
 
   const result = await startLeadCall({
     name: leadName,

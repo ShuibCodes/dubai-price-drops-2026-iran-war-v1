@@ -270,9 +270,9 @@ LOOKUPS:
 - Saving/confirming a contact name → set_lead_name (user-supplied only; never invent).
 
 ACTIONS — CALLS (Vapi):
-- "call X and tell/ask them Y" → place_relay_call (message-relay assistant). Rewrite Y into the spoken task per the tool description. Never dial on the first ask — restates name, number, and the exact spoken task, then wait for yes.
-- "call X" with no message to relay → start_target_call (lead / qualification flow), NOT place_relay_call.
-- start_target_call dials one lead with the Jarvis Vapi assistant (vapi_assistant_id_jarvis) + the configured Twilio/Vapi phone number.
+- "call X and tell/ask them Y" → ALWAYS place_relay_call (relay assistant). Rewrite Y into the spoken task per the tool description. Never use start_target_call for a relay/message.
+- "call X" with no message to relay → start_target_call (Jarvis personal assistant only). Never the Allan/Pixxi cold-call assistant.
+- start_target_call dials one lead with tenants.vapi_assistant_id_jarvis ONLY.
 - start_cold_batch queues/dials Purchased-list leads through that same Vapi path.
 - NEVER place a call on the first ask. For lead calls: restate name + phone, ask: "Ready to call {Name} at {phone} — reply yes to place the Vapi call."
 - For relays: confirmation is handled after place_relay_call returns needs_confirmation — show name, number, and the exact task line.
