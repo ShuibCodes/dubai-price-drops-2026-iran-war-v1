@@ -11,6 +11,11 @@ import {
   normalizeSenderPhone,
   setPendingRelay,
 } from "@/lib/jarvis/pending-relay";
+import {
+  buildJarvisNameOrFilter,
+  cleanJarvisSearchName,
+  jarvisNameSearchTerms,
+} from "@/lib/jarvis/name-search";
 import { getSupabaseServerClient, normalizeWaId } from "@/lib/supabase/server";
 import { startRelayCall } from "@/lib/vapi/client";
 
@@ -145,19 +150,24 @@ async function resolveRelayLead(tenantId, name, phoneHint) {
     }
   }
 
-  const query = String(name || "").trim();
+  const query = cleanJarvisSearchName(name);
   if (!query) {
     return { status: "not_found", matches: [] };
   }
 
-  const term = query.replace(/[%_,()]/g, " ").trim();
+  const terms = jarvisNameSearchTerms(query);
+  const orFilter = buildJarvisNameOrFilter(terms);
+  if (!orFilter) {
+    return { status: "not_found", matches: [] };
+  }
+
   const { data: leads, error } = await supabase
     .from(JARVIS_LEADS_TABLE)
     .select(
       "id, push_name, wa_id, inferred_name, inferred_name_confidence, inferred_name_at, last_message_at"
     )
     .eq("tenant_id", tenantId)
-    .or(`push_name.ilike.%${term}%,inferred_name.ilike.%${term}%`)
+    .or(orFilter)
     .order("last_message_at", { ascending: false })
     .limit(30);
   if (error) throw new Error(`Lead search failed: ${error.message}`);
@@ -166,7 +176,7 @@ async function resolveRelayLead(tenantId, name, phoneHint) {
   }
 
   const enriched = await ensureJarvisInferredNames(supabase, tenantId, leads);
-  const needle = firstToken(term);
+  const needle = firstToken(query);
   const scored = leads
     .map((row) => {
       const lead = enriched.get(row.id) || row;

@@ -12,6 +12,11 @@ import {
   ensureJarvisInferredNames,
   formatJarvisLeadName,
 } from "@/lib/jarvis/infer-name";
+import {
+  buildJarvisNameOrFilter,
+  cleanJarvisSearchName,
+  jarvisNameSearchTerms,
+} from "@/lib/jarvis/name-search";
 
 const JARVIS_LEAD_NAME_SELECT =
   "push_name, wa_id, inferred_name, inferred_name_confidence, inferred_name_at";
@@ -303,23 +308,48 @@ export async function getJarvisInboxStats(tenantId, { hours = 72 } = {}) {
 
 export async function searchJarvisLeadByName(tenantId, name) {
   const supabase = db();
-  const query = String(name || "").trim();
+  const query = cleanJarvisSearchName(name);
   if (!query) return [];
 
-  const term = query.replace(/[%_,()]/g, " ").trim();
-  const { data: leads, error } = await supabase
+  const terms = jarvisNameSearchTerms(query);
+  const orFilter = buildJarvisNameOrFilter(terms);
+  if (!orFilter) return [];
+
+  // Phone pasted as the "name" — resolve by wa_id directly.
+  const digits = query.replace(/\D/g, "");
+  let phoneMatches = [];
+  if (digits.length >= 8) {
+    const { data: byPhone, error: phoneError } = await supabase
+      .from(JARVIS_LEADS_TABLE)
+      .select(
+        "id, push_name, wa_id, source, owns_property, last_message_at, inferred_name, inferred_name_confidence, inferred_name_at"
+      )
+      .eq("tenant_id", tenantId)
+      .or(`wa_id.eq.${digits},wa_id.like.%${digits.slice(-9)}`)
+      .limit(10);
+    if (phoneError) throw new Error(`Lead phone search failed: ${phoneError.message}`);
+    phoneMatches = byPhone || [];
+  }
+
+  const { data: nameLeads, error } = await supabase
     .from(JARVIS_LEADS_TABLE)
     .select(
       "id, push_name, wa_id, source, owns_property, last_message_at, inferred_name, inferred_name_confidence, inferred_name_at"
     )
     .eq("tenant_id", tenantId)
-    .or(
-      `push_name.ilike.%${term}%,inferred_name.ilike.%${term}%,source.ilike.%${term}%`
-    )
+    .or(orFilter)
     .order("last_message_at", { ascending: false })
     .limit(30);
   if (error) throw new Error(`Lead search failed: ${error.message}`);
-  if (!leads?.length) return [];
+
+  const byId = new Map();
+  for (const lead of [...phoneMatches, ...(nameLeads || [])]) {
+    if (lead?.id) byId.set(lead.id, lead);
+  }
+  const leads = [...byId.values()];
+  if (!leads.length) return [];
+
+  const term = query;
 
   const ids = leads.map((lead) => lead.id);
   const [callsResult, messagesResult, enrichedMap] = await Promise.all([

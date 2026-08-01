@@ -24,7 +24,10 @@ import { getJarvisRecentConversations, formatLiveContext } from "@/lib/kb/live-c
 
 const MODEL = "claude-sonnet-4-6";
 const MAX_TOOL_ROUNDS = 5;
-export const JARVIS_TENANT_SLUG = "sterling";
+// Default Sterling AZ personal workspace. Override with JARVIS_TENANT_SLUG env
+// if a host (e.g. Railway) still needs to be flipped without a code change.
+export const JARVIS_TENANT_SLUG =
+  String(process.env.JARVIS_TENANT_SLUG || "sterling").trim() || "sterling";
 
 export const jarvisToolDefinitions = [
   {
