@@ -154,7 +154,7 @@ export const copilotToolDefinitions = [
   {
     name: "start_cold_batch",
     description:
-      "Queue calls to the next uncalled cold-list leads starting now at 60-second spacing. No daily cap and no business-hours gating — use the count the user asked for. Returns a byTimezone summary. More than 100 requires explicit user confirmation. When the user restricts the batch to a market (e.g. 'UAE leads only', 'call the 971 numbers'), pass country so only leads with that dialing code are selected. When the user names a campaign or list (e.g. 'the downtown batch', 'burj lake owners'), pass source so only leads from matching sources are selected.",
+      "Queue cold-list leads starting now at 60-second spacing. Re-dials previously called numbers until they have 3 prior call attempts; skips only leads already at 3+ attempts or currently queued. No daily cap / business-hours gating. More than 100 requires explicit user confirmation. Pass country and/or source to restrict the batch.",
     input_schema: {
       type: "object",
       properties: {
@@ -186,7 +186,7 @@ export const copilotToolDefinitions = [
   {
     name: "schedule_batch",
     description:
-      "Schedule calls to the next uncalled cold-list leads at 60-second spacing starting at whenIso. No daily cap and no business-hours snapping — exact times the user asked for (any day/hour). Set spreadDays to split the total evenly across N consecutive days, each day starting at the same time as whenIso (e.g. 600 calls over 3 days = 200 per day). More than 100 total requires explicit user confirmation. When the user names a campaign or list, pass source to restrict lead selection.",
+      "Schedule cold-list leads at 60-second spacing starting at whenIso. Re-dials previously called numbers until 3 prior attempts; skips 3+ attempts or currently queued. No daily cap / business-hours snapping. Set spreadDays to split evenly across N days. More than 100 total requires explicit yes. Pass country and/or source to restrict.",
     input_schema: {
       type: "object",
       properties: {
@@ -238,6 +238,7 @@ Rules:
 - Batches can be restricted to one market: when the user says "UAE leads only", "local numbers", "971 numbers", or names any country, pass that country to start_cold_batch or schedule_batch. UAE = 971. In the reply, state which country the batch was limited to.
 - When batching a named campaign, pass it as source to start_cold_batch or schedule_batch. If unsure what campaigns exist, call list_lead_sources first.
 - Dates/times are Asia/Dubai unless the user specifies otherwise. There is NO daily dial cap and NO business-hours gate — schedule exactly what the user asks (count + when), including evenings, nights, and weekends.
+- Cold batches re-call numbers that were dialed before. Only skip a lead once it already has 3 call attempts (or is already in the queue). Prefer never-called first, then 1x, then 2x.
 
 ROSTER vs CALL ACTIVITY — hard routing rules:
 - "leads", "my list", "how many leads", "uncalled", or any campaign/source question ("downtown leads", "burj lake owners") → ROSTER tools only: query_leads and list_lead_sources. Pass the campaign word as the source filter to query_leads.

@@ -218,7 +218,7 @@ export const jarvisToolDefinitions = [
   {
     name: "start_cold_batch",
     description:
-      "Start/queue cold calls to uncalled Purchased-list leads via Vapi. ONLY after explicit user confirmation. Pass country to limit market (e.g. 971 / UAE).",
+      "Start/queue cold calls to Purchased-list leads via Vapi (re-dials allowed until 3 prior attempts). ONLY after explicit user confirmation. Pass country to limit market (e.g. 971 / UAE).",
     input_schema: {
       type: "object",
       properties: {

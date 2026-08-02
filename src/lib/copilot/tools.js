@@ -710,18 +710,67 @@ export function normalizeCountryCode(country) {
   return alias;
 }
 
-async function queryColdCandidates(supabase, tenantId, count, countryCode, applySource) {
+/** Max prior outbound attempts before a lead is skipped for cold batches. */
+const MAX_COLD_CALL_ATTEMPTS = 3;
+const COLD_SCAN_PAGE = 250;
+const COLD_SCAN_MAX = 8000;
+
+function validateCount(count) {
+  const value = Number(count);
+  if (!Number.isInteger(value) || value < 1) throw new Error("Count must be a positive integer");
+  return value;
+}
+
+async function queryColdCandidatesPage(
+  supabase,
+  tenantId,
+  countryCode,
+  applySource,
+  offset,
+  pageSize
+) {
   let candidateQuery = supabase
     .from("leads")
-    .select("id, push_name, wa_id, source, owns_property, pixxi_lead_id")
+    .select("id, push_name, wa_id, source, owns_property, pixxi_lead_id, first_seen")
     .eq("tenant_id", tenantId);
   candidateQuery = applySource(candidateQuery);
   if (countryCode) candidateQuery = candidateQuery.eq("country_code", countryCode);
   return candidateQuery
     .order("first_seen", { ascending: true })
-    .limit(Math.max(count * 3, 100));
+    .range(offset, offset + pageSize - 1);
 }
 
+async function callAttemptCounts(supabase, tenantId, leadIds) {
+  const counts = new Map();
+  if (!leadIds.length) return counts;
+  const rows = await fetchInChunks(leadIds, (chunk) =>
+    supabase.from("calls").select("lead_id").eq("tenant_id", tenantId).in("lead_id", chunk)
+  );
+  for (const row of rows) {
+    if (!row?.lead_id) continue;
+    counts.set(row.lead_id, (counts.get(row.lead_id) || 0) + 1);
+  }
+  return counts;
+}
+
+async function pendingQueueLeadIds(supabase, tenantId, leadIds) {
+  if (!leadIds.length) return new Set();
+  const rows = await fetchInChunks(leadIds, (chunk) =>
+    supabase
+      .from("call_queue")
+      .select("lead_id")
+      .eq("tenant_id", tenantId)
+      .eq("processed", false)
+      .in("lead_id", chunk)
+  );
+  return new Set(rows.map((row) => row.lead_id).filter(Boolean));
+}
+
+/**
+ * Pick cold-list leads that still have dial room (< MAX_COLD_CALL_ATTEMPTS
+ * prior calls) and are not already sitting in the queue. Prefer never-called,
+ * then 1x, then 2x — so re-dials happen after fresher numbers.
+ */
 async function selectUncalledPurchasedLeads(
   supabase,
   tenantId,
@@ -729,78 +778,80 @@ async function selectUncalledPurchasedLeads(
   countryCode,
   sourceFilter
 ) {
-  const requestedSource = String(sourceFilter || "").trim();
-  let candidates;
-  let error;
+  const requested = validateCount(count);
+  const sourceModes = String(sourceFilter || "").trim()
+    ? ["requested"]
+    : ["purchased", "any_source"];
 
-  if (requestedSource) {
-    ({ data: candidates, error } = await queryColdCandidates(
-      supabase,
-      tenantId,
-      count,
-      countryCode,
-      (q) => q.ilike("source", `%${requestedSource}%`)
-    ));
-  } else {
-    // Default cold list is the 1416-style "Purchased list". Tenants imported
-    // with named campaign sources (downtown_views, burj_lake_owner, ...) have
-    // no such rows, so fall back to any lead that has a source at all —
-    // organic WhatsApp contacts (source null) are never cold-called.
-    ({ data: candidates, error } = await queryColdCandidates(
-      supabase,
-      tenantId,
-      count,
-      countryCode,
-      (q) => q.ilike("source", "Purchased list")
-    ));
-    if (!error && !candidates?.length) {
-      ({ data: candidates, error } = await queryColdCandidates(
+  for (const mode of sourceModes) {
+    const applySource = (q) => {
+      if (mode === "requested") {
+        return q.ilike("source", `%${String(sourceFilter).trim()}%`);
+      }
+      if (mode === "purchased") return q.ilike("source", "Purchased list");
+      // organic WhatsApp contacts (source null) are never cold-called
+      return q.not("source", "is", null);
+    };
+
+    const pool = [];
+    let offset = 0;
+    let scanned = 0;
+
+    while (scanned < COLD_SCAN_MAX) {
+      const { data: candidates, error } = await queryColdCandidatesPage(
         supabase,
         tenantId,
-        count,
         countryCode,
-        (q) => q.not("source", "is", null)
-      ));
+        applySource,
+        offset,
+        COLD_SCAN_PAGE
+      );
+      if (error) throw new Error(`Cold lead query failed: ${error.message}`);
+      if (!candidates?.length) break;
+
+      const ids = candidates.map((lead) => lead.id);
+      let attempts;
+      let queued;
+      try {
+        attempts = await callAttemptCounts(supabase, tenantId, ids);
+      } catch (err) {
+        throw new Error(`Called lead query failed: ${err.message}`);
+      }
+      try {
+        queued = await pendingQueueLeadIds(supabase, tenantId, ids);
+      } catch (err) {
+        throw new Error(`Queued lead query failed: ${err.message}`);
+      }
+
+      for (const lead of candidates) {
+        if (queued.has(lead.id)) continue;
+        const prior = attempts.get(lead.id) || 0;
+        if (prior >= MAX_COLD_CALL_ATTEMPTS) continue;
+        pool.push({ ...lead, callAttempts: prior });
+      }
+
+      offset += candidates.length;
+      scanned += candidates.length;
+      if (candidates.length < COLD_SCAN_PAGE) break;
+      // Enough never-called already? Still scan a bit more unless we clearly
+      // have a full batch of zero-attempt leads (best priority).
+      const zeroAttempt = pool.filter((lead) => lead.callAttempts === 0).length;
+      if (zeroAttempt >= requested) break;
     }
+
+    if (pool.length || mode === "requested" || mode === "any_source") {
+      pool.sort((a, b) => {
+        if (a.callAttempts !== b.callAttempts) return a.callAttempts - b.callAttempts;
+        return String(a.first_seen || "").localeCompare(String(b.first_seen || ""));
+      });
+      return pool
+        .slice(0, requested)
+        .map(({ callAttempts, first_seen, ...lead }) => lead);
+    }
+    // purchased mode empty → try any_source fallback for condo-city style tenants
   }
 
-  if (error) throw new Error(`Cold lead query failed: ${error.message}`);
-  if (!candidates?.length) return [];
-
-  const ids = candidates.map((lead) => lead.id);
-  let calledRows;
-  let queuedRows;
-  try {
-    calledRows = await fetchInChunks(ids, (chunk) =>
-      supabase.from("calls").select("lead_id").eq("tenant_id", tenantId).in("lead_id", chunk)
-    );
-  } catch (error) {
-    throw new Error(`Called lead query failed: ${error.message}`);
-  }
-  try {
-    queuedRows = await fetchInChunks(ids, (chunk) =>
-      supabase
-        .from("call_queue")
-        .select("lead_id")
-        .eq("tenant_id", tenantId)
-        .eq("processed", false)
-        .in("lead_id", chunk)
-    );
-  } catch (error) {
-    throw new Error(`Queued lead query failed: ${error.message}`);
-  }
-
-  const unavailable = new Set([
-    ...calledRows.map((row) => row.lead_id),
-    ...queuedRows.map((row) => row.lead_id),
-  ]);
-  return candidates.filter((lead) => !unavailable.has(lead.id)).slice(0, count);
-}
-
-function validateCount(count) {
-  const value = Number(count);
-  if (!Number.isInteger(value) || value < 1) throw new Error("Count must be a positive integer");
-  return value;
+  return [];
 }
 
 // Batch tools return the actual people they queued so "list them here" never
