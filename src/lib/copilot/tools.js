@@ -1,14 +1,10 @@
 import { getSupabaseServerClient, MESSAGES_TABLE } from "../supabase/server.js";
-import { isWithinBusinessHours, nextWindowStart } from "../calls/business-hours.js";
 import { getLeadTimezone } from "../leads/phone-timezone.js";
 import {
-  DAILY_BATCH_CAP,
   assertOutboundActive,
   buildScheduledTimes,
   dialLeadNow,
   getOutboundTenant,
-  isLeadWithinBusinessHours,
-  nextLeadWindowStart,
   queueLeadCalls,
 } from "../calls/outbound.js";
 
@@ -655,29 +651,6 @@ export async function getLatestMessages(tenantId, limit = 10) {
   }));
 }
 
-async function batchUsageForDay(supabase, tenantId, date) {
-  const { start, end } = dubaiDayBounds(date);
-  const [callsResult, queueResult] = await Promise.all([
-    supabase
-      .from("calls")
-      .select("id", { count: "exact", head: true })
-      .eq("tenant_id", tenantId)
-      .eq("source", "pixxi-batch")
-      .gte("created_at", start)
-      .lt("created_at", end),
-    supabase
-      .from("call_queue")
-      .select("id", { count: "exact", head: true })
-      .eq("tenant_id", tenantId)
-      .in("source", ["copilot-cold-batch", "copilot-scheduled-batch"])
-      .gte("scheduled_for", start)
-      .lt("scheduled_for", end),
-  ]);
-  if (callsResult.error) throw new Error(`Daily cap call query failed: ${callsResult.error.message}`);
-  if (queueResult.error) throw new Error(`Daily cap queue query failed: ${queueResult.error.message}`);
-  return (callsResult.count || 0) + (queueResult.count || 0);
-}
-
 // PostgREST encodes .in() filters into the URL; too many UUIDs at once
 // overflows Node's header size limit ("fetch failed").
 const IN_FILTER_CHUNK = 100;
@@ -845,48 +818,6 @@ function summarizeQueuedLeads(leads = []) {
   };
 }
 
-function dubaiDayKey(date) {
-  const shifted = new Date(new Date(date).getTime() + 4 * 60 * 60 * 1000);
-  return shifted.toISOString().slice(0, 10);
-}
-
-async function assertDailyCaps(supabase, tenantId, schedule) {
-  const perDay = new Map();
-  for (const scheduledFor of schedule) {
-    const key = dubaiDayKey(scheduledFor);
-    const entry = perDay.get(key) || { date: scheduledFor, count: 0 };
-    entry.count += 1;
-    perDay.set(key, entry);
-  }
-
-  let capRemaining = DAILY_BATCH_CAP;
-  for (const [day, planned] of perDay) {
-    const used = await batchUsageForDay(supabase, tenantId, new Date(planned.date));
-    const remaining = Math.max(0, DAILY_BATCH_CAP - used);
-    if (planned.count > remaining) {
-      throw new Error(
-        `Daily batch cap exceeded for ${day}: ${remaining} calls remaining`
-      );
-    }
-    capRemaining = Math.min(capRemaining, remaining - planned.count);
-  }
-  return capRemaining;
-}
-
-async function assertCapAndSelect(supabase, tenantId, count, startAt, countryCode, sourceFilter) {
-  const requested = validateCount(count);
-  const schedule = buildScheduledTimes(requested, startAt);
-  const capRemaining = await assertDailyCaps(supabase, tenantId, schedule);
-  const leads = await selectUncalledPurchasedLeads(
-    supabase,
-    tenantId,
-    requested,
-    countryCode,
-    sourceFilter
-  );
-  return { leads, capRemaining };
-}
-
 export async function startColdBatch(tenantId, count, requestedBy, country, sourceFilter) {
   const countryCode = normalizeCountryCode(country);
   return auditedWrite(
@@ -897,13 +828,12 @@ export async function startColdBatch(tenantId, count, requestedBy, country, sour
     async (supabase) => {
       const tenant = await getOutboundTenant(supabase, tenantId);
       assertOutboundActive(tenant);
-      const withinHours = isWithinBusinessHours();
-      const startAt = withinHours ? new Date() : nextWindowStart();
-      const { leads, capRemaining } = await assertCapAndSelect(
+      const requested = validateCount(count);
+      const startAt = new Date();
+      const leads = await selectUncalledPurchasedLeads(
         supabase,
         tenantId,
-        count,
-        startAt,
+        requested,
         countryCode,
         sourceFilter
       );
@@ -921,9 +851,9 @@ export async function startColdBatch(tenantId, count, requestedBy, country, sour
         byTimezone[timezone] = (byTimezone[timezone] || 0) + 1;
       }
       return {
-        started: withinHours ? queued.length : 0,
-        scheduled: withinHours ? 0 : queued.length,
-        capRemaining: capRemaining + (Number(count) - queued.length),
+        started: queued.length,
+        scheduled: queued.length,
+        firstScheduledFor: queued[0]?.scheduled_for || null,
         country: countryCode,
         byTimezone,
         queuedLeads: summarizeQueuedLeads(leads),
@@ -949,19 +879,6 @@ export async function startTargetCall(tenantId, leadId, requestedBy) {
         .maybeSingle();
       if (error) throw new Error(`Lead lookup failed: ${error.message}`);
       if (!lead) throw new Error("Lead not found");
-
-      const leadPhone = lead.wa_id ? `+${lead.wa_id}` : null;
-      if (leadPhone && !isLeadWithinBusinessHours(leadPhone)) {
-        const queued = await queueLeadCalls({
-          supabase,
-          tenantId,
-          leadIds: [lead.id],
-          startAt: nextLeadWindowStart(leadPhone),
-          source: "copilot-target-call",
-          requestedBy,
-        });
-        return { ok: true, queued: queued[0]?.scheduled_for || true };
-      }
 
       const result = await dialLeadNow({
         supabase,
@@ -1010,8 +927,7 @@ export async function scheduleBatch(
         throw new Error(`spreadDays must be an integer between 1 and ${MAX_SPREAD_DAYS}`);
       }
 
-      // Same start time each consecutive day; buildScheduledTimes rolls any
-      // out-of-window start into the next business window.
+      // Same start time each consecutive day; exact times, no business-hours snap.
       const schedule = [];
       const perDay = [];
       const chunks = splitAcrossDays(requested, days);
@@ -1024,7 +940,6 @@ export async function scheduleBatch(
         perDay.push({ firstScheduledFor: times[0], count: chunk });
       }
 
-      const capRemaining = await assertDailyCaps(supabase, tenantId, schedule);
       const leads = await selectUncalledPurchasedLeads(
         supabase,
         tenantId,
@@ -1045,7 +960,7 @@ export async function scheduleBatch(
         spreadDays: days,
         perDay,
         firstScheduledFor: queued[0]?.scheduled_for || null,
-        capRemaining: capRemaining + (requested - queued.length),
+        lastScheduledFor: queued[queued.length - 1]?.scheduled_for || null,
         country: countryCode,
         queuedLeads: summarizeQueuedLeads(leads),
       };

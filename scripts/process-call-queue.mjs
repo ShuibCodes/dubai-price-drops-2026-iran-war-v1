@@ -3,8 +3,6 @@ import { applyEnv, loadEnvFile } from "./load-env.mjs";
 import {
   dialLeadNow,
   getOutboundTenant,
-  isLeadWithinBusinessHours,
-  nextLeadWindowStart,
 } from "../src/lib/calls/outbound.js";
 
 applyEnv(loadEnvFile());
@@ -59,8 +57,8 @@ async function main({ dryRun = false } = {}) {
   runSummary = { processed: 0, skipped: 0, rescheduled: 0, failed: 0, retried: 0 };
   const summary = runSummary;
 
-  // No global business-hours exit: the worker runs 24/7 and each row is gated
-  // in the LEAD's local timezone below (UK evening rows fire after Dubai hours).
+  // No business-hours gating — dial when scheduled_for is due. Copilot / ops
+  // decide when and how many; the worker just executes the queue.
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) {
@@ -105,19 +103,6 @@ async function main({ dryRun = false } = {}) {
 
     if (tenant.outbound_paused) {
       summary.skipped += 1;
-      continue;
-    }
-
-    // Per-row gate in the LEAD's local timezone: a due row at a bad local hour
-    // is pushed to the lead's next local window start instead of being dialed.
-    const leadPhone = lead?.wa_id ? `+${lead.wa_id}` : null;
-    if (leadPhone && !isLeadWithinBusinessHours(leadPhone)) {
-      if (!dryRun) {
-        await updateQueueRow(supabase, item.id, {
-          scheduled_for: nextLeadWindowStart(leadPhone).toISOString(),
-        });
-      }
-      summary.rescheduled += 1;
       continue;
     }
 

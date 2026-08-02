@@ -1,14 +1,11 @@
 import {
-  isWithinBusinessHours,
   isWithinBusinessHoursForZone,
-  nextWindowStart,
   nextWindowStartForZone,
 } from "./business-hours.js";
 import { buildPropertyInterest, normalizePhone } from "../leads/normalize.js";
 import { getLeadTimezone } from "../leads/phone-timezone.js";
 import { startLeadCall } from "../vapi/dial.js";
 
-export const DAILY_BATCH_CAP = 500;
 export const BATCH_SPACING_SECONDS = 60;
 
 export function assertOutboundActive(tenant) {
@@ -31,13 +28,13 @@ export async function getOutboundTenant(supabase, tenantId) {
   return data;
 }
 
+/** Space calls at BATCH_SPACING_SECONDS from startAt — no business-hours snapping. */
 export function buildScheduledTimes(count, startAt) {
   const times = [];
   let cursor = new Date(startAt);
   if (Number.isNaN(cursor.getTime())) throw new Error("Invalid schedule time");
 
   for (let index = 0; index < count; index += 1) {
-    if (!isWithinBusinessHours(cursor)) cursor = nextWindowStart(cursor);
     times.push(cursor.toISOString());
     cursor = new Date(cursor.getTime() + BATCH_SPACING_SECONDS * 1000);
   }
@@ -97,12 +94,6 @@ export async function dialLeadNow({
   const propertyInterest = buildPropertyInterest(fields);
   const phone = normalizePhone(fields.phone || lead.wa_id);
   if (!phone) throw new Error("Lead has no valid phone number");
-
-  if (!isLeadWithinBusinessHours(phone)) {
-    throw new Error(
-      `Outside business hours for lead timezone ${getLeadTimezone(phone)}`
-    );
-  }
 
   // Jarvis personal dials must NEVER fall back to Pixxi/Allan (vapi_assistant_id).
   let assistantId = tenant.vapi_assistant_id;
