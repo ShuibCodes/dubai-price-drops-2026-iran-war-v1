@@ -1,6 +1,7 @@
 import { getSupabaseServerClient, MESSAGES_TABLE } from "../supabase/server.js";
 import { getLeadTimezone } from "../leads/phone-timezone.js";
 import {
+  DAILY_BATCH_CAP,
   assertOutboundActive,
   buildScheduledTimes,
   dialLeadNow,
@@ -854,6 +855,55 @@ async function selectUncalledPurchasedLeads(
   return [];
 }
 
+const BATCH_QUEUE_SOURCES = [
+  "copilot-cold-batch",
+  "copilot-scheduled-batch",
+  "pixxi-batch",
+  "pixxi-queue",
+];
+
+async function batchUsageForDay(supabase, tenantId, date) {
+  const { start, end } = dubaiDayBounds(date);
+  // Count everything already scheduled for this Dubai day (pending or done).
+  const { count, error } = await supabase
+    .from("call_queue")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", tenantId)
+    .in("source", BATCH_QUEUE_SOURCES)
+    .gte("scheduled_for", start)
+    .lt("scheduled_for", end);
+  if (error) throw new Error(`Daily cap queue query failed: ${error.message}`);
+  return count || 0;
+}
+
+function dubaiDayKey(date) {
+  const shifted = new Date(new Date(date).getTime() + 4 * 60 * 60 * 1000);
+  return shifted.toISOString().slice(0, 10);
+}
+
+async function assertDailyCaps(supabase, tenantId, schedule) {
+  const perDay = new Map();
+  for (const scheduledFor of schedule) {
+    const key = dubaiDayKey(scheduledFor);
+    const entry = perDay.get(key) || { date: scheduledFor, count: 0 };
+    entry.count += 1;
+    perDay.set(key, entry);
+  }
+
+  let capRemaining = DAILY_BATCH_CAP;
+  for (const [day, planned] of perDay) {
+    const used = await batchUsageForDay(supabase, tenantId, new Date(planned.date));
+    const remaining = Math.max(0, DAILY_BATCH_CAP - used);
+    if (planned.count > remaining) {
+      throw new Error(
+        `Daily batch cap exceeded for ${day}: ${remaining} of ${DAILY_BATCH_CAP} calls remaining`
+      );
+    }
+    capRemaining = Math.min(capRemaining, remaining - planned.count);
+  }
+  return capRemaining;
+}
+
 // Batch tools return the actual people they queued so "list them here" never
 // needs a second (calls-table) lookup. Capped to keep tool payloads small.
 const QUEUED_LEADS_PREVIEW_CAP = 25;
@@ -881,6 +931,8 @@ export async function startColdBatch(tenantId, count, requestedBy, country, sour
       assertOutboundActive(tenant);
       const requested = validateCount(count);
       const startAt = new Date();
+      const schedule = buildScheduledTimes(requested, startAt);
+      const capRemaining = await assertDailyCaps(supabase, tenantId, schedule);
       const leads = await selectUncalledPurchasedLeads(
         supabase,
         tenantId,
@@ -905,6 +957,8 @@ export async function startColdBatch(tenantId, count, requestedBy, country, sour
         started: queued.length,
         scheduled: queued.length,
         firstScheduledFor: queued[0]?.scheduled_for || null,
+        capRemaining: capRemaining + (requested - queued.length),
+        dailyCap: DAILY_BATCH_CAP,
         country: countryCode,
         byTimezone,
         queuedLeads: summarizeQueuedLeads(leads),
@@ -991,6 +1045,7 @@ export async function scheduleBatch(
         perDay.push({ firstScheduledFor: times[0], count: chunk });
       }
 
+      const capRemaining = await assertDailyCaps(supabase, tenantId, schedule);
       const leads = await selectUncalledPurchasedLeads(
         supabase,
         tenantId,
@@ -1012,6 +1067,8 @@ export async function scheduleBatch(
         perDay,
         firstScheduledFor: queued[0]?.scheduled_for || null,
         lastScheduledFor: queued[queued.length - 1]?.scheduled_for || null,
+        capRemaining: capRemaining + (requested - queued.length),
+        dailyCap: DAILY_BATCH_CAP,
         country: countryCode,
         queuedLeads: summarizeQueuedLeads(leads),
       };

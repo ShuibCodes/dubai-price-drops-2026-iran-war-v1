@@ -6,6 +6,8 @@ import { buildPropertyInterest, normalizePhone } from "../leads/normalize.js";
 import { getLeadTimezone } from "../leads/phone-timezone.js";
 import { startLeadCall } from "../vapi/dial.js";
 
+/** Max cold/batch dials scheduled per Dubai day (Copilot + queue). */
+export const DAILY_BATCH_CAP = 200;
 export const BATCH_SPACING_SECONDS = 60;
 
 export function assertOutboundActive(tenant) {
