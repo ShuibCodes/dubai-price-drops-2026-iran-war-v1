@@ -1,5 +1,9 @@
 import { upsertJarvisLead } from "@/lib/ingest/jarvis-ingest";
 import {
+  isJarvisAffirmative,
+  isJarvisNegative,
+} from "@/lib/jarvis/confirm";
+import {
   clearPendingContact,
   getPendingContact,
   setPendingContact,
@@ -11,15 +15,6 @@ import {
 import { isJarvisSenderAllowed } from "@/lib/jarvis/sender-allowlist";
 import { normalizePhone, phoneToWaId } from "@/lib/leads/normalize";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-
-/** Narrower than relay — do not treat "call …" as confirming a contact save. */
-function isContactAffirmative(text) {
-  const raw = String(text || "").trim();
-  if (!raw) return false;
-  return /^(yes|y|yeah|yep|yup|confirm|confirmed|go|go ahead|do it|proceed|ok|okay|save|save it|add|add them|add him|add her)\b/i.test(
-    raw
-  );
-}
 
 export const SAVE_JARVIS_CONTACT_DESCRIPTION = `Save a new contact (name + phone) into the Jarvis WhatsApp address book (jarvis_leads) so they become searchable and callable.
 
@@ -136,7 +131,9 @@ export async function upsertCallableJarvisContact({
 
 /**
  * Confirm + upsert a pending contact (WhatsApp "yes" path).
- * Returns null if there was no pending contact.
+ * Returns null if there was no pending contact, or if the message is neither
+ * yes nor no (pending is left intact so a later "yes" still works).
+ * Clears pending only on no/cancel, success, failure, or expiry (via get).
  */
 export async function handleContactConfirmationMessage({
   tenantId,
@@ -150,8 +147,15 @@ export async function handleContactConfirmationMessage({
     return null;
   }
 
-  if (!isContactAffirmative(message)) {
+  if (isJarvisNegative(message)) {
     await clearPendingContact(senderPhone);
+    return {
+      handled: true,
+      text: "Okay — I won't save that contact.",
+    };
+  }
+
+  if (!isJarvisAffirmative(message, { allowSave: true })) {
     return null;
   }
 

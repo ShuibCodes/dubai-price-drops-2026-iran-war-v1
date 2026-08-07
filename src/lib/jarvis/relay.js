@@ -5,11 +5,14 @@ import {
   ensureJarvisInferredNames,
   formatJarvisLeadName,
 } from "@/lib/jarvis/infer-name";
+import {
+  isJarvisAffirmative,
+  isJarvisNegative,
+} from "@/lib/jarvis/confirm";
 import { clearPendingContact } from "@/lib/jarvis/pending-contact";
 import {
   clearPendingRelay,
   getPendingRelay,
-  isRelayAffirmative,
   normalizeSenderPhone,
   setPendingRelay,
 } from "@/lib/jarvis/pending-relay";
@@ -415,8 +418,10 @@ export async function placeRelayCall({
 }
 
 /**
- * Confirm + dial a pending relay (WhatsApp "yes" path). Cleared on non-yes.
- * Returns null if there was no pending relay (caller should continue normally).
+ * Confirm + dial a pending relay (WhatsApp "yes" path).
+ * Returns null if there was no pending relay, or if the message is neither
+ * yes nor no (pending is left intact so a later "yes" still works).
+ * Clears pending only on no/cancel, success, failure, or expiry (via get).
  */
 export async function handleRelayConfirmationMessage({
   tenantId,
@@ -430,8 +435,15 @@ export async function handleRelayConfirmationMessage({
     return null;
   }
 
-  if (!isRelayAffirmative(message)) {
+  if (isJarvisNegative(message)) {
     await clearPendingRelay(senderPhone);
+    return {
+      handled: true,
+      text: "Okay — I won't place that relay call.",
+    };
+  }
+
+  if (!isJarvisAffirmative(message, { allowCall: true })) {
     return null;
   }
 

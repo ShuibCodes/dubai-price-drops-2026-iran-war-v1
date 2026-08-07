@@ -1,3 +1,4 @@
+import { isJarvisAffirmative } from "@/lib/jarvis/confirm";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 
 const PENDING_TTL_MS = 10 * 60 * 1000;
@@ -79,10 +80,7 @@ export async function clearPendingRelay(senderPhone) {
   if (error) throw new Error(`Pending relay clear failed: ${error.message}`);
 }
 
+/** @deprecated Prefer isJarvisAffirmative(text, { allowCall: true }) */
 export function isRelayAffirmative(text) {
-  const raw = String(text || "").trim();
-  if (!raw) return false;
-  return /^(yes|y|yeah|yep|yup|confirm|confirmed|go|go ahead|do it|proceed|call|call him|call her|call them|dial|ok|okay)\b/i.test(
-    raw
-  );
+  return isJarvisAffirmative(text, { allowCall: true });
 }
