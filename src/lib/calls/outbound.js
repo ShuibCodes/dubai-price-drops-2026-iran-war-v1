@@ -7,7 +7,11 @@ import { buildPropertyInterest, normalizePhone } from "../leads/normalize.js";
 import { getLeadTimezone } from "../leads/phone-timezone.js";
 import { startLeadCall } from "../vapi/dial.js";
 
-/** Hard max cold/batch dials per tenant per Asia/Dubai day. Not overridable. */
+/**
+ * Hard max batch dials per tenant per Asia/Dubai day. Not overridable.
+ * Shared across cold-batch (call_queue worker) AND Jarvis batch-callback
+ * worker — both read/increment via batchDialsForDay + BATCH_QUEUE_SOURCES.
+ */
 export const DAILY_BATCH_CAP = 200;
 export const BATCH_SPACING_SECONDS = 60;
 /** No batch dials at/after this hour Asia/Dubai — overflow goes to next day 6pm. */
@@ -15,11 +19,13 @@ export const BATCH_CUTOFF_HOUR_DUBAI = 22;
 /** Resume hour Asia/Dubai when deferred past cutoff or daily cap. */
 export const BATCH_RESUME_HOUR_DUBAI = 18;
 
+/** Sources that count toward DAILY_BATCH_CAP (one combined ceiling). */
 export const BATCH_QUEUE_SOURCES = [
   "copilot-cold-batch",
   "copilot-scheduled-batch",
   "pixxi-batch",
   "pixxi-queue",
+  "jarvis-batch-callback",
 ];
 
 const DUBAI_OFFSET_MS = 4 * 60 * 60 * 1000;

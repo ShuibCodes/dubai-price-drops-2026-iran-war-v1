@@ -210,6 +210,37 @@ dropped. Paused tenants remain queued. A row with `processing_started_at` but no
 `processed_at` or `failed_at` is quarantined after an interrupted run for manual
 review; the next tick will not double-dial it.
 
+### Railway third service — Jarvis batch callbacks
+
+Same pattern as the call-queue drainer: a **separate** Railway service from this
+repository (not an HTTP route). Railway cron runs the script directly on each
+tick.
+
+Create the service:
+
+- **Start command:** `node scripts/process-batch-callbacks.mjs`
+- **Cron schedule:** `*/2 * * * *` (UTC — every 2 minutes; per-lead local
+  9am–10pm gating + shared 200/day Dubai cap are enforced in-script)
+- **Required variables:** same as the call-queue service —
+  `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `VAPI_API_KEY`,
+  `VAPI_ASSISTANT_ID` / tenant Jarvis assistant ids, `VAPI_PHONE_NUMBER_ID`
+- **Optional variables:** `BATCH_CALLBACK_COOLDOWN_MS` (default 60000),
+  `BATCH_CALLBACK_DEDUPE_DAYS` (default 7),
+  `BATCH_CALLBACK_LOCAL_START` / `BATCH_CALLBACK_LOCAL_END` (default 9 / 22),
+  plus shared outbound env (`DAILY_BATCH_CAP` behaviour lives in code)
+
+Local check:
+
+```bash
+node scripts/process-batch-callbacks.mjs --dry-run
+node scripts/process-batch-callbacks.mjs
+```
+
+Do **not** share one cron service that runs both scripts — keep call-queue
+(`*/15`) and batch-callback (`*/2`) as separate Railway services so schedules
+and failure isolation stay independent. Apply migration `015` (batch callback
+tables) before expecting dials; until then the script no-ops cleanly.
+
 ## 9. Retry failed results sync
 
 ```bash
