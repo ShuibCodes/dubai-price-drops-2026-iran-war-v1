@@ -154,7 +154,7 @@ export const copilotToolDefinitions = [
   {
     name: "start_cold_batch",
     description:
-      "Queue cold-list leads starting now at 60-second spacing. Re-dials previously called numbers until they have 3 prior call attempts; skips only leads already at 3+ attempts or currently queued. Subject to a 200 calls/day Dubai-day cap (no business-hours gating). More than 100 requires explicit user confirmation. Pass country and/or source to restrict the batch.",
+      "Queue cold-list leads at 60-second spacing. Re-dials previously called numbers (until 3 prior attempts). HARD CAP for every tenant: max 200 calls/day Asia/Dubai — larger asks are clamped, cannot override. After 10pm UAE, first dial is next day 6pm. More than 100 (after clamp) needs explicit yes. Pass country and/or source to restrict.",
     input_schema: {
       type: "object",
       properties: {
@@ -186,7 +186,7 @@ export const copilotToolDefinitions = [
   {
     name: "schedule_batch",
     description:
-      "Schedule cold-list leads at 60-second spacing starting at whenIso. Re-dials previously called numbers until 3 prior attempts; skips 3+ attempts or currently queued. Subject to a 200 calls/day Dubai-day cap (no business-hours snapping). Set spreadDays to split evenly across N days. More than 100 total requires explicit yes. Pass country and/or source to restrict.",
+      "Schedule cold-list leads at 60-second spacing from whenIso. Re-dials OK until 3 prior attempts. HARD CAP every tenant: 200/day Asia/Dubai (clamped). After 10pm UAE → next day 6pm. Set spreadDays to split across N days. More than 100 total needs explicit yes. Pass country and/or source to restrict.",
     input_schema: {
       type: "object",
       properties: {
@@ -237,7 +237,7 @@ Rules:
 - When discussing a specific lead, include their full phone number so the agent can reach them directly.
 - Batches can be restricted to one market: when the user says "UAE leads only", "local numbers", "971 numbers", or names any country, pass that country to start_cold_batch or schedule_batch. UAE = 971. In the reply, state which country the batch was limited to.
 - When batching a named campaign, pass it as source to start_cold_batch or schedule_batch. If unsure what campaigns exist, call list_lead_sources first.
-- Dates/times are Asia/Dubai unless the user specifies otherwise. Daily dial cap is 200 calls per Dubai day. There is NO business-hours gate — evenings/weekends are fine as long as the day stays under 200.
+- Dates/times are Asia/Dubai. HARD rules for EVERY tenant: (1) max 200 batch calls per Dubai day — clamp and say so, no override; (2) after 10:00pm UAE, dials move to the next day at 6:00pm; (3) previously called numbers can be re-dialed until 3 lifetime attempts.
 - Cold batches re-call numbers that were dialed before. Only skip a lead once it already has 3 call attempts (or is already in the queue). Prefer never-called first, then 1x, then 2x.
 
 ROSTER vs CALL ACTIVITY — hard routing rules:

@@ -1,8 +1,13 @@
 import { createClient } from "@supabase/supabase-js";
 import { applyEnv, loadEnvFile } from "./load-env.mjs";
 import {
+  DAILY_BATCH_CAP,
+  batchDialsForDay,
   dialLeadNow,
   getOutboundTenant,
+  isAfterDubaiBatchCutoff,
+  isBatchQueueSource,
+  nextDubaiSixPm,
 } from "../src/lib/calls/outbound.js";
 
 applyEnv(loadEnvFile());
@@ -57,8 +62,7 @@ async function main({ dryRun = false } = {}) {
   runSummary = { processed: 0, skipped: 0, rescheduled: 0, failed: 0, retried: 0 };
   const summary = runSummary;
 
-  // No business-hours gating — dial when scheduled_for is due. Copilot / ops
-  // decide when and how many; the worker just executes the queue.
+  // Hard daily dial cap is enforced per tenant below. No business-hours gate.
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) {
@@ -89,6 +93,10 @@ async function main({ dryRun = false } = {}) {
 
   let dialAttempts = 0;
   let consecutiveConcurrencyErrors = 0;
+  /** @type {Map<string, number>} */
+  const dialsTodayByTenant = new Map();
+  /** Tenants already known to be at the daily hard cap this run. */
+  const cappedTenants = new Set();
 
   for (const item of queueRows) {
     if (dialAttempts >= MAX_DIALS_PER_RUN) break;
@@ -104,6 +112,50 @@ async function main({ dryRun = false } = {}) {
     if (tenant.outbound_paused) {
       summary.skipped += 1;
       continue;
+    }
+
+    // Batch rules for every tenant: no dials after 10pm UAE; max 200/day.
+    // Overflow (cutoff or cap) always rolls to next day 6pm UAE.
+    if (isBatchQueueSource(item.source)) {
+      if (isAfterDubaiBatchCutoff()) {
+        if (!dryRun) {
+          await updateQueueRow(supabase, item.id, {
+            scheduled_for: nextDubaiSixPm().toISOString(),
+            failure_reason: "deferred: after 10pm Asia/Dubai → next day 6pm",
+          });
+        }
+        summary.rescheduled += 1;
+        continue;
+      }
+
+      if (cappedTenants.has(item.tenant_id)) {
+        if (!dryRun) {
+          await updateQueueRow(supabase, item.id, {
+            scheduled_for: nextDubaiSixPm().toISOString(),
+            failure_reason: `deferred: daily hard cap ${DAILY_BATCH_CAP} → next day 6pm`,
+          });
+        }
+        summary.rescheduled += 1;
+        continue;
+      }
+
+      let dialsToday = dialsTodayByTenant.get(item.tenant_id);
+      if (dialsToday == null) {
+        dialsToday = await batchDialsForDay(supabase, item.tenant_id);
+        dialsTodayByTenant.set(item.tenant_id, dialsToday);
+      }
+
+      if (dialsToday >= DAILY_BATCH_CAP) {
+        cappedTenants.add(item.tenant_id);
+        if (!dryRun) {
+          await updateQueueRow(supabase, item.id, {
+            scheduled_for: nextDubaiSixPm().toISOString(),
+            failure_reason: `deferred: daily hard cap ${DAILY_BATCH_CAP} → next day 6pm`,
+          });
+        }
+        summary.rescheduled += 1;
+        continue;
+      }
     }
 
     if (dryRun) {
@@ -147,6 +199,12 @@ async function main({ dryRun = false } = {}) {
       });
       summary.processed += 1;
       consecutiveConcurrencyErrors = 0;
+
+      if (isBatchQueueSource(item.source)) {
+        const next = (dialsTodayByTenant.get(item.tenant_id) || 0) + 1;
+        dialsTodayByTenant.set(item.tenant_id, next);
+        if (next >= DAILY_BATCH_CAP) cappedTenants.add(item.tenant_id);
+      }
     } catch (error) {
       const message = String(error.message || "Dial failed");
       if (isTransientDialError(message)) {
