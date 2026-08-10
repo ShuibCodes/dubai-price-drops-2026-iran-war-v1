@@ -22,6 +22,22 @@ function flatPayload(call, lead, qualification) {
     summary: String(call?.summary || ""),
     recording_url: String(call?.recording_url || ""),
     called_at: call?.started_at || call?.ended_at || call?.created_at || "",
+    // Course / Pivot to Tech fields (empty for real-estate calls)
+    profile: String(qualification?.profile || ""),
+    still_priority:
+      qualification?.still_priority === true
+        ? "true"
+        : qualification?.still_priority === false
+          ? "false"
+          : "",
+    ok_for_consultant:
+      qualification?.ok_for_consultant === true
+        ? "true"
+        : qualification?.ok_for_consultant === false
+          ? "false"
+          : "",
+    interest_track: String(qualification?.interest_track || ""),
+    preferred_contact: String(qualification?.preferred_contact || ""),
   };
 }
 

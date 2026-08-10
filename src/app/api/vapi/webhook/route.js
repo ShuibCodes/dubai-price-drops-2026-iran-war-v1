@@ -1,6 +1,6 @@
 import { extractCallRecord, writeCallRecord } from "@/lib/kb/calls";
 import { clearKbCache } from "@/lib/kb/loader";
-import { resolveQualification } from "@/lib/calls/qualification";
+import { resolveQualification, qualificationProfileFor } from "@/lib/calls/qualification";
 import {
   updateRelayCallFromWebhook,
   upsertRelayIntoCallsTable,
@@ -268,11 +268,36 @@ async function processPipelineCall(payload) {
     console.error("[vapi/webhook] relay path error:", error.message);
   }
 
+  const supabase = getSupabaseServerClient();
+  let tenantSlug = null;
+  let callSource = details.metadata?.source || null;
+  if (supabase && details.callId) {
+    const { data: existingCall } = await supabase
+      .from("calls")
+      .select("source, tenant_id, tenants(slug)")
+      .eq("vapi_call_id", details.callId)
+      .maybeSingle();
+    if (existingCall) {
+      callSource = existingCall.source || callSource;
+      tenantSlug = existingCall.tenants?.slug || null;
+    }
+  }
+  if (!tenantSlug && supabase && details.metadata?.tenantId) {
+    const { data: tenant } = await supabase
+      .from("tenants")
+      .select("slug")
+      .eq("id", details.metadata.tenantId)
+      .maybeSingle();
+    tenantSlug = tenant?.slug || null;
+  }
+
+  const profile = qualificationProfileFor({ tenantSlug, source: callSource });
   const qualification = await resolveQualification({
     structuredData: details.structuredData,
     transcript: details.transcript,
     summary: details.summary,
     endedReason: details.endedReason,
+    profile,
   });
 
   const result = await upsertCompletedCall(details, qualification);
@@ -285,7 +310,7 @@ async function processPipelineCall(payload) {
     await postCallResult(call, lead, qualification);
   }
 
-  return { processed: true, callId: details.callId, qualification };
+  return { processed: true, callId: details.callId, qualification, profile };
 }
 
 export async function GET() {

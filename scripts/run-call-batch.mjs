@@ -14,24 +14,35 @@ import {
 
 applyEnv(loadEnvFile());
 
-// Minimal CSV: Name, Phone, Client Source. Other fields stay empty via rowToFields defaults.
+// Minimal CSV: Name, Phone, Client Source, House Type (course/interest hack → propertyInterest).
 const PIXXI_COLUMN_MAP = {
   name: "Name",
   phone: "Phone",
   source: "Client Source",
+  house_type: "House Type",
 };
 
-const TENANT_SLUG = "1416";
-
 function parseArgs(argv) {
-  const args = { dryRun: false, limit: 50, delay: 60, concurrency: 1, csvPath: null };
+  const args = {
+    dryRun: false,
+    importOnly: false,
+    limit: 50,
+    delay: 60,
+    concurrency: 1,
+    csvPath: null,
+    tenantSlug: process.env.TENANT_SLUG || "1416",
+  };
   for (let i = 2; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--dry-run") args.dryRun = true;
+    else if (arg === "--import-only") args.importOnly = true;
     else if (arg === "--limit") args.limit = Number(argv[++i]);
     else if (arg === "--delay") args.delay = Number(argv[++i]);
     else if (arg === "--concurrency") args.concurrency = Number(argv[++i]);
-    else if (!arg.startsWith("--")) args.csvPath = arg;
+    else if (arg === "--tenant") args.tenantSlug = String(argv[++i] || "").trim();
+    else if (arg.startsWith("--tenant=")) {
+      args.tenantSlug = arg.slice("--tenant=".length).trim();
+    } else if (!arg.startsWith("--")) args.csvPath = arg;
   }
   return args;
 }
@@ -207,7 +218,13 @@ async function dialOrQueue(supabase, tenant, lead, fields, dryRun) {
 async function main() {
   const args = parseArgs(process.argv);
   if (!args.csvPath) {
-    console.error("Usage: node scripts/run-call-batch.mjs <csv-path> [--dry-run] [--limit N] [--delay SEC] [--concurrency N]");
+    console.error(
+      "Usage: node scripts/run-call-batch.mjs <csv-path> [--tenant slug] [--import-only] [--dry-run] [--limit N] [--delay SEC]"
+    );
+    process.exit(1);
+  }
+  if (!args.tenantSlug) {
+    console.error("Missing --tenant slug (or TENANT_SLUG env)");
     process.exit(1);
   }
 
@@ -224,12 +241,14 @@ async function main() {
 
   const { data: tenant, error: tenantError } = await supabase
     .from("tenants")
-    .select("id, outbound_paused, vapi_assistant_id, vapi_phone_number_id")
-    .eq("slug", TENANT_SLUG)
+    .select("id, slug, outbound_paused, vapi_assistant_id, vapi_phone_number_id")
+    .eq("slug", args.tenantSlug)
     .maybeSingle();
 
   if (tenantError || !tenant) {
-    console.error("Tenant 1416 not found. Run migration + seed first.");
+    console.error(
+      `Tenant "${args.tenantSlug}" not found. Seed tenants.slug first.`
+    );
     process.exit(1);
   }
 
@@ -243,7 +262,7 @@ async function main() {
   const index = mapHeaderIndex(rows[0]);
   const dataRows = rows.slice(1, 1 + args.limit);
 
-  const report = { attempted: 0, queued: 0, skipped: 0 };
+  const report = { imported: 0, attempted: 0, queued: 0, skipped: 0 };
 
   for (const row of dataRows) {
     const fields = rowToFields(row, index);
@@ -257,6 +276,10 @@ async function main() {
       report.skipped += 1;
       continue;
     }
+    report.imported += 1;
+
+    // Import-only: upsert leads, never dial/queue (safe with outbound_paused).
+    if (args.importOnly) continue;
 
     const result = await dialOrQueue(supabase, tenant, lead, fields, args.dryRun);
     if (result.queued) report.queued += 1;
@@ -267,8 +290,9 @@ async function main() {
     }
   }
 
-  console.log("Batch complete:", report);
-  if (args.dryRun) console.log("(dry-run — no calls placed)");
+  console.log(`Batch complete (tenant=${tenant.slug}):`, report);
+  if (args.importOnly) console.log("(import-only — leads upserted, no calls/queue)");
+  else if (args.dryRun) console.log("(dry-run — no calls placed)");
 }
 
 main().catch((error) => {
