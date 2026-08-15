@@ -1,20 +1,18 @@
 import { createClient } from "@supabase/supabase-js";
 import { applyEnv, loadEnvFile } from "./load-env.mjs";
-import { flatPayload } from "../src/lib/notify/results-hook.js";
+import {
+  flatPayload,
+  resultsWebhookUrlForTenant,
+} from "../src/lib/notify/results-hook.js";
 
 applyEnv(loadEnvFile());
 
 async function main() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const webhookUrl = process.env.RESULTS_WEBHOOK_URL;
 
   if (!url || !key) {
     console.error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
-    process.exit(1);
-  }
-  if (!webhookUrl) {
-    console.error("RESULTS_WEBHOOK_URL not set — nothing to retry");
     process.exit(1);
   }
 
@@ -26,7 +24,7 @@ async function main() {
 
   const { data: calls, error } = await supabase
     .from("calls")
-    .select("*, leads(*)")
+    .select("*, leads(*), tenants(slug)")
     .eq("status", "completed")
     .eq("results_synced", false)
     .gte("ended_at", since)
@@ -44,11 +42,20 @@ async function main() {
 
   let synced = 0;
   let failed = 0;
+  let skipped = 0;
 
   for (const call of calls) {
     const lead = call.leads;
+    const tenantSlug = call.tenants?.slug || "";
+    const webhookUrl = resultsWebhookUrlForTenant(tenantSlug);
+    if (!webhookUrl) {
+      skipped += 1;
+      console.log(`Skip ${call.vapi_call_id}: no webhook for tenant=${tenantSlug || "?"}`);
+      continue;
+    }
+
     const qualification = call.qualification || {};
-    const payload = flatPayload(call, lead, qualification);
+    const payload = flatPayload(call, lead, qualification, tenantSlug);
 
     try {
       const response = await fetch(webhookUrl, {
@@ -72,14 +79,16 @@ async function main() {
         .eq("id", call.id);
 
       synced += 1;
-      console.log(`Synced ${call.vapi_call_id}`);
+      console.log(`Synced ${call.vapi_call_id} → ${tenantSlug || "default"}`);
     } catch (err) {
       failed += 1;
       console.error(`Failed ${call.vapi_call_id}: ${err.message}`);
     }
   }
 
-  console.log(`Done: ${synced} synced, ${failed} failed, ${calls.length} total`);
+  console.log(
+    `Done: ${synced} synced, ${failed} failed, ${skipped} skipped, ${calls.length} total`
+  );
 }
 
 main().catch((error) => {

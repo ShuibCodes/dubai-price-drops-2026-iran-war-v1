@@ -20,7 +20,8 @@ Add to `.env.local` (see `.env.example` for placeholders):
 | `VAPI_PHONE_NUMBER_ID` | Yes | Default outbound number (tenant can override) |
 | `VAPI_WEBHOOK_SECRET` | Yes | Secret Vapi sends in `X-Vapi-Secret` header |
 | `LEADS_INBOUND_SECRET` | Yes | Secret Zap 1 sends in `x-leads-secret` header |
-| `RESULTS_WEBHOOK_URL` | No | Zap 2 catch-hook URL; skip results POST if unset |
+| `RESULTS_WEBHOOK_URL` | No | Zap 2 catch-hook URL for non–ghl-courses tenants; skip results POST if unset |
+| `RESULTS_WEBHOOK_URL_GHL_COURSES` | No | ghl-courses-only catch-hook (e.g. Sheets); never uses `RESULTS_WEBHOOK_URL` |
 | `CALLS_BUSINESS_HOURS_START` | No | Dubai hour to start dialing (default `9`) |
 | `CALLS_BUSINESS_HOURS_END` | No | Dubai hour to stop dialing (default `20`) |
 | `SUPABASE_URL` | Yes | Supabase project URL |
@@ -92,8 +93,25 @@ ON CONFLICT (slug) DO UPDATE SET
 | `community` | Community |
 | `agent_name` | Agent Info Name |
 | `agent_phone` | Agent Info Phone |
+| `tenant` | Optional tenant slug (`1416` default). Use `ghl-courses` for Pivot/GHL opt-ins |
 
-**Response**: `{ "ok": true, "queued": false, "callId": "..." }` or `{ "ok": true, "queued": true }` outside business hours.
+You can also send header `x-tenant-slug: ghl-courses` instead of the body field.
+
+### GHL / courses Zap (same endpoint)
+
+Same URL + `x-leads-secret`. Map:
+
+| Field | Value |
+|-------|--------|
+| `name` | Contact name |
+| `phone` | Phone |
+| `client_source` | `ghl` |
+| `house_type` | Course / interest (optional) |
+| `tenant` | `ghl-courses` |
+
+`ghl-courses` opt-ins **always dial immediately** (skip lead-local business-hours deferral) so the call is placed within ~60s of the Zap webhook. Other tenants still queue outside hours.
+
+**Response**: `{ "ok": true, "tenant": "ghl-courses", "immediate": true, "queued": false, "callId": "..." }`
 
 ### Meta Instant Form Zap (same endpoint)
 

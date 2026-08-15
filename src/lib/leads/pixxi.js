@@ -141,7 +141,24 @@ export function resolveAssistantId(tenant, fields = {}) {
   return tenant.vapi_assistant_id;
 }
 
-export async function dialOrQueueLead({ tenant, lead, fields = {}, dryRun = false }) {
+function inboundCallSource(tenant, fields = {}) {
+  if (isMetaInstantFormSource(fields)) return "meta-instant-form";
+  if (tenant?.slug === "ghl-courses") return "ghl-inbound";
+  return "pixxi-inbound";
+}
+
+/**
+ * @param {{ immediate?: boolean }} [options]
+ *   immediate: skip lead-local business-hours deferral and dial now
+ *   (used for ghl-courses opt-ins — call within ~60s of webhook).
+ */
+export async function dialOrQueueLead({
+  tenant,
+  lead,
+  fields = {},
+  dryRun = false,
+  immediate = false,
+}) {
   assertOutboundActive(tenant);
   const variables = buildCallVariables(lead, fields);
   const { leadName, leadSource, propertyInterest, campaignTopic, formWhen, ownsProperty } =
@@ -150,8 +167,9 @@ export async function dialOrQueueLead({ tenant, lead, fields = {}, dryRun = fals
   if (!supabase) throw new Error("Supabase not configured");
 
   const phone = normalizePhone(fields.phone || lead.wa_id);
+  const source = inboundCallSource(tenant, fields);
 
-  if (!isLeadWithinBusinessHours(phone)) {
+  if (!immediate && !isLeadWithinBusinessHours(phone)) {
     const scheduledFor = nextLeadWindowStart(phone);
     if (dryRun) {
       return { queued: true, scheduledFor: scheduledFor.toISOString(), dryRun: true };
@@ -162,7 +180,7 @@ export async function dialOrQueueLead({ tenant, lead, fields = {}, dryRun = fals
       lead_id: lead.id,
       scheduled_for: scheduledFor.toISOString(),
       processed: false,
-      source: isMetaInstantFormSource(fields) ? "meta-instant-form" : "pixxi-inbound",
+      source,
     });
     if (error) throw new Error(`Queue insert failed: ${error.message}`);
     return { queued: true, scheduledFor: scheduledFor.toISOString() };
@@ -190,7 +208,7 @@ export async function dialOrQueueLead({ tenant, lead, fields = {}, dryRun = fals
       tenantId: tenant.id,
       leadId: lead.id,
       pixxiLeadId: lead.pixxi_lead_id,
-      source: isMetaInstantFormSource(fields) ? "meta-instant-form" : "pixxi-inbound",
+      source,
       assistantId,
     },
   });
@@ -201,7 +219,7 @@ export async function dialOrQueueLead({ tenant, lead, fields = {}, dryRun = fals
     vapi_call_id: result.callId,
     direction: "outbound",
     status: "initiated",
-    source: isMetaInstantFormSource(fields) ? "meta-instant-form" : "pixxi-inbound",
+    source,
     raw: result.raw,
   });
   if (callError) throw new Error(`Call insert failed: ${callError.message}`);

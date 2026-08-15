@@ -1,12 +1,29 @@
 // Relative import (not @/) so plain node scripts like retry-results-sync.mjs can resolve it
 import { getSupabaseServerClient } from "../supabase/server.js";
 
-function flatPayload(call, lead, qualification) {
+/** Tenant-specific results destinations (Zapier Catch Hooks, etc.). */
+const TENANT_RESULTS_WEBHOOK_ENV = {
+  "ghl-courses": "RESULTS_WEBHOOK_URL_GHL_COURSES",
+};
+
+export function resultsWebhookUrlForTenant(tenantSlug) {
+  const slug = String(tenantSlug || "").trim();
+  const envKey = TENANT_RESULTS_WEBHOOK_ENV[slug];
+  if (envKey) {
+    const dedicated = String(process.env[envKey] || "").trim();
+    // Dedicated tenants never fall back to the shared Pixxi/results hook.
+    return dedicated || null;
+  }
+  return String(process.env.RESULTS_WEBHOOK_URL || "").trim() || null;
+}
+
+function flatPayload(call, lead, qualification, tenantSlug = "") {
   const areas = Array.isArray(qualification?.areas)
     ? qualification.areas.join(", ")
     : String(qualification?.areas || "");
 
   return {
+    tenant_slug: String(tenantSlug || ""),
     lead_name: String(lead?.push_name || ""),
     lead_phone: lead?.wa_id ? `+${lead.wa_id}` : "",
     pixxi_lead_id: String(lead?.pixxi_lead_id || ""),
@@ -41,11 +58,11 @@ function flatPayload(call, lead, qualification) {
   };
 }
 
-export async function postCallResult(call, lead, qualification) {
-  const webhookUrl = process.env.RESULTS_WEBHOOK_URL;
+export async function postCallResult(call, lead, qualification, { tenantSlug } = {}) {
+  const webhookUrl = resultsWebhookUrlForTenant(tenantSlug);
   if (!webhookUrl) return { synced: false, reason: "webhook_not_configured" };
 
-  const payload = flatPayload(call, lead, qualification);
+  const payload = flatPayload(call, lead, qualification, tenantSlug);
 
   try {
     const response = await fetch(webhookUrl, {
@@ -71,7 +88,10 @@ export async function postCallResult(call, lead, qualification) {
         .eq("id", call.id);
     }
 
-    console.log(`[notify/results-hook] synced call ${call.vapi_call_id || call.id}`);
+    console.log(
+      `[notify/results-hook] synced call ${call.vapi_call_id || call.id}` +
+        (tenantSlug ? ` tenant=${tenantSlug}` : "")
+    );
     return { synced: true };
   } catch (error) {
     console.error(`[notify/results-hook] error: ${error.message}`);

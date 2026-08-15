@@ -68,6 +68,75 @@ const BROKERAGE_FEATURES = [
   },
 ];
 
+const BEFORE_AFTER_ROWS = [
+  {
+    scenario: "An enquiry lands at 11pm",
+    without: {
+      headline: "9 hours later.",
+      detail: "Four agents beat you to it.",
+    },
+    with: {
+      headline: "40 seconds.",
+      detail: "Called and qualified. In your WhatsApp.",
+    },
+  },
+  {
+    scenario: "200 calls a day",
+    without: {
+      headline: "3 hours of your day.",
+      detail: "Your entire morning, on the phone.",
+    },
+    with: {
+      headline: "Zero of your time.",
+      detail: "Runs while you are in viewings.",
+    },
+  },
+  {
+    scenario: 'The lead who said "not right now"',
+    without: {
+      headline: "Never called again.",
+      detail: "Buried in a note somewhere.",
+    },
+    with: {
+      headline: "Followed up. Nurtured. Re-engaged.",
+      detail: "Brought back when the timing is right.",
+    },
+  },
+  {
+    scenario: "Two years of old contacts",
+    without: {
+      headline: "Sitting on WhatsApp.",
+      detail: "The gold buried in chats nobody has time to dig.",
+    },
+    with: {
+      headline: "Found in your chats.",
+      detail: "The right names surface — then get called back.",
+    },
+  },
+  {
+    scenario: "Where the conversation happens",
+    without: {
+      headline: "Another login.",
+      detail: "A CRM nobody updates.",
+    },
+    with: {
+      headline: "Your own number.",
+      detail: "Your own WhatsApp. Nothing to log into.",
+    },
+  },
+  {
+    scenario: "Knowing who is worth calling",
+    without: {
+      headline: "Gut feel.",
+      detail: "You call whoever you remember.",
+    },
+    with: {
+      headline: "Ranked by what they said.",
+      detail: "Budget, area and timeline, on record.",
+    },
+  },
+];
+
 const PLAN_FEATURES = [
   "Full CRM integration (Property Finder, Bayut, and more)",
   "AI lead nurturing",
@@ -297,6 +366,83 @@ export default function AgentZeroLandingPage() {
               placeholder="blur"
             />
           </div>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-4 pb-14 sm:px-6 sm:pb-20 lg:px-8">
+        <div className="mb-8 sm:mb-10">
+          <div className="mono text-[11px] uppercase tracking-[0.32em] text-white/35">
+            Before and after
+          </div>
+          <h2 className="mt-4 text-[1.7rem] font-semibold leading-tight text-white sm:text-4xl">
+            The same working day, with and without it.
+          </h2>
+          <p className="mt-4 max-w-2xl text-base leading-7 text-white/65 sm:text-lg sm:leading-8">
+            The work you already do, done the moment it needs doing.
+          </p>
+        </div>
+
+        <div className="overflow-hidden rounded-[24px] border border-white/10 bg-white/[0.03] sm:rounded-[28px]">
+          <div className="hidden grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)] border-b border-white/10 lg:grid">
+            <div className="px-6 py-4 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/40">
+              Scenario
+            </div>
+            <div className="border-l border-white/10 px-6 py-4 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/40">
+              Without AgentZero
+            </div>
+            <div className="border-l border-[#ff2d55]/25 bg-[#ff2d55]/[0.06] px-6 py-4 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#ff9ab0]">
+              With AgentZero
+            </div>
+          </div>
+
+          {BEFORE_AFTER_ROWS.map((row, index) => (
+            <div
+              key={row.scenario}
+              className={`grid gap-4 p-5 sm:p-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)] lg:gap-0 lg:p-0 ${
+                index < BEFORE_AFTER_ROWS.length - 1 ? "border-b border-white/10" : ""
+              }`}
+            >
+              <div className="lg:px-6 lg:py-6">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/35 lg:hidden">
+                  Scenario
+                </div>
+                <p className="mt-1 text-base font-semibold leading-snug text-white lg:mt-0">
+                  {row.scenario}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-black/40 p-4 lg:rounded-none lg:border-0 lg:border-l lg:border-white/10 lg:bg-transparent lg:px-6 lg:py-6">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/35 lg:hidden">
+                  Without AgentZero
+                </div>
+                <p className="mt-1 text-base font-semibold text-white/45 lg:mt-0">
+                  {row.without.headline}
+                </p>
+                <p className="mt-1 text-sm leading-6 text-white/35">{row.without.detail}</p>
+              </div>
+
+              <div className="rounded-2xl border border-[#ff2d55]/25 bg-[#ff2d55]/[0.08] p-4 lg:rounded-none lg:border-0 lg:border-l lg:border-[#ff2d55]/25 lg:bg-[#ff2d55]/[0.06] lg:px-6 lg:py-6">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#ff9ab0] lg:hidden">
+                  With AgentZero
+                </div>
+                <p className="mt-1 text-base font-semibold text-[#ffd60a] lg:mt-0">
+                  {row.with.headline}
+                </p>
+                <p className="mt-1 text-sm leading-6 text-white/75">{row.with.detail}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-8 flex flex-wrap justify-center gap-3 sm:mt-10">
+          <a
+            href={WHATSAPP_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
+          >
+            Book a call
+          </a>
         </div>
       </section>
 

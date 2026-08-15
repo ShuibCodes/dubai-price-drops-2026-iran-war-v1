@@ -307,7 +307,7 @@ async function processPipelineCall(payload) {
 
   if (lead) {
     await sendAgentSummary(call, lead, qualification);
-    await postCallResult(call, lead, qualification);
+    await postCallResult(call, lead, qualification, { tenantSlug });
   }
 
   return { processed: true, callId: details.callId, qualification, profile };
