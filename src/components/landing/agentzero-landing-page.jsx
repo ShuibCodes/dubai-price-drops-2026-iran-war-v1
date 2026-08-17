@@ -5,7 +5,6 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import logo1416 from "@/app/images/1416-logo.png";
 import logoCondCity from "@/app/images/cond-city-logo.png";
-import dubaiMap from "@/app/images/dubai-map.webp";
 import logoSterling from "@/app/images/sterling.jpg";
 
 const CLIENT_LOGOS = [
@@ -137,11 +136,21 @@ const BEFORE_AFTER_ROWS = [
   },
 ];
 
-const PLAN_FEATURES = [
-  "Full CRM integration (Property Finder, Bayut, and more)",
-  "AI lead nurturing",
-  "40-60 AI calls a day",
-  "Native WhatsApp, or custom platform login",
+const AGENT_PLAN_FEATURES = [
+  "7–10 qualified leads a week, handed straight to you",
+  "Every portal enquiry called and qualified within 60 seconds",
+  "Outbound AI calling, every working day",
+  "Dead WhatsApp leads revived and re-engaged",
+  "No CRM, no app, no login. It all runs on your WhatsApp",
+];
+
+const BROKERAGE_PLAN_FEATURES = [
+  "200 AI calls a day, across your entire roster",
+  "40–55 qualified leads a week, distributed to your agents",
+  "Every portal enquiry called and qualified within 60 seconds",
+  "Your whole database revived, not just this month's leads",
+  "Team-wide reporting: who's converting, what's stalling",
+  "No CRM, no app, no login. It all runs on WhatsApp",
 ];
 
 function GoldCheck() {
@@ -190,15 +199,13 @@ export default function AgentZeroLandingPage() {
             For Dubai real estate brokerages
           </div>
           <h1 className="mt-6 text-balance text-[1.9rem] font-semibold leading-[1.18] tracking-tight sm:mt-8 sm:text-5xl sm:leading-[1.12] lg:text-[4.25rem] lg:leading-[1.08]">
-            Either you get{" "}
-            <em className="italic text-[#ff2d55]">25% more conversions</em>{" "}
-            <span className="lg:block">
-              in 45 days — or{" "}
-              <em className="italic">we work for free.</em>
-            </span>
+            Nobody Got Into Real Estate To{" "}
+            <em className="italic text-[#ff2d55]">Dial 200 Numbers.</em>
           </h1>
           <p className="mt-5 max-w-4xl text-base leading-7 text-white/65 sm:mt-6 sm:text-lg sm:leading-8">
-            Remembers every lead and conversation — and acts on it.
+            AgentZero makes the cold calls and does the admin after them —
+            qualifying, logging, following up — and hands your agents only the
+            leads with budget, timeline and intent, straight to their WhatsApp.
           </p>
           <div className="mt-7 flex flex-wrap gap-3 sm:mt-8">
             <a
@@ -239,14 +246,14 @@ export default function AgentZeroLandingPage() {
               <span className="text-xl text-white/70 sm:text-3xl">AED</span>
               <span className="text-4xl tracking-tight text-[#ff2d55] sm:text-6xl">
                 <CountUp
-                  to={7500000}
+                  to={30000000}
                   format={(v) => Math.round(v).toLocaleString()}
                 />
               </span>
               <span className="text-3xl text-[#ff2d55] sm:text-5xl">+</span>
             </div>
             <p className="mt-4 text-base leading-7 text-white/65 sm:mt-5 sm:text-lg">
-              Sold with AI
+              Sold with AI in the last 90 days
             </p>
           </article>
 
@@ -268,14 +275,16 @@ export default function AgentZeroLandingPage() {
               How it works
             </div>
             <h2 className="mt-4 text-[1.7rem] font-semibold leading-tight text-white sm:text-4xl">
-              Text it like a colleague. It does the rest.
+              You close. It does everything before and after.
             </h2>
             <p className="mt-5 text-base leading-7 text-white/75 sm:text-lg sm:leading-8">
-              Every brokerage&apos;s know-how is scattered — in people&apos;s heads, old
-              emails, WhatsApp threads. AgentZero pulls it together and keeps it current —{" "}
-              <span className="font-semibold text-[#ffd60a]">then puts it to work</span>:
-              calling leads by AI voice, emailing listing packs, and following up across
-              channels, all on your behalf.
+              AgentZero learns from your own conversations, emails and call
+              records —{" "}
+              <span className="font-semibold text-[#ffd60a]">
+                then handles the outreach
+              </span>
+              : AI voice calls, listing packs, follow-ups across every channel.
+              Your agents direct it all from WhatsApp.
             </p>
             <div className="mt-7 flex flex-wrap gap-3 sm:mt-8">
               <a
@@ -318,12 +327,13 @@ export default function AgentZeroLandingPage() {
               Why it wins
             </div>
             <h2 className="mt-4 text-[1.7rem] font-semibold leading-tight text-white sm:text-4xl">
-              Your rivals are calling the same leads. You&apos;ll call the right one first.
+              Every morning: who to call, and why.
             </h2>
             <p className="mt-5 text-base leading-7 text-white/75 sm:text-lg sm:leading-8">
-              AgentZero reads across every chat, email and call to predict your next most
-              likely close — then contacts and nurtures them for you, without you ever
-              leaving WhatsApp.
+              AgentZero reads across your chats, emails and calls, spots the
+              leads showing intent — a reply, a revisit, a timeline that just
+              got real — and puts them at the top of your WhatsApp before your
+              day starts. No new app to install.
             </p>
             <div className="mt-7 flex flex-wrap gap-3 sm:mt-8">
               <a
@@ -335,36 +345,6 @@ export default function AgentZeroLandingPage() {
                 Get access
               </a>
             </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-7xl px-4 pb-14 sm:px-6 sm:pb-20 lg:px-8">
-        <div className="grid gap-8 lg:grid-cols-2 lg:items-center lg:gap-10">
-          <div>
-            <div className="mono text-[11px] uppercase tracking-[0.32em] text-white/35">
-              Compounding edge
-            </div>
-            <h2 className="mt-4 text-[1.7rem] font-semibold leading-tight text-white sm:text-4xl">
-              Month one, it answers. Month six, it predicts.
-            </h2>
-            <p className="mt-5 text-base leading-7 text-white/75 sm:text-lg sm:leading-8">
-              Every chat, call and closed deal feeds one brain. AgentZero learns
-              which communities are moving, what buyers actually pay there, and
-              which of today&apos;s leads look like your last ten closes... then
-              points your agents at them first.
-            </p>
-            <p className="mt-7 text-lg font-semibold text-[#ffd60a] sm:mt-8 sm:text-xl">
-              6 months AI-native = 2 years ahead.
-            </p>
-          </div>
-          <div className="overflow-hidden rounded-[24px] border border-white/10 bg-black sm:rounded-[28px]">
-            <Image
-              src={dubaiMap}
-              alt="AgentZero mapping which Dubai communities are moving"
-              className="h-[280px] w-full object-cover object-[50%_22%] sm:h-[380px] lg:h-[440px]"
-              placeholder="blur"
-            />
           </div>
         </div>
       </section>
@@ -509,7 +489,7 @@ export default function AgentZeroLandingPage() {
             <p className="mt-2 text-sm text-[#a1a1a1]">/ agent / month</p>
 
             <ul className="mt-7 space-y-4 sm:mt-8">
-              {PLAN_FEATURES.map((feature) => (
+              {AGENT_PLAN_FEATURES.map((feature) => (
                 <li key={feature} className="flex items-start gap-3">
                   <GoldCheck />
                   <span className="text-sm leading-7 text-white/80">{feature}</span>
@@ -539,7 +519,7 @@ export default function AgentZeroLandingPage() {
             <p className="mt-2 text-sm text-[#a1a1a1]">tailored to your roster</p>
 
             <ul className="mt-7 space-y-4 sm:mt-8">
-              {PLAN_FEATURES.map((feature) => (
+              {BROKERAGE_PLAN_FEATURES.map((feature) => (
                 <li key={feature} className="flex items-start gap-3">
                   <GoldCheck />
                   <span className="text-sm leading-7 text-white/80">{feature}</span>
@@ -562,8 +542,7 @@ export default function AgentZeroLandingPage() {
 
         <div className="mt-5 rounded-[20px] border-l-2 border-[#ffd60a] bg-[#ffd60a]/[0.06] px-5 py-4 text-center sm:mt-6 sm:px-6 sm:py-5">
           <p className="text-base leading-7 text-white/85 sm:text-lg">
-            Don&apos;t close a deal within 6 weeks?{" "}
-            <span className="font-semibold text-[#ffd60a]">Pay nothing.</span>
+            15 qualified conversations in your first month, or the month is free.
           </p>
         </div>
       </section>
