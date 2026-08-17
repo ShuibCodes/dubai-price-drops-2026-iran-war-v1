@@ -202,7 +202,7 @@ export default function AgentZeroLandingPage() {
             Nobody Got Into Real Estate To{" "}
             <em className="italic text-[#ff2d55]">Dial 200 Numbers.</em>
           </h1>
-          <p className="mt-5 max-w-4xl text-base leading-7 text-white/65 sm:mt-6 sm:text-lg sm:leading-8">
+          <p className="mt-5 max-w-4xl text-base leading-7 text-white sm:mt-6 sm:text-lg sm:leading-8">
             AgentZero makes the cold calls and does the admin after them —
             qualifying, logging, following up — and hands your agents only the
             leads with budget, timeline and intent, straight to their WhatsApp.
