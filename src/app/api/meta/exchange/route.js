@@ -1,5 +1,9 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { subscribeAppToWaba } from "@/lib/meta/subscribe";
+import {
+  resolvePhoneNumberIdFromWaba,
+  resolveWabaIdFromToken,
+} from "@/lib/meta/assets";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -100,12 +104,17 @@ export async function POST(request) {
       return Response.json({ ok: false, error: "Token exchange failed" }, { status: 502 });
     }
 
+    const businessToken = tokenPayload.access_token;
+    const resolvedWabaId = wabaId || (await resolveWabaIdFromToken(businessToken));
+    const resolvedPhoneNumberId =
+      phoneNumberId || (await resolvePhoneNumberIdFromWaba(resolvedWabaId, businessToken));
+
     const credentials = {
-      business_token: tokenPayload.access_token,
+      business_token: businessToken,
     };
 
-    if (wabaId) credentials.waba_id = wabaId;
-    if (phoneNumberId) credentials.phone_number_id = phoneNumberId;
+    if (resolvedWabaId) credentials.waba_id = resolvedWabaId;
+    if (resolvedPhoneNumberId) credentials.phone_number_id = resolvedPhoneNumberId;
 
     let storedTenantId = targetTenantId;
 
@@ -146,15 +155,15 @@ export async function POST(request) {
     }
 
     const subscription = await subscribeAppToWaba({
-      wabaId,
-      businessToken: tokenPayload.access_token,
+      wabaId: resolvedWabaId,
+      businessToken,
     });
 
     return Response.json({
       ok: true,
       tenant_id: storedTenantId,
-      waba_id: wabaId,
-      phone_number_id: phoneNumberId,
+      waba_id: resolvedWabaId,
+      phone_number_id: resolvedPhoneNumberId,
       subscribed: subscription.subscribed,
       subscribe_error: subscription.error || null,
     });

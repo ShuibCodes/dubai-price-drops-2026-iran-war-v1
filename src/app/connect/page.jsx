@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const FB_SDK_URL = "https://connect.facebook.net/en_US/sdk.js";
 
@@ -49,6 +49,10 @@ export default function ConnectPage() {
   const [signupInfo, setSignupInfo] = useState(null);
   const [tenantSlug, setTenantSlug] = useState(null);
 
+  // Meta posts the asset IDs while the popup is open, which is after the
+  // FB.login callback closure is created. A ref keeps the callback current.
+  const signupInfoRef = useRef(null);
+
   const appId = process.env.NEXT_PUBLIC_META_APP_ID;
   const configId = process.env.NEXT_PUBLIC_META_CONFIG_ID;
 
@@ -77,6 +81,7 @@ export default function ConnectPage() {
       const phoneNumberId = data?.phone_number_id || data?.phoneNumberId || null;
 
       if (wabaId || phoneNumberId) {
+        signupInfoRef.current = { wabaId, phoneNumberId };
         setSignupInfo({ wabaId, phoneNumberId });
         setStatus("Embedded signup details received.");
       }
@@ -113,6 +118,8 @@ export default function ConnectPage() {
       return;
     }
 
+    signupInfoRef.current = null;
+    setSignupInfo(null);
     setStatus("Opening WhatsApp embedded signup...");
 
     window.FB.login(
@@ -132,8 +139,8 @@ export default function ConnectPage() {
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 code,
-                waba_id: signupInfo?.wabaId || null,
-                phone_number_id: signupInfo?.phoneNumberId || null,
+                waba_id: signupInfoRef.current?.wabaId || null,
+                phone_number_id: signupInfoRef.current?.phoneNumberId || null,
                 tenant_slug: tenantSlug,
               }),
             });
@@ -144,12 +151,19 @@ export default function ConnectPage() {
               return;
             }
 
+            if (!exchangePayload.subscribed) {
+              setStatus(
+                `WhatsApp connected, but webhook subscription failed: ${
+                  exchangePayload.subscribe_error || "unknown error"
+                }`
+              );
+              return;
+            }
+
             setStatus(
-              exchangePayload.subscribed
+              exchangePayload.phone_number_id
                 ? "WhatsApp connected and webhooks subscribed."
-                : `WhatsApp connected, but webhook subscription failed: ${
-                    exchangePayload.subscribe_error || "unknown error"
-                  }`
+                : "WhatsApp connected and subscribed, but no phone number ID was stored — inbound messages will not resolve to this workspace."
             );
           } catch {
             setStatus("Token exchange request failed.");
