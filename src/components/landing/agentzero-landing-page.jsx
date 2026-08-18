@@ -259,10 +259,10 @@ export default function AgentZeroLandingPage() {
 
           <article className="rounded-[28px] border border-white/10 bg-white/[0.03] p-6 sm:rounded-[32px] sm:p-10">
             <div className="text-4xl font-semibold leading-none tracking-tight text-[#ffd60a] sm:text-6xl">
-              <CountUp to={7} />
+              7 years
             </div>
             <p className="mt-4 text-base leading-7 text-white/65 sm:mt-5 sm:text-lg">
-              years of broker experience, built in
+              of broker experience, built in
             </p>
           </article>
         </div>
