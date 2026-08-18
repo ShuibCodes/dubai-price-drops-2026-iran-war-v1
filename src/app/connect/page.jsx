@@ -47,9 +47,15 @@ export default function ConnectPage() {
   const [status, setStatus] = useState("Loading Meta SDK...");
   const [sdkReady, setSdkReady] = useState(false);
   const [signupInfo, setSignupInfo] = useState(null);
+  const [tenantSlug, setTenantSlug] = useState(null);
 
   const appId = process.env.NEXT_PUBLIC_META_APP_ID;
   const configId = process.env.NEXT_PUBLIC_META_CONFIG_ID;
+
+  useEffect(() => {
+    const slug = new URLSearchParams(window.location.search).get("tenant");
+    if (slug) setTenantSlug(slug.trim().toLowerCase());
+  }, []);
 
   useEffect(() => {
     function handleMessage(event) {
@@ -128,16 +134,23 @@ export default function ConnectPage() {
                 code,
                 waba_id: signupInfo?.wabaId || null,
                 phone_number_id: signupInfo?.phoneNumberId || null,
+                tenant_slug: tenantSlug,
               }),
             });
 
             const exchangePayload = await exchangeResponse.json();
             if (!exchangeResponse.ok || !exchangePayload.ok) {
-              setStatus("Token exchange failed.");
+              setStatus(`Connection failed: ${exchangePayload?.error || "token exchange failed"}`);
               return;
             }
 
-            setStatus("WhatsApp connected successfully.");
+            setStatus(
+              exchangePayload.subscribed
+                ? "WhatsApp connected and webhooks subscribed."
+                : `WhatsApp connected, but webhook subscription failed: ${
+                    exchangePayload.subscribe_error || "unknown error"
+                  }`
+            );
           } catch {
             setStatus("Token exchange request failed.");
           }
@@ -159,6 +172,9 @@ export default function ConnectPage() {
   return (
     <main style={{ fontFamily: "sans-serif", padding: "2rem", maxWidth: "640px" }}>
       <h1>Connect WhatsApp</h1>
+      <p>
+        Workspace: <strong>{tenantSlug || "oldest tenant (no ?tenant= given)"}</strong>
+      </p>
       <p>{status}</p>
       {signupInfo ? (
         <pre style={{ whiteSpace: "pre-wrap" }}>
