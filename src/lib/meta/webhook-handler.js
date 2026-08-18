@@ -1,6 +1,9 @@
 import { getSupabaseServerClient, normalizeWaId } from "@/lib/supabase/server";
 import { resolveTenantByPhoneNumberId } from "@/lib/kb/resolve-tenant";
-import { upsertLead, insertMessageIfNew } from "@/lib/ingest/message-ingest";
+import {
+  upsertJarvisLead,
+  insertJarvisMessageIfNew,
+} from "@/lib/ingest/jarvis-ingest";
 
 function unixToIso(unixSeconds) {
   const value = Number(unixSeconds);
@@ -95,7 +98,10 @@ async function processMessage({
 
   const pushName = contactMap.get(leadWaId) || null;
   const timestamp = unixToIso(message?.timestamp);
-  const lead = await upsertLead({
+
+  // Coexistence feeds the same jarvis_leads / jarvis_lead_id pair Whautomate
+  // used, so Jarvis keeps reading one continuous inbox.
+  const lead = await upsertJarvisLead({
     supabase,
     tenantId,
     waId: leadWaId,
@@ -103,10 +109,10 @@ async function processMessage({
     messageAt: timestamp,
   });
 
-  await insertMessageIfNew({
+  await insertJarvisMessageIfNew({
     supabase,
     tenantId,
-    leadId: lead.id,
+    jarvisLeadId: lead.id,
     waMessageId,
     direction,
     body: extractMessageBody(message),
