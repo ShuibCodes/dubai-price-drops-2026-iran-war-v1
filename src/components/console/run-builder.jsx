@@ -155,31 +155,33 @@ export function RunBuilder({ tenant }) {
       </div>
 
       {source === "upload" ? (
-        <Drop
-          accept=".csv,.txt,text/csv,text/plain,application/csv,application/vnd.ms-excel"
-          className="mb-4"
-          onFiles={(files) => parseCsv(files)}
-        >
-          {contacts.length
-            ? `${contacts.length} numbers from the file.`
-            : "CSV with names and numbers. Headers can be anything."}
-        </Drop>
-        {contacts.length ? (
-          <div className="mb-6 border-t border-rule">
-            {contacts.slice(0, 25).map((row, index) => (
-              <Row
-                key={`${row.phone}-${index}`}
-                sub={row.phone}
-                title={row.name || row.phone}
-              />
-            ))}
-            {contacts.length > 25 ? (
-              <p className="py-3 text-sm text-ink-3">
-                And {contacts.length - 25} more.
-              </p>
-            ) : null}
-          </div>
-        ) : null}
+        <>
+          <Drop
+            accept=".csv,.txt,text/csv,text/plain,application/csv,application/vnd.ms-excel"
+            className="mb-4"
+            onFiles={(files) => parseCsv(files)}
+          >
+            {contacts.length
+              ? `${contacts.length} numbers from the file.`
+              : "CSV with names and numbers. Headers can be anything."}
+          </Drop>
+          {contacts.length ? (
+            <div className="mb-6 border-t border-rule">
+              {contacts.slice(0, 25).map((row, index) => (
+                <Row
+                  key={`${row.phone}-${index}`}
+                  sub={row.phone}
+                  title={row.name || row.phone}
+                />
+              ))}
+              {contacts.length > 25 ? (
+                <p className="py-3 text-sm text-ink-3">
+                  And {contacts.length - 25} more.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+        </>
       ) : (
         <div className="mb-6 grid gap-3 sm:grid-cols-2">
           <div>
