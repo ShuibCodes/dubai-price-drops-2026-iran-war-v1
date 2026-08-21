@@ -14,6 +14,7 @@ export async function POST(request) {
       sourceType: body.source_type || "whatsapp",
       areas: body.areas || [],
       bedrooms: body.bedrooms || "",
+      listName: body.list_name || "",
     });
     return Response.json(result);
   } catch (error) {

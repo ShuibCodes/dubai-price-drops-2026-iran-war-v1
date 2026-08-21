@@ -9,6 +9,7 @@ export async function previewRunMatch(supabase, {
   sourceType,
   areas = [],
   bedrooms,
+  listName = "",
   calledWithinDays = 7,
 }) {
   const exclusions = [];
@@ -48,9 +49,12 @@ export async function previewRunMatch(supabase, {
 
   let query = supabase
     .from("leads")
-    .select("id, opted_out, areas, bedrooms, last_message_at")
+    .select("id, opted_out, areas, bedrooms, last_message_at, source")
     .eq("tenant_id", tenantId)
     .not("source", "is", null);
+
+  const named = String(listName || "").trim();
+  if (named) query = query.eq("source", named);
 
   const { data: rows, error } = await query;
   if (error) throw new Error(`Lead match failed: ${error.message}`);
@@ -110,6 +114,7 @@ export async function selectRunLeadIds(supabase, {
   sourceType,
   areas = [],
   bedrooms,
+  listName = "",
   calledWithinDays = 7,
   limit,
 }) {
@@ -140,13 +145,17 @@ export async function selectRunLeadIds(supabase, {
     };
   }
 
-  const { data: rows, error } = await supabase
+  const named = String(listName || "").trim();
+  let query = supabase
     .from("leads")
     .select("id, opted_out, areas, bedrooms")
     .eq("tenant_id", tenantId)
     .eq("opted_out", false)
     .not("source", "is", null)
     .limit(2000);
+  if (named) query = query.eq("source", named);
+
+  const { data: rows, error } = await query;
   if (error) throw new Error(`Lead select failed: ${error.message}`);
 
   const areaFilters = (areas || []).map((a) => String(a).trim()).filter(Boolean);

@@ -6,8 +6,8 @@ import {
   resolveBatchDialStart,
 } from "@/lib/calls/outbound";
 import { consoleContext, CONSOLE_RUN_SOURCE, estCostAed, jsonError } from "@/lib/console/http";
+import { upsertListContacts } from "@/lib/console/lists";
 import { selectRunLeadIds } from "@/lib/console/match";
-import { normalizePhone, phoneToWaId } from "@/lib/leads/normalize";
 import { scriptPointerForScript } from "@/lib/scripts/pointers";
 
 export const runtime = "nodejs";
@@ -33,42 +33,6 @@ async function requireLiveScript(supabase, tenantId, scriptId) {
   return { script: data, pointer };
 }
 
-async function upsertUploadedLeads(supabase, tenantId, contacts) {
-  const ids = [];
-  for (const contact of contacts) {
-    const phone = normalizePhone(contact.phone || contact.wa_id);
-    const waId = phoneToWaId(phone);
-    if (!waId) continue;
-    const now = new Date().toISOString();
-    const { data: existing } = await supabase
-      .from("leads")
-      .select("id, opted_out")
-      .eq("tenant_id", tenantId)
-      .eq("wa_id", waId)
-      .maybeSingle();
-    if (existing?.opted_out) continue;
-    if (existing) {
-      ids.push(existing.id);
-      continue;
-    }
-    const { data, error } = await supabase
-      .from("leads")
-      .insert({
-        tenant_id: tenantId,
-        wa_id: waId,
-        push_name: String(contact.name || "").trim() || null,
-        source: "console-upload",
-        first_seen: now,
-        last_message_at: now,
-      })
-      .select("id")
-      .single();
-    if (error) throw new Error(`Lead upsert failed: ${error.message}`);
-    ids.push(data.id);
-  }
-  return ids;
-}
-
 export async function POST(request) {
   try {
     const ctx = await consoleContext(request);
@@ -87,14 +51,18 @@ export async function POST(request) {
     let leadIds = [];
     let jarvisLeadIds = [];
     if (sourceType === "upload") {
-      const contacts = Array.isArray(body.contacts) ? body.contacts : [];
-      leadIds = await upsertUploadedLeads(supabase, session.tenantId, contacts);
+      const saved = await upsertListContacts(supabase, session.tenantId, {
+        name: body.list_name,
+        contacts: Array.isArray(body.contacts) ? body.contacts : [],
+      });
+      leadIds = saved.leadIds;
     } else {
       const selected = await selectRunLeadIds(supabase, {
         tenantId: session.tenantId,
         sourceType,
         areas: body.areas || [],
         bedrooms: body.bedrooms || "",
+        listName: body.list_name || "",
         limit: body.limit,
       });
       leadIds = selected.leadIds;
@@ -138,6 +106,7 @@ export async function POST(request) {
       filter: {
         areas: body.areas || [],
         bedrooms: body.bedrooms || "",
+        list_name: body.list_name || "",
       },
       windowStart: times[0],
       windowEnd: times[times.length - 1],
