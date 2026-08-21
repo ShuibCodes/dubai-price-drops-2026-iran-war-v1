@@ -14,6 +14,7 @@ import {
   listScripts,
   resolveFailurePayload,
   resolveScript,
+  scriptRequiredPayload,
 } from "../scripts/resolve.js";
 
 export { listScripts };
@@ -725,9 +726,12 @@ const MAX_COLD_CALL_ATTEMPTS = 3;
 const COLD_SCAN_PAGE = 250;
 const COLD_SCAN_MAX = 8000;
 
-function validateCount(count) {
+function validateCount(count, { allowDefault } = {}) {
   const value = Number(count);
-  if (!Number.isInteger(value) || value < 1) throw new Error("Count must be a positive integer");
+  if (!Number.isInteger(value) || value < 1) {
+    if (allowDefault) return DAILY_BATCH_CAP;
+    throw new Error("Count must be a positive integer");
+  }
   return value;
 }
 
@@ -889,12 +893,12 @@ export async function startColdBatch(
   scriptPhrase
 ) {
   const phrase = String(scriptPhrase || "").trim();
-  let resolved = null;
-  if (phrase) {
-    resolved = await resolveScript({ tenantId, phrase });
-    if (!isResolvedMatch(resolved)) {
-      return resolveFailurePayload(resolved);
-    }
+  if (!phrase) {
+    return scriptRequiredPayload(tenantId, { source: sourceFilter });
+  }
+  const resolved = await resolveScript({ tenantId, phrase });
+  if (!isResolvedMatch(resolved)) {
+    return resolveFailurePayload(resolved);
   }
 
   const countryCode = normalizeCountryCode(country);
@@ -905,14 +909,16 @@ export async function startColdBatch(
       count,
       country: countryCode,
       source: sourceFilter || null,
-      script: phrase || null,
-      scriptId: resolved?.match?.id || null,
+      script: phrase,
+      scriptId: resolved.match.id,
     },
     requestedBy,
     async (supabase) => {
       const tenant = await getOutboundTenant(supabase, tenantId);
       assertOutboundActive(tenant);
-      const requested = validateCount(count);
+      const requested = validateCount(count, {
+        allowDefault: Boolean(String(sourceFilter || "").trim()),
+      });
       // Never accept more than one day's hard cap in a single start.
       const want = Math.min(requested, DAILY_BATCH_CAP);
       // After 10pm UAE → first slot is next day 6pm (all tenants).
@@ -951,7 +957,7 @@ export async function startColdBatch(
         scheduledTimes: times,
         source: "copilot-cold-batch",
         requestedBy,
-        ...(resolved?.match?.id ? { scriptId: resolved.match.id } : {}),
+        scriptId: resolved.match.id,
       });
       const byTimezone = {};
       for (const lead of leads) {

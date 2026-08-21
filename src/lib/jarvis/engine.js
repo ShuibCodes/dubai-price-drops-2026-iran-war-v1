@@ -1,5 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { listScripts, startColdBatch } from "@/lib/copilot/tools";
+import { listLeadSources, listScripts, startColdBatch } from "@/lib/copilot/tools";
+import {
+  formatSavedListsPrompt,
+  listSavedLists,
+  matchSavedList,
+} from "@/lib/console/lists";
+import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { draftLeadEmail, sendDraftEmail } from "@/lib/jarvis/email";
 import {
   getJarvisCallDetail,
@@ -31,6 +37,7 @@ import {
   isResolvedMatch,
   resolveFailurePayload,
   resolveScript,
+  scriptRequiredPayload,
 } from "@/lib/scripts/resolve";
 import { HELP_TEXT, isHelpMessage } from "@/lib/console/help";
 
@@ -56,7 +63,7 @@ export const jarvisToolDefinitions = [
   {
     name: "search_lead_by_name",
     description:
-      "Fuzzy-search leads by partial name. Use before get_lead_story, start_target_call, or draft_email.",
+      "Fuzzy-search WhatsApp inbox contacts by name. Do not use for saved list / campaign names — those are in SAVED LISTS and list_lead_sources.",
     input_schema: {
       type: "object",
       properties: { name: { type: "string" } },
@@ -215,7 +222,7 @@ export const jarvisToolDefinitions = [
   {
     name: "list_scripts",
     description:
-      "List this tenant's named call scripts (catalog + user). Includes drafts so you can say a script is not published yet. Excludes live dial pointers. Never invent a script name.",
+      "List this tenant's named call scripts. Returns live (published, may dial) and drafts (cannot dial) as separate arrays plus an instruction. Read live first. Never tell the user all scripts are draft when live is non-empty. Never invent a script name.",
     input_schema: { type: "object", properties: {} },
   },
   {
@@ -229,9 +236,15 @@ export const jarvisToolDefinitions = [
     },
   },
   {
+    name: "list_lead_sources",
+    description:
+      "List this tenant's saved lead lists (leads.source) with counts. Use when the user says 'call my X list' or asks what lists they have. Pass the matching source string to start_cold_batch.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
     name: "start_cold_batch",
     description:
-      "Start/queue cold calls to Purchased-list leads via Vapi (re-dials allowed until 3 prior attempts). ONLY after explicit user confirmation. Pass country to limit market, source for a named list, and script when the user named a call script. Any script-invoked batch needs yes at any size. Never fall back to a default script on a failed match.",
+      "Start/queue cold calls to a saved lead list via Vapi. script is required (must be LIVE). source is the list name. ONLY after explicit user confirmation. Never fall back to a default script.",
     input_schema: {
       type: "object",
       properties: {
@@ -240,15 +253,15 @@ export const jarvisToolDefinitions = [
         source: {
           type: "string",
           description:
-            "Optional lead-source filter, substring matched (e.g. 'Marina', 'downtown'). Omit to use the tenant's full cold list.",
+            "Saved list name from SAVED LISTS (exact string, e.g. 'test list'). Omit only when THIS TURN already named the list.",
         },
         script: {
           type: "string",
           description:
-            "Named script to dial with, matched against display_name (e.g. 'cold list', 're-engage'). Required when the user named a script. On no match, list live names. On ambiguous, offer the top two.",
+            "Required. Named LIVE script to dial with (e.g. 'cold list'). On no match, list live names. On ambiguous, offer the top two.",
         },
       },
-      required: ["count"],
+      required: ["script"],
     },
   },
   {
@@ -283,14 +296,14 @@ export const jarvisToolDefinitions = [
   },
 ];
 
-function systemPrompt({ liveContext }) {
+function systemPrompt({ liveContext, savedListsPrompt }) {
   return `You are Jarvis — a live WhatsApp knowledge base and action desk.
 
 DATA SOURCE (CRITICAL):
 - Your primary knowledge is the owner's connected WhatsApp Business inbox, continuously ingested via Whautomate coexistence into Supabase. These are the owner's own business conversations.
 - Every new inbound or outbound WhatsApp on the connected business number lands in near real time. Treat the tool results as current, not a static dump.
 - You also have call history from Vapi outbound calls (same assistant used for cold calling).
-- Never invent chats, phones, emails, budgets, or outcomes. If tools return nothing, say so.
+- Saved dial lists from the console are listed under SAVED LISTS below. They are a different table from WhatsApp contacts. Never invent chats, phones, emails, budgets, or outcomes. If tools return nothing, say so.
 
 RESPONSE STYLE:
 - Be clear, practical, and conversational — a capable teammate, not a dashboard.
@@ -309,7 +322,8 @@ LOOKUPS:
 - "Who hasn't replied", "stale / cold conversations" → get_stale_conversations.
 - "How many chats / unanswered / inbox stats" → get_inbox_stats.
 - When listing people from inbox tools, show at most ~15 bullets (name + phone + short snippet + age). Keep WhatsApp-friendly length.
-- Name questions → search_lead_by_name, then get_lead_story.
+- Saved list / "call my X list" / a name that appears in SAVED LISTS → list_lead_sources or start_cold_batch. Never search_lead_by_name for a list.
+- Person name questions → search_lead_by_name, then get_lead_story.
 - "What did anyone say about X" → search_conversations, then get_lead_story / get_call_detail.
 - Call recaps → get_call_detail; summarize 1-5 lines; never paste transcripts.
 - Callbacks → get_pending_callbacks.
@@ -320,15 +334,13 @@ LOOKUPS:
 ACTIONS — CALLS (Vapi):
 - "call X and tell/ask them Y" → ALWAYS place_relay_call (relay assistant). Rewrite Y into the spoken task per the tool description. Never use start_target_call for a relay/message.
 - After relays, use get_lead_story / get_call_detail — there may be multiple recent relay calls. Prefer the latest completed one with a transcript; do not say "no recording" if a later/earlier call has one.
-- "call X" with no message to relay → start_target_call (Jarvis personal assistant only). Never the Allan/Pixxi cold-call assistant.
+- "call X" with no message to relay → if X is in SAVED LISTS or THIS TURN names a list, use start_cold_batch — not start_target_call. Otherwise start_target_call (Jarvis personal assistant only).
 - start_target_call dials one lead with tenants.vapi_assistant_id_jarvis ONLY.
-- start_cold_batch queues/dials Purchased-list leads through that same Vapi path.
-- When the user names a list AND a script ("call the Marina list with the re-engage script"), pass both source and script. If unsure of script names, call list_scripts. No match → list live names. Ambiguous → offer the top two. Draft-only → say it is not published. Never fall back to a default script.
+- start_cold_batch queues a saved lead list. Pass source as the exact SAVED LISTS name. A LIVE script is always required. If they did not pick one, follow the tool instruction (ask to use the live script; if several, list live names). Never say all scripts are draft when list_scripts.live is non-empty. Never fall back to a default script. Count may be omitted — the whole list is used, capped at 200/day.
 - NEVER place a call on the first ask. For lead calls: restate name + phone, ask: "Ready to call {Name} at {phone} — reply yes to place the Vapi call."
 - For relays / new-contact relays: confirmation is handled after place_relay_call returns needs_confirmation — show the confirmationPrompt (name, number, task). Reply yes completes save (if new) + dial.
 - For save_jarvis_contact: show confirmationPrompt; yes upserts jarvis_leads.
-- Only call start_target_call / start_cold_batch after the user's latest message is an explicit yes/confirm/go ahead.
-- For cold batches over 100, restate the count and require an explicit yes.
+- Only call start_target_call after the user's latest message is an explicit yes/confirm/go ahead. For start_cold_batch you may call the tool on the first ask so it can return confirmationPrompt — show that verbatim and wait for yes before it will actually queue.
 - For any script-invoked cold batch, require an explicit yes at any size. Show the confirmationPrompt verbatim (script name, version, published age, lead count, source, AED).
 - If outside the lead's local business hours, the tool may queue — explain that clearly.
 - Relay calls are blocked 21:00–08:00 Gulf time unless the user explicitly overrides.
@@ -343,6 +355,8 @@ SAFETY:
 - No login on this chat surface — be careful with sensitive details but still answer operational questions from tool data.
 - Do not claim you can message on WhatsApp from this UI (ingestion is live; outbound WhatsApp bot is separate).
 - The workspace is resolved server-side. Never ask for a tenant ID and never label the data as belonging to any client or tenant — these are the owner's own WhatsApp conversations.
+
+${savedListsPrompt || "SAVED LISTS: (unavailable this turn)"}
 
 LIVE SNAPSHOT (recent WhatsApp threads — may be incomplete; use tools for deep lookup):
 ${liveContext || "(no recent conversations loaded)"}`;
@@ -373,11 +387,43 @@ function previousAssistantMentioned(messages, pattern) {
   return previous ? pattern.test(previous.content) : false;
 }
 
+function matchSavedListFromMessages(lists, messages) {
+  const history = normalizeMessages(messages);
+  for (let i = history.length - 1; i >= 0; i -= 1) {
+    if (history[i].role !== "user") continue;
+    if (
+      /^(yes|y|yeah|yep|confirm|confirmed|go ahead|do it|proceed|go)\b/i.test(
+        history[i].content.trim()
+      )
+    ) {
+      continue;
+    }
+    const hit = matchSavedList(lists, history[i].content);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+function formatScriptsPrompt(listed) {
+  if (!listed) return "";
+  const live = listed.live?.join(", ") || "(none)";
+  const drafts = listed.drafts?.join(", ") || "none";
+  return `LIVE SCRIPTS (may dial): ${live}. DRAFT (cannot dial): ${drafts}.`;
+}
+
 function escapeRegExp(value) {
   return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-async function executeTool({ name, input, tenantId, agentName, messages, senderPhone }) {
+async function executeTool({
+  name,
+  input,
+  tenantId,
+  agentName,
+  messages,
+  senderPhone,
+  listMatch,
+}) {
   switch (name) {
     case "get_latest_messages":
       return getJarvisLatestMessages(tenantId, input.limit);
@@ -401,6 +447,8 @@ async function executeTool({ name, input, tenantId, agentName, messages, senderP
       return getJarvisInboxStats(tenantId, input);
     case "list_scripts":
       return listScripts(tenantId);
+    case "list_lead_sources":
+      return listLeadSources(tenantId);
     case "set_lead_name":
       return setJarvisLeadName(tenantId, input);
     case "save_jarvis_contact":
@@ -444,58 +492,39 @@ async function executeTool({ name, input, tenantId, agentName, messages, senderP
       return startJarvisTargetCall(tenantId, input.leadId, agentName || "Jarvis");
     }
     case "start_cold_batch": {
-      const count = Number(input.count);
+      const source = String(input.source || "").trim() || listMatch?.name || "";
       const phrase = String(input.script || "").trim();
-      if (phrase) {
-        const resolved = await resolveScript({ tenantId, phrase });
-        if (!isResolvedMatch(resolved)) {
-          return resolveFailurePayload(resolved);
-        }
-        const scriptConfirmed =
-          latestUserAffirmed(messages) &&
-          previousAssistantMentioned(messages, /go\?/i) &&
-          previousAssistantMentioned(
-            messages,
-            new RegExp(escapeRegExp(resolved.match.display_name))
-          );
-        if (!scriptConfirmed) {
-          return {
-            requiresConfirmation: true,
-            action: "cold_batch",
-            count,
-            confirmationPrompt: buildScriptBatchConfirm({
-              resolved,
-              count,
-              sourceFilter: input.source,
-            }),
-          };
-        }
-        return startColdBatch(
-          tenantId,
-          count,
-          agentName || "Jarvis",
-          input.country,
-          input.source,
-          phrase
+      if (!phrase) {
+        return scriptRequiredPayload(tenantId, { source });
+      }
+      const countRaw = Number(input.count);
+      const count =
+        Number.isInteger(countRaw) && countRaw >= 1
+          ? countRaw
+          : Math.max(1, Number(listMatch?.count) || 200);
+      const resolved = await resolveScript({ tenantId, phrase });
+      if (!isResolvedMatch(resolved)) {
+        return resolveFailurePayload(resolved);
+      }
+      const scriptConfirmed =
+        latestUserAffirmed(messages) &&
+        previousAssistantMentioned(messages, /go\?/i) &&
+        previousAssistantMentioned(
+          messages,
+          new RegExp(escapeRegExp(resolved.match.display_name))
         );
-      }
-      if (!latestUserAffirmed(messages)) {
+      if (!scriptConfirmed) {
         return {
           requiresConfirmation: true,
           action: "cold_batch",
           count,
-          instruction: `Ask the user to explicitly confirm starting ${count} cold calls. Do not call the tool again this turn.`,
-        };
-      }
-      if (
-        count > 100 &&
-        !previousAssistantMentioned(messages, new RegExp(String(count)))
-      ) {
-        return {
-          requiresConfirmation: true,
-          action: "cold_batch",
-          count,
-          instruction: `Ask the user to explicitly confirm starting ${count} cold calls. Do not call the tool again this turn.`,
+          confirmationPrompt: buildScriptBatchConfirm({
+            resolved,
+            count,
+            sourceFilter: source,
+          }),
+          instruction:
+            "Show the confirmationPrompt verbatim. Do not call the tool again this turn.",
         };
       }
       return startColdBatch(
@@ -503,7 +532,8 @@ async function executeTool({ name, input, tenantId, agentName, messages, senderP
         count,
         agentName || "Jarvis",
         input.country,
-        input.source
+        source,
+        phrase
       );
     }
     case "draft_email":
@@ -533,6 +563,8 @@ export async function runJarvisTurn({ tenantId, messages, agentName, senderPhone
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not configured");
 
   let liveContext = "";
+  let savedLists = [];
+  let listedScripts = null;
   try {
     const conversations = await getJarvisRecentConversations(tenantId, {
       limit: 5,
@@ -541,6 +573,17 @@ export async function runJarvisTurn({ tenantId, messages, agentName, senderPhone
     liveContext = formatLiveContext(conversations);
   } catch (error) {
     console.error("[jarvis] live context unavailable:", error.message);
+  }
+  try {
+    const supabase = getSupabaseServerClient();
+    if (supabase) savedLists = await listSavedLists(supabase, tenantId);
+  } catch (error) {
+    console.error("[jarvis] saved lists unavailable:", error.message);
+  }
+  try {
+    listedScripts = await listScripts(tenantId);
+  } catch (error) {
+    console.error("[jarvis] scripts unavailable:", error.message);
   }
 
   const client = new Anthropic({ apiKey });
@@ -554,11 +597,19 @@ export async function runJarvisTurn({ tenantId, messages, agentName, senderPhone
     return { text: HELP_TEXT, toolRounds: 0 };
   }
 
+  const listMatch = matchSavedListFromMessages(savedLists, conversation);
+  const savedListsPrompt = [
+    formatSavedListsPrompt(savedLists, listMatch),
+    formatScriptsPrompt(listedScripts),
+  ]
+    .filter(Boolean)
+    .join("\n");
+
   for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
     const response = await client.messages.create({
       model: MODEL,
       max_tokens: 1400,
-      system: systemPrompt({ liveContext }),
+      system: systemPrompt({ liveContext, savedListsPrompt }),
       tools: jarvisToolDefinitions,
       messages: conversation,
     });
@@ -585,6 +636,7 @@ export async function runJarvisTurn({ tenantId, messages, agentName, senderPhone
           agentName,
           messages,
           senderPhone,
+          listMatch,
         });
         if (result?.requiresConfirmation) confirmation = result;
         results.push({

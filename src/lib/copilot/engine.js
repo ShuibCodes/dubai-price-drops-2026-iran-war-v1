@@ -22,6 +22,7 @@ import {
   isResolvedMatch,
   resolveFailurePayload,
   resolveScript,
+  scriptRequiredPayload,
 } from "@/lib/scripts/resolve";
 import { HELP_TEXT, isHelpMessage } from "@/lib/console/help";
 
@@ -81,7 +82,7 @@ export const copilotToolDefinitions = [
   {
     name: "list_scripts",
     description:
-      "List this tenant's named call scripts (catalog + user). Includes drafts so you can say a script is not published yet. Excludes live dial pointers. Never invent a script name — use this or the names returned on a failed start_cold_batch match.",
+      "List this tenant's named call scripts. Returns live (published, may dial) and drafts (cannot dial) as separate arrays plus an instruction. Read live first. Never tell the user all scripts are draft when live is non-empty. Never invent a script name.",
     input_schema: { type: "object", properties: {} },
   },
   {
@@ -168,7 +169,7 @@ export const copilotToolDefinitions = [
   {
     name: "start_cold_batch",
     description:
-      "Queue cold-list leads at 60-second spacing. Re-dials previously called numbers (until 3 prior attempts). HARD CAP for every tenant: max 200 calls/day Asia/Dubai — larger asks are clamped, cannot override. After 10pm UAE, first dial is next day 6pm. More than 100 (after clamp) needs explicit yes. Any batch that names a script needs explicit yes at any size. Pass country, source, and/or script to restrict. If the user names a script, pass script — never omit it and never invent a fallback script on a failed match.",
+      "Queue a saved lead list at 60-second spacing. script is required and must be LIVE. source is the list name (substring). HARD CAP 200/day Asia/Dubai. After 10pm UAE, first dial is next day 6pm. Any batch needs explicit yes. Never omit script and never invent a fallback.",
     input_schema: {
       type: "object",
       properties: {
@@ -186,10 +187,10 @@ export const copilotToolDefinitions = [
         script: {
           type: "string",
           description:
-            "Named script to dial with, matched against display_name (e.g. 'cold list', 're-engage'). Required when the user named a script. Do not guess. On no match, list the returned live names. On ambiguous, offer the top two. Never fall back to a default script.",
+            "Required. Named LIVE script (e.g. 'cold list'). On no match, list the returned live names. On ambiguous, offer the top two. Never fall back to a default script.",
         },
       },
-      required: ["count"],
+      required: ["count", "script"],
     },
   },
   {
@@ -253,8 +254,8 @@ Rules:
 - Tenant identity is resolved by the server. Never ask for, infer, or pass a tenant ID.
 - For write actions, briefly restate what you are doing and execute it in the same turn without asking for confirmation.
 - Exception: before start_cold_batch or schedule_batch above 100 total calls, ask for an explicit yes. Do not execute until the user confirms.
-- Exception: any start_cold_batch that names a script must wait for an explicit yes at any size. Use the confirmationPrompt from the tool (script name, version, published age, lead count, source, AED). Do not queue until they say yes.
-- When the user names a script, pass it as script to start_cold_batch. If unsure what scripts exist, call list_scripts first. No match → list the live names returned. Ambiguous → offer the top two. Draft-only → say it is not published. Never fall back to a default script on a failed match.
+- Exception: any start_cold_batch must wait for an explicit yes at any size. Use the confirmationPrompt from the tool (script name, version, published age, lead count, source, AED). Do not queue until they say yes.
+- start_cold_batch always needs a LIVE script. If the user names a list without a script, call list_scripts and list_lead_sources, then ask which live script to use. Never say all scripts are draft when list_scripts.live is non-empty. Never fall back to a default script.
 - When discussing a specific lead, include their full phone number so the agent can reach them directly.
 - Batches can be restricted to one market: when the user says "UAE leads only", "local numbers", "971 numbers", or names any country, pass that country to start_cold_batch or schedule_batch. UAE = 971. In the reply, state which country the batch was limited to.
 - When batching a named campaign, pass it as source to start_cold_batch or schedule_batch. If unsure what campaigns exist, call list_lead_sources first.
@@ -350,42 +351,35 @@ async function executeTool({ name, input, tenantId, agentName, messages }) {
       return searchConversations(tenantId, input.query, { includeMessages: false });
     case "start_cold_batch": {
       const phrase = String(input.script || "").trim();
-      if (phrase) {
-        const resolved = await resolveScript({ tenantId, phrase });
-        if (!isResolvedMatch(resolved)) {
-          return resolveFailurePayload(resolved);
-        }
-        if (!hasScriptBatchConfirmation(messages, resolved.match.display_name)) {
-          return {
-            requiresConfirmation: true,
-            action: "cold_batch",
-            count: Number(input.count),
-            confirmationPrompt: buildScriptBatchConfirm({
-              resolved,
-              count: input.count,
-              sourceFilter: input.source,
-            }),
-            instruction:
-              "Show the confirmationPrompt verbatim. Do not call the tool again this turn.",
-          };
-        }
-        return startColdBatch(
-          tenantId,
-          input.count,
-          agentName,
-          input.country,
-          input.source,
-          phrase
-        );
+      if (!phrase) {
+        return scriptRequiredPayload(tenantId, { source: input.source });
       }
-      if (Number(input.count) > 100 && !hasLargeBatchConfirmation(messages, input.count)) {
+      const resolved = await resolveScript({ tenantId, phrase });
+      if (!isResolvedMatch(resolved)) {
+        return resolveFailurePayload(resolved);
+      }
+      if (!hasScriptBatchConfirmation(messages, resolved.match.display_name)) {
         return {
           requiresConfirmation: true,
+          action: "cold_batch",
           count: Number(input.count),
-          instruction: `Ask the user to explicitly confirm starting ${input.count} cold calls. Do not call the tool again this turn.`,
+          confirmationPrompt: buildScriptBatchConfirm({
+            resolved,
+            count: input.count,
+            sourceFilter: input.source,
+          }),
+          instruction:
+            "Show the confirmationPrompt verbatim. Do not call the tool again this turn.",
         };
       }
-      return startColdBatch(tenantId, input.count, agentName, input.country, input.source);
+      return startColdBatch(
+        tenantId,
+        input.count,
+        agentName,
+        input.country,
+        input.source,
+        phrase
+      );
     }
     case "start_target_call":
       return startTargetCall(tenantId, input.leadId, agentName);

@@ -1,5 +1,64 @@
 import { normalizePhone, phoneToWaId } from "@/lib/leads/normalize";
 
+export function foldListKey(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/['’]/g, "")
+    .replace(/\s+/g, " ");
+}
+
+function stripListCommand(text) {
+  return foldListKey(text)
+    .replace(/^(please |can you |could you |lets |let's )/, "")
+    .replace(
+      /^(call|dial|queue|start|ring)\s+(everyone on |everyone in |people on |people in )?/,
+      ""
+    )
+    .replace(/^(my |the |our |this )/, "")
+    .replace(/\s+with\b.+$/, "")
+    .replace(/\s+using\b.+$/, "")
+    .replace(/\s+script\b.*$/, "")
+    .trim();
+}
+
+/** Longest saved-list name that this message is naming. */
+export function matchSavedList(lists, text) {
+  const hay = foldListKey(text);
+  if (!hay || !Array.isArray(lists) || !lists.length) return null;
+  const stripped = stripListCommand(text);
+  const ranked = [...lists].sort(
+    (a, b) => foldListKey(b.name).length - foldListKey(a.name).length
+  );
+
+  for (const list of ranked) {
+    const name = foldListKey(list.name);
+    if (!name) continue;
+    if (stripped === name) return list;
+    if (!name.endsWith(" list") && stripped === `${name} list`) return list;
+    if (name.endsWith(" list") && stripped === name.replace(/ list$/, "")) return list;
+  }
+
+  for (const list of ranked) {
+    const name = foldListKey(list.name);
+    if (name.length >= 4 && (hay.includes(name) || stripped.includes(name))) return list;
+  }
+  return null;
+}
+
+export function formatSavedListsPrompt(lists, listMatch) {
+  const catalog = Array.isArray(lists) ? lists : [];
+  const body = catalog.length
+    ? catalog.map((list) => `- ${list.name} (${list.count})`).join("\n")
+    : "(none yet)";
+  const matchLine = listMatch
+    ? `\nTHIS TURN: the user named saved list "${listMatch.name}" (${listMatch.count} people). That is a console list, not a WhatsApp contact. Do not call search_lead_by_name. Use start_cold_batch with source="${listMatch.name}" and a LIVE script.`
+    : "";
+  return `SAVED LISTS (console CSV uploads on the dial roster — NOT WhatsApp inbox contacts):
+${body}
+If the user names one of these, pass that exact name as start_cold_batch source.${matchLine}`;
+}
+
 export function normalizeListName(raw) {
   const name = String(raw || "").trim().replace(/\s+/g, " ").slice(0, 80);
   if (name.length < 2) {

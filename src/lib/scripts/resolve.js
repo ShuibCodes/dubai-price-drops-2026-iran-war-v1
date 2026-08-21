@@ -311,5 +311,34 @@ export async function listScripts(tenantId) {
       current_version: Number(row.current_version) || 0,
       published_at: row.published_at || null,
     }));
-  return { scripts };
+  const live = scripts.filter((row) => row.status === "live").map((row) => row.display_name);
+  const drafts = scripts
+    .filter((row) => row.status !== "live")
+    .map((row) => row.display_name);
+  const instruction = live.length
+    ? `LIVE (may dial): ${live.join(", ")}. DRAFT (cannot dial): ${drafts.join(", ") || "none"}. Never say all scripts are draft when LIVE is non-empty.`
+    : `No published scripts. Drafts only: ${drafts.join(", ") || "none"}. Do not start a batch.`;
+  return { live, drafts, instruction };
+}
+
+/** Named-list / chat batches must pick a published script — never silent default. */
+export async function scriptRequiredPayload(tenantId, { source } = {}) {
+  const listed = await listScripts(tenantId);
+  const sourceLabel = String(source || "").trim();
+  let instruction = listed.instruction;
+  if (listed.live.length === 1) {
+    instruction = sourceLabel
+      ? `A live script is required. Ask: Use ${listed.live[0]} on ${sourceLabel}? Do not say scripts are unpublished. Do not start a batch.`
+      : `A live script is required. Ask: Use ${listed.live[0]}? Do not say scripts are unpublished. Do not start a batch.`;
+  } else if (listed.live.length > 1) {
+    instruction = `A live script is required. Ask which: ${listed.live.join(", ")}. Do not say scripts are unpublished. Do not start a batch.`;
+  }
+  return {
+    ok: false,
+    reason: "script_required",
+    liveNames: listed.live,
+    unpublishedNames: listed.drafts,
+    source: sourceLabel || null,
+    instruction,
+  };
 }
