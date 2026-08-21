@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { startColdBatch } from "@/lib/copilot/tools";
+import { listScripts, startColdBatch } from "@/lib/copilot/tools";
 import { draftLeadEmail, sendDraftEmail } from "@/lib/jarvis/email";
 import {
   getJarvisCallDetail,
@@ -26,6 +26,13 @@ import {
   placeRelayCall,
 } from "@/lib/jarvis/relay";
 import { getJarvisRecentConversations, formatLiveContext } from "@/lib/kb/live-conversations";
+import {
+  buildScriptBatchConfirm,
+  isResolvedMatch,
+  resolveFailurePayload,
+  resolveScript,
+} from "@/lib/scripts/resolve";
+import { HELP_TEXT, isHelpMessage } from "@/lib/console/help";
 
 const MODEL = "claude-sonnet-4-6";
 const MAX_TOOL_ROUNDS = 5;
@@ -206,6 +213,12 @@ export const jarvisToolDefinitions = [
     },
   },
   {
+    name: "list_scripts",
+    description:
+      "List this tenant's named call scripts (catalog + user). Includes drafts so you can say a script is not published yet. Excludes live dial pointers. Never invent a script name.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
     name: "start_target_call",
     description:
       "Place a Vapi outbound call to one lead using the configured cold-call assistant. ONLY after the user explicitly confirmed in the latest message. Do NOT use when the user wants a message relayed — use place_relay_call.",
@@ -218,12 +231,22 @@ export const jarvisToolDefinitions = [
   {
     name: "start_cold_batch",
     description:
-      "Start/queue cold calls to Purchased-list leads via Vapi (re-dials allowed until 3 prior attempts). ONLY after explicit user confirmation. Pass country to limit market (e.g. 971 / UAE).",
+      "Start/queue cold calls to Purchased-list leads via Vapi (re-dials allowed until 3 prior attempts). ONLY after explicit user confirmation. Pass country to limit market, source for a named list, and script when the user named a call script. Any script-invoked batch needs yes at any size. Never fall back to a default script on a failed match.",
     input_schema: {
       type: "object",
       properties: {
         count: { type: "integer", minimum: 1 },
         country: { type: "string" },
+        source: {
+          type: "string",
+          description:
+            "Optional lead-source filter, substring matched (e.g. 'Marina', 'downtown'). Omit to use the tenant's full cold list.",
+        },
+        script: {
+          type: "string",
+          description:
+            "Named script to dial with, matched against display_name (e.g. 'cold list', 're-engage'). Required when the user named a script. On no match, list live names. On ambiguous, offer the top two.",
+        },
       },
       required: ["count"],
     },
@@ -300,11 +323,13 @@ ACTIONS — CALLS (Vapi):
 - "call X" with no message to relay → start_target_call (Jarvis personal assistant only). Never the Allan/Pixxi cold-call assistant.
 - start_target_call dials one lead with tenants.vapi_assistant_id_jarvis ONLY.
 - start_cold_batch queues/dials Purchased-list leads through that same Vapi path.
+- When the user names a list AND a script ("call the Marina list with the re-engage script"), pass both source and script. If unsure of script names, call list_scripts. No match → list live names. Ambiguous → offer the top two. Draft-only → say it is not published. Never fall back to a default script.
 - NEVER place a call on the first ask. For lead calls: restate name + phone, ask: "Ready to call {Name} at {phone} — reply yes to place the Vapi call."
 - For relays / new-contact relays: confirmation is handled after place_relay_call returns needs_confirmation — show the confirmationPrompt (name, number, task). Reply yes completes save (if new) + dial.
 - For save_jarvis_contact: show confirmationPrompt; yes upserts jarvis_leads.
 - Only call start_target_call / start_cold_batch after the user's latest message is an explicit yes/confirm/go ahead.
 - For cold batches over 100, restate the count and require an explicit yes.
+- For any script-invoked cold batch, require an explicit yes at any size. Show the confirmationPrompt verbatim (script name, version, published age, lead count, source, AED).
 - If outside the lead's local business hours, the tool may queue — explain that clearly.
 - Relay calls are blocked 21:00–08:00 Gulf time unless the user explicitly overrides.
 
@@ -348,6 +373,10 @@ function previousAssistantMentioned(messages, pattern) {
   return previous ? pattern.test(previous.content) : false;
 }
 
+function escapeRegExp(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 async function executeTool({ name, input, tenantId, agentName, messages, senderPhone }) {
   switch (name) {
     case "get_latest_messages":
@@ -370,6 +399,8 @@ async function executeTool({ name, input, tenantId, agentName, messages, senderP
       return getJarvisStaleConversations(tenantId, input);
     case "get_inbox_stats":
       return getJarvisInboxStats(tenantId, input);
+    case "list_scripts":
+      return listScripts(tenantId);
     case "set_lead_name":
       return setJarvisLeadName(tenantId, input);
     case "save_jarvis_contact":
@@ -414,6 +445,40 @@ async function executeTool({ name, input, tenantId, agentName, messages, senderP
     }
     case "start_cold_batch": {
       const count = Number(input.count);
+      const phrase = String(input.script || "").trim();
+      if (phrase) {
+        const resolved = await resolveScript({ tenantId, phrase });
+        if (!isResolvedMatch(resolved)) {
+          return resolveFailurePayload(resolved);
+        }
+        const scriptConfirmed =
+          latestUserAffirmed(messages) &&
+          previousAssistantMentioned(messages, /go\?/i) &&
+          previousAssistantMentioned(
+            messages,
+            new RegExp(escapeRegExp(resolved.match.display_name))
+          );
+        if (!scriptConfirmed) {
+          return {
+            requiresConfirmation: true,
+            action: "cold_batch",
+            count,
+            confirmationPrompt: buildScriptBatchConfirm({
+              resolved,
+              count,
+              sourceFilter: input.source,
+            }),
+          };
+        }
+        return startColdBatch(
+          tenantId,
+          count,
+          agentName || "Jarvis",
+          input.country,
+          input.source,
+          phrase
+        );
+      }
       if (!latestUserAffirmed(messages)) {
         return {
           requiresConfirmation: true,
@@ -433,7 +498,13 @@ async function executeTool({ name, input, tenantId, agentName, messages, senderP
           instruction: `Ask the user to explicitly confirm starting ${count} cold calls. Do not call the tool again this turn.`,
         };
       }
-      return startColdBatch(tenantId, count, agentName || "Jarvis", input.country);
+      return startColdBatch(
+        tenantId,
+        count,
+        agentName || "Jarvis",
+        input.country,
+        input.source
+      );
     }
     case "draft_email":
       return draftLeadEmail(tenantId, input);
@@ -476,6 +547,11 @@ export async function runJarvisTurn({ tenantId, messages, agentName, senderPhone
   const conversation = normalizeMessages(messages);
   if (!conversation.length || conversation.at(-1).role !== "user") {
     throw new Error("A final user message is required");
+  }
+
+  const lastText = conversation.at(-1)?.content;
+  if (isHelpMessage(lastText)) {
+    return { text: HELP_TEXT, toolRounds: 0 };
   }
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
@@ -552,7 +628,9 @@ export async function runJarvisTurn({ tenantId, messages, agentName, senderPhone
       }
       if (confirmation.action === "cold_batch") {
         return {
-          text: `You’re about to start a cold batch of ${confirmation.count} Vapi calls. Reply “yes” to confirm.`,
+          text:
+            confirmation.confirmationPrompt ||
+            `You’re about to start a cold batch of ${confirmation.count} Vapi calls. Reply “yes” to confirm.`,
           toolRounds: round + 1,
         };
       }

@@ -6,6 +6,7 @@ import {
   isLeadWithinBusinessHours,
   nextLeadWindowStart,
 } from "@/lib/calls/outbound";
+import { scriptPointerForSource } from "@/lib/scripts/pointers";
 import { JARVIS_LEADS_TABLE } from "@/lib/ingest/jarvis-ingest";
 import {
   ensureJarvisInferredName,
@@ -730,6 +731,9 @@ export async function startJarvisTargetCall(tenantId, leadId, requestedBy) {
   const leadPhone = lead.wa_id ? `+${lead.wa_id}` : null;
   if (leadPhone && !isLeadWithinBusinessHours(leadPhone)) {
     const scheduledFor = nextLeadWindowStart(leadPhone).toISOString();
+    const pointer = await scriptPointerForSource(supabase, tenantId, "jarvis-target-call", {
+      jarvisLead: true,
+    });
     const { error: queueError } = await supabase.from("call_queue").insert({
       tenant_id: tenantId,
       lead_id: null,
@@ -738,6 +742,8 @@ export async function startJarvisTargetCall(tenantId, leadId, requestedBy) {
       processed: false,
       source: "jarvis-target-call",
       requested_by: requestedBy || null,
+      script_id: pointer.script_id,
+      script_version_id: pointer.script_version_id,
     });
     if (queueError) throw new Error(`Queue insert failed: ${queueError.message}`);
     return { ok: true, queued: scheduledFor };

@@ -109,8 +109,10 @@ Do not put console code in `src/components/landing/` (marketing page) or
    reverse. Supabase is the record.
 10. **One dial stack.** Everything goes through `src/lib/vapi/dial.js`. Do not
     create a fourth. Locked params live there and callers cannot override them.
-11. **Test calls only ever dial the authenticated agent's own `wa_phone`.**
-    Never a destination from the request body.
+11. **Phone test calls only ever dial the authenticated agent's own `wa_phone`.**
+    Never a destination from the request body. In-tab **Talk here** is a WebRTC
+    test on the same locked firstMessage / prompt / voice; it is not a live
+    lead call and still must not accept a destination number.
 
 ## Design tokens
 
@@ -151,10 +153,13 @@ Secondary buttons are dotted-border; primary is filled.
 
 ## Decisions taken after the codebase audit — these override the other docs
 
-- **One WhatsApp number per tenant.** Coexistence is already live at tenant
-  level (`waba_id` on `tenants`). There is no per-agent connect flow and no
-  per-agent `waba_id`. Agents are identified by who is texting the tenant
-  number. The setup wizard therefore has **no connect step and no sync step**.
+- **One WhatsApp number per tenant.** Coexistence lives at tenant
+  level (`waba_id` on `tenants`). There is no per-agent `waba_id`. Agents
+  are identified by who is texting the tenant number. **Join starts with
+  Connect WhatsApp** (Meta Embedded Signup) when the tenant is not yet
+  connected, with copy that we are a Meta tech provider and traffic goes
+  through Meta. Already-connected tenants skip that step. No per-agent
+  sync screen. Do not put `waba_id` on agents.
 - **The web chat at `/copilot/[tenant]` is being removed.** A web chat duplicates
   WhatsApp and violates the governing rule. The console home takes that route.
   Confirm nobody is actively using it before deleting.
@@ -182,4 +187,3 @@ Secondary buttons are dotted-border; primary is filled.
   version row and never silently edits the draft.
 - Scripts are tenant-shared. Editing is never private. That is why versioning
   with authorship exists.
-- Test call rate limit: 5 per agent per hour.

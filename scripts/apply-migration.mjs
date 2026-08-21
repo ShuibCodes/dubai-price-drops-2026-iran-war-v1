@@ -28,9 +28,9 @@ async function main() {
     process.exit(1);
   }
 
-  const migrationPath = path.join(
+  const migrationPath = path.resolve(
     process.cwd(),
-    "supabase/migrations/001_whatsapp.sql"
+    process.argv[2] || "supabase/migrations/001_whatsapp.sql"
   );
   const sql = fs.readFileSync(migrationPath, "utf8");
 

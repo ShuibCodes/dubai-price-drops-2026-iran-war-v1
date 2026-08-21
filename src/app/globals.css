@@ -12,6 +12,16 @@
   --hot: #ff2d55;
   --amber: #ffd60a;
   --cyan: #00e5ff;
+  --live: #3dff8a;
+
+  --ink: var(--foreground);
+  --ink-2: #b3b3b3;
+  --ink-3: var(--muted);
+  --surface-2: var(--surface-elevated);
+  --rule: var(--border);
+  --rule-2: #2a2a2a;
+  --warn: var(--amber);
+  --markup: var(--hot);
 }
 
 * {

@@ -6,6 +6,7 @@ import {
   getPendingCallbacks,
   listLeads,
   listLeadSources,
+  listScripts,
   pauseTenant,
   queryLeads,
   resumeTenant,
@@ -16,6 +17,13 @@ import {
   startTargetCall,
   todaysDigest,
 } from "./tools.js";
+import {
+  buildScriptBatchConfirm,
+  isResolvedMatch,
+  resolveFailurePayload,
+  resolveScript,
+} from "@/lib/scripts/resolve";
+import { HELP_TEXT, isHelpMessage } from "@/lib/console/help";
 
 const MODEL = "claude-sonnet-4-6";
 const MAX_TOOL_ROUNDS = 5;
@@ -68,6 +76,12 @@ export const copilotToolDefinitions = [
     name: "list_lead_sources",
     description:
       "ROSTER tool: list this tenant's distinct lead campaign sources with counts (e.g. downtown_views, burj_lake_owner). Use when the user mentions a campaign vaguely or asks what lists they have.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "list_scripts",
+    description:
+      "List this tenant's named call scripts (catalog + user). Includes drafts so you can say a script is not published yet. Excludes live dial pointers. Never invent a script name — use this or the names returned on a failed start_cold_batch match.",
     input_schema: { type: "object", properties: {} },
   },
   {
@@ -154,7 +168,7 @@ export const copilotToolDefinitions = [
   {
     name: "start_cold_batch",
     description:
-      "Queue cold-list leads at 60-second spacing. Re-dials previously called numbers (until 3 prior attempts). HARD CAP for every tenant: max 200 calls/day Asia/Dubai — larger asks are clamped, cannot override. After 10pm UAE, first dial is next day 6pm. More than 100 (after clamp) needs explicit yes. Pass country and/or source to restrict.",
+      "Queue cold-list leads at 60-second spacing. Re-dials previously called numbers (until 3 prior attempts). HARD CAP for every tenant: max 200 calls/day Asia/Dubai — larger asks are clamped, cannot override. After 10pm UAE, first dial is next day 6pm. More than 100 (after clamp) needs explicit yes. Any batch that names a script needs explicit yes at any size. Pass country, source, and/or script to restrict. If the user names a script, pass script — never omit it and never invent a fallback script on a failed match.",
     input_schema: {
       type: "object",
       properties: {
@@ -168,6 +182,11 @@ export const copilotToolDefinitions = [
           type: "string",
           description:
             "Optional lead-source filter, substring matched (e.g. 'downtown', 'burj lake', 'purchased'). Omit to use the tenant's full cold list.",
+        },
+        script: {
+          type: "string",
+          description:
+            "Named script to dial with, matched against display_name (e.g. 'cold list', 're-engage'). Required when the user named a script. Do not guess. On no match, list the returned live names. On ambiguous, offer the top two. Never fall back to a default script.",
         },
       },
       required: ["count"],
@@ -234,6 +253,8 @@ Rules:
 - Tenant identity is resolved by the server. Never ask for, infer, or pass a tenant ID.
 - For write actions, briefly restate what you are doing and execute it in the same turn without asking for confirmation.
 - Exception: before start_cold_batch or schedule_batch above 100 total calls, ask for an explicit yes. Do not execute until the user confirms.
+- Exception: any start_cold_batch that names a script must wait for an explicit yes at any size. Use the confirmationPrompt from the tool (script name, version, published age, lead count, source, AED). Do not queue until they say yes.
+- When the user names a script, pass it as script to start_cold_batch. If unsure what scripts exist, call list_scripts first. No match → list the live names returned. Ambiguous → offer the top two. Draft-only → say it is not published. Never fall back to a default script on a failed match.
 - When discussing a specific lead, include their full phone number so the agent can reach them directly.
 - Batches can be restricted to one market: when the user says "UAE leads only", "local numbers", "971 numbers", or names any country, pass that country to start_cold_batch or schedule_batch. UAE = 971. In the reply, state which country the batch was limited to.
 - When batching a named campaign, pass it as source to start_cold_batch or schedule_batch. If unsure what campaigns exist, call list_lead_sources first.
@@ -277,13 +298,29 @@ function hasLargeBatchConfirmation(messages, count) {
   const latest = history.at(-1);
   const previous = history.at(-2);
   if (latest?.role !== "user" || previous?.role !== "assistant") return false;
-  const affirmative = /^(yes|y|confirm|confirmed|go ahead|do it|proceed)\b/i.test(
+  const affirmative = /^(yes|y|yeah|yep|confirm|confirmed|go ahead|do it|proceed|go)\b/i.test(
     latest.content.trim()
   );
   const confirmationRequest =
     previous.content.includes(String(count)) &&
-    /confirm|explicit yes|cold batch|calls/i.test(previous.content);
+    /confirm|explicit yes|cold batch|calls|go\?/i.test(previous.content);
   return affirmative && confirmationRequest;
+}
+
+function hasScriptBatchConfirmation(messages, displayName) {
+  const history = normalizeMessages(messages);
+  const latest = history.at(-1);
+  const previous = history.at(-2);
+  if (latest?.role !== "user" || previous?.role !== "assistant") return false;
+  if (!displayName) return false;
+  const affirmative = /^(yes|y|yeah|yep|confirm|confirmed|go ahead|do it|proceed|go)\b/i.test(
+    latest.content.trim()
+  );
+  return (
+    affirmative &&
+    previous.content.includes(displayName) &&
+    /go\?/i.test(previous.content)
+  );
 }
 
 async function executeTool({ name, input, tenantId, agentName, messages }) {
@@ -298,6 +335,8 @@ async function executeTool({ name, input, tenantId, agentName, messages }) {
       return queryLeads(tenantId, input);
     case "list_lead_sources":
       return listLeadSources(tenantId);
+    case "list_scripts":
+      return listScripts(tenantId);
     case "get_call_detail":
       return getCallDetail(tenantId, input);
     case "search_lead_by_name":
@@ -309,7 +348,36 @@ async function executeTool({ name, input, tenantId, agentName, messages }) {
       return getPendingCallbacks(tenantId);
     case "search_conversations":
       return searchConversations(tenantId, input.query, { includeMessages: false });
-    case "start_cold_batch":
+    case "start_cold_batch": {
+      const phrase = String(input.script || "").trim();
+      if (phrase) {
+        const resolved = await resolveScript({ tenantId, phrase });
+        if (!isResolvedMatch(resolved)) {
+          return resolveFailurePayload(resolved);
+        }
+        if (!hasScriptBatchConfirmation(messages, resolved.match.display_name)) {
+          return {
+            requiresConfirmation: true,
+            action: "cold_batch",
+            count: Number(input.count),
+            confirmationPrompt: buildScriptBatchConfirm({
+              resolved,
+              count: input.count,
+              sourceFilter: input.source,
+            }),
+            instruction:
+              "Show the confirmationPrompt verbatim. Do not call the tool again this turn.",
+          };
+        }
+        return startColdBatch(
+          tenantId,
+          input.count,
+          agentName,
+          input.country,
+          input.source,
+          phrase
+        );
+      }
       if (Number(input.count) > 100 && !hasLargeBatchConfirmation(messages, input.count)) {
         return {
           requiresConfirmation: true,
@@ -318,6 +386,7 @@ async function executeTool({ name, input, tenantId, agentName, messages }) {
         };
       }
       return startColdBatch(tenantId, input.count, agentName, input.country, input.source);
+    }
     case "start_target_call":
       return startTargetCall(tenantId, input.leadId, agentName);
     case "schedule_batch":
@@ -362,6 +431,11 @@ export async function runCopilotTurn({
     throw new Error("A final user message is required");
   }
 
+  const lastText = conversation.at(-1)?.content;
+  if (isHelpMessage(lastText)) {
+    return { text: HELP_TEXT, toolRounds: 0 };
+  }
+
   for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
     const response = await client.messages.create({
       model: MODEL,
@@ -383,7 +457,7 @@ export async function runCopilotTurn({
 
     conversation.push({ role: "assistant", content: response.content });
     const results = [];
-    let confirmationCount = null;
+    let confirmation = null;
     for (const toolUse of toolUses) {
       try {
         const result = await executeTool({
@@ -393,7 +467,7 @@ export async function runCopilotTurn({
           agentName,
           messages,
         });
-        if (result?.requiresConfirmation) confirmationCount = result.count;
+        if (result?.requiresConfirmation) confirmation = result;
         results.push({
           type: "tool_result",
           tool_use_id: toolUse.id,
@@ -408,9 +482,11 @@ export async function runCopilotTurn({
         });
       }
     }
-    if (confirmationCount) {
+    if (confirmation) {
       return {
-        text: `You’re about to start a cold batch of ${confirmationCount} calls. Reply “yes” to confirm.`,
+        text:
+          confirmation.confirmationPrompt ||
+          `You’re about to start a cold batch of ${confirmation.count} calls. Reply “yes” to confirm.`,
         toolRounds: round + 1,
       };
     }

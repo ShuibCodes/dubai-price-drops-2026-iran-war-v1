@@ -9,6 +9,7 @@ import {
   isBatchQueueSource,
   nextDubaiSixPm,
 } from "../src/lib/calls/outbound.js";
+import { bumpBatchCount, refreshBatchStatus } from "../src/lib/console/batches.js";
 
 applyEnv(loadEnvFile());
 
@@ -77,7 +78,7 @@ async function main({ dryRun = false } = {}) {
 
   const { data: queueRows, error } = await supabase
     .from("call_queue")
-    .select("id, tenant_id, lead_id, jarvis_lead_id, scheduled_for, source, leads(*), jarvis_leads(*)")
+    .select("id, tenant_id, lead_id, jarvis_lead_id, scheduled_for, source, script_id, script_version_id, batch_id, leads(*), jarvis_leads(*)")
     .eq("processed", false)
     .is("processing_started_at", null)
     .lte("scheduled_for", now)
@@ -177,7 +178,42 @@ async function main({ dryRun = false } = {}) {
         failure_reason: "Lead not found",
       });
       summary.failed += 1;
+      if (item.batch_id) await bumpBatchCount(supabase, item.batch_id, "failed");
       continue;
+    }
+
+    if (!jarvisLead && lead.opted_out) {
+      await updateQueueRow(supabase, item.id, {
+        processed: true,
+        failed_at: new Date().toISOString(),
+        failure_reason: "opted_out",
+      });
+      summary.skipped += 1;
+      if (item.batch_id) await bumpBatchCount(supabase, item.batch_id, "failed");
+      continue;
+    }
+
+    if (item.script_id) {
+      const { data: script, error: scriptError } = await supabase
+        .from("scripts")
+        .select("id, status")
+        .eq("id", item.script_id)
+        .eq("tenant_id", item.tenant_id)
+        .maybeSingle();
+      if (scriptError) throw new Error(`Script status lookup failed: ${scriptError.message}`);
+      if (!script || script.status === "archived" || script.status !== "live") {
+        await updateQueueRow(supabase, item.id, {
+          processed: true,
+          failed_at: new Date().toISOString(),
+          failure_reason:
+            script?.status === "archived"
+              ? "script archived before window"
+              : "script is not live — refusing to fall back to a default",
+        });
+        summary.failed += 1;
+        if (item.batch_id) await bumpBatchCount(supabase, item.batch_id, "failed");
+        continue;
+      }
     }
 
     if (dialAttempts > 0 && DIAL_DELAY_MS > 0) {
@@ -191,6 +227,9 @@ async function main({ dryRun = false } = {}) {
         lead,
         source: item.source || "pixxi-queue",
         jarvisLead,
+        scriptId: item.script_id,
+        scriptVersionId: item.script_version_id,
+        batchId: item.batch_id,
       });
 
       await updateQueueRow(supabase, item.id, {
@@ -199,6 +238,10 @@ async function main({ dryRun = false } = {}) {
       });
       summary.processed += 1;
       consecutiveConcurrencyErrors = 0;
+      if (item.batch_id) {
+        await bumpBatchCount(supabase, item.batch_id, "dialed");
+        await refreshBatchStatus(supabase, item.batch_id);
+      }
 
       if (isBatchQueueSource(item.source)) {
         const next = (dialsTodayByTenant.get(item.tenant_id) || 0) + 1;
@@ -228,6 +271,10 @@ async function main({ dryRun = false } = {}) {
         failure_reason: message.slice(0, 1000),
       });
       summary.failed += 1;
+      if (item.batch_id) {
+        await bumpBatchCount(supabase, item.batch_id, "failed");
+        await refreshBatchStatus(supabase, item.batch_id);
+      }
     }
   }
 

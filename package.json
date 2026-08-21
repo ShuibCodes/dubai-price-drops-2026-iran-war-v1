@@ -8,12 +8,16 @@
     "start": "next start",
     "lint": "next lint",
     "seed:tenant": "node scripts/seed-tenant.mjs",
+    "seed:copilot-agents": "node scripts/seed-copilot-agents.mjs",
+    "seed:scripts": "node scripts/seed-scripts.mjs",
+    "brief:send": "node scripts/send-morning-briefs.mjs",
     "simulate:meta": "node scripts/simulate-meta.mjs all",
     "migrate:whatsapp": "node scripts/apply-migration.mjs",
     "verify:coexistence": "node scripts/verify-coexistence.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.86.1",
+    "@daily-co/daily-js": "^0.92.2",
     "@supabase/supabase-js": "^2.110.0",
     "@vercel/functions": "^3.7.6",
     "cheerio": "^1.2.0",
@@ -34,6 +38,7 @@
     "remark-gfm": "^4.0.1",
     "stripe": "^20.4.1",
     "twilio": "^5.13.1",
+    "zod": "^4.4.3",
     "zustand": "^5.0.11"
   },
   "devDependencies": {

@@ -4,6 +4,7 @@ import {
   resolvePhoneNumberIdFromWaba,
   resolveWabaIdFromToken,
 } from "@/lib/meta/assets";
+import { getSession } from "@/lib/copilot/session";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -42,8 +43,30 @@ async function resolveTargetTenantId(supabase, { tenantSlug, wabaId }) {
   return { id: firstTenant?.id || null, missingSlug: false };
 }
 
+async function resolveDisplayPhone(phoneNumberId, businessToken) {
+  if (!phoneNumberId || !businessToken) return null;
+  const graphVersion = process.env.META_GRAPH_VERSION || "v25.0";
+  try {
+    const response = await fetch(
+      `https://graph.facebook.com/${graphVersion}/${phoneNumberId}?fields=display_phone_number`,
+      { headers: { Authorization: `Bearer ${businessToken}` } }
+    );
+    const payload = await response.json();
+    return payload?.display_phone_number || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function POST(request) {
   try {
+    let session = null;
+    try {
+      session = await getSession(request);
+    } catch {
+      session = null;
+    }
+
     const body = await request.json();
     const code = String(body?.code || "").trim();
     const wabaId = body?.waba_id ? String(body.waba_id).trim() : null;
@@ -79,10 +102,12 @@ export async function POST(request) {
 
     // Resolve the destination before burning the single-use code, so a bad slug
     // does not cost the caller a fresh trip through embedded signup.
-    const { id: targetTenantId, missingSlug } = await resolveTargetTenantId(supabase, {
-      tenantSlug,
-      wabaId,
-    });
+    const { id: targetTenantId, missingSlug } = session?.tenantId
+      ? { id: session.tenantId, missingSlug: false }
+      : await resolveTargetTenantId(supabase, {
+          tenantSlug,
+          wabaId,
+        });
 
     if (missingSlug) {
       return Response.json(
@@ -115,6 +140,7 @@ export async function POST(request) {
 
     if (resolvedWabaId) credentials.waba_id = resolvedWabaId;
     if (resolvedPhoneNumberId) credentials.phone_number_id = resolvedPhoneNumberId;
+    const displayPhone = await resolveDisplayPhone(resolvedPhoneNumberId, businessToken);
 
     let storedTenantId = targetTenantId;
 
@@ -138,6 +164,12 @@ export async function POST(request) {
           { ok: false, error: "Token not stored: no matching tenant" },
           { status: 500 }
         );
+      }
+      if (displayPhone) {
+        await supabase
+          .from("tenants")
+          .update({ display_phone: displayPhone })
+          .eq("id", targetTenantId);
       }
     } else {
       const { data: inserted, error: insertError } = await supabase

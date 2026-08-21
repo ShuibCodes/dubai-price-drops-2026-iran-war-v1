@@ -8,6 +8,11 @@ import {
 import { phoneToWaId } from "@/lib/leads/normalize";
 import { sendAgentSummary } from "@/lib/notify/agent";
 import { postCallResult } from "@/lib/notify/results-hook";
+import { bumpBatchCount } from "@/lib/console/batches";
+import {
+  markLeadOptedOut,
+  qualificationLooksLikeOptOut,
+} from "@/lib/console/opt-out";
 import { timingSafeEqual } from "@/lib/security/timing-safe";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import {
@@ -304,6 +309,28 @@ async function processPipelineCall(payload) {
   if (!result) return { processed: false, reason: "db_upsert_failed" };
 
   const { call, lead } = result;
+
+  if (lead && !call.jarvis_lead_id && qualificationLooksLikeOptOut(qualification, details)) {
+    try {
+      await markLeadOptedOut(getSupabaseServerClient(), {
+        tenantId: call.tenant_id,
+        leadId: lead.id,
+      });
+    } catch (error) {
+      console.error("[vapi/webhook] opt-out write failed:", error.message);
+    }
+  }
+
+  if (call?.batch_id) {
+    try {
+      await bumpBatchCount(getSupabaseServerClient(), call.batch_id, "completed");
+      if (qualification?.outcome === "qualified") {
+        await bumpBatchCount(getSupabaseServerClient(), call.batch_id, "qualified");
+      }
+    } catch (error) {
+      console.error("[vapi/webhook] batch rollup failed:", error.message);
+    }
+  }
 
   if (lead) {
     await sendAgentSummary(call, lead, qualification);

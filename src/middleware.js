@@ -74,8 +74,10 @@ export async function middleware(request) {
   const isCopilotPage =
     pathname === "/copilot" || pathname.startsWith("/copilot/");
   const isCopilotApi = pathname.startsWith("/api/copilot");
-  if (isCopilotPage || isCopilotApi) {
-    return handleCopilot(request, pathname, isCopilotApi);
+  const isScriptsApi = pathname.startsWith("/api/scripts");
+  const isConsoleApi = pathname.startsWith("/api/console");
+  if (isCopilotPage || isCopilotApi || isScriptsApi || isConsoleApi) {
+    return handleCopilot(request, pathname, isCopilotApi || isScriptsApi || isConsoleApi);
   }
 
   return NextResponse.next();
@@ -91,5 +93,9 @@ export const config = {
     "/copilot/:path*",
     "/api/copilot",
     "/api/copilot/:path*",
+    "/api/scripts",
+    "/api/scripts/:path*",
+    "/api/console",
+    "/api/console/:path*",
   ],
 };

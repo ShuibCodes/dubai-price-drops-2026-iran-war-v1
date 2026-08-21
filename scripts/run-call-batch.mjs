@@ -10,6 +10,7 @@ import {
   dialLeadNow,
   isLeadWithinBusinessHours,
   nextLeadWindowStart,
+  queueLeadCalls,
 } from "../src/lib/calls/outbound.js";
 
 applyEnv(loadEnvFile());
@@ -192,11 +193,11 @@ async function dialOrQueue(supabase, tenant, lead, fields, dryRun) {
   if (!isLeadWithinBusinessHours(phone)) {
     if (dryRun) return { queued: true };
     const scheduledFor = nextLeadWindowStart(phone);
-    await supabase.from("call_queue").insert({
-      tenant_id: tenant.id,
-      lead_id: lead.id,
-      scheduled_for: scheduledFor.toISOString(),
-      processed: false,
+    await queueLeadCalls({
+      supabase,
+      tenantId: tenant.id,
+      leadIds: [lead.id],
+      scheduledTimes: [scheduledFor.toISOString()],
       source: "pixxi-batch",
     });
     return { queued: true };

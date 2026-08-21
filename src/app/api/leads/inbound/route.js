@@ -1,14 +1,13 @@
 import { timingSafeEqual } from "@/lib/security/timing-safe";
 import { maskPhone, normalizePhone } from "@/lib/leads/normalize";
-import { dialOrQueueLead, getTenantBySlug, upsertPixxiLead } from "@/lib/leads/pixxi";
+import { dialOrQueueLead, getTenantBySlug, upsertInboundLead } from "@/lib/leads/inbound";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
-/** Slugs Zapier/inbound may target. Unknown values fall back to 1416. */
+/** Slugs Zapier/inbound may target. Missing slug is 400 — never default a tenant. */
 const INBOUND_TENANT_SLUGS = new Set(["1416", "ghl-courses", "condo-city", "sterling"]);
-const DEFAULT_TENANT_SLUG = "1416";
 
 function verifyInboundSecret(request) {
   const expected = process.env.LEADS_INBOUND_SECRET;
@@ -20,13 +19,18 @@ function verifyInboundSecret(request) {
 function resolveInboundTenantSlug(request, body) {
   const fromHeader = String(request.headers.get("x-tenant-slug") || "").trim();
   const fromBody = String(body?.tenant || body?.tenant_slug || "").trim();
-  const slug = (fromHeader || fromBody || DEFAULT_TENANT_SLUG).toLowerCase();
-  if (!INBOUND_TENANT_SLUGS.has(slug)) {
-    throw new Error(
-      `Unsupported tenant "${slug}". Use one of: ${[...INBOUND_TENANT_SLUGS].join(", ")}`
-    );
+  const slug = (fromHeader || fromBody).toLowerCase();
+  if (!slug) {
+    return {
+      error: "tenant slug is required (header x-tenant-slug or body.tenant)",
+    };
   }
-  return slug;
+  if (!INBOUND_TENANT_SLUGS.has(slug)) {
+    return {
+      error: `Unsupported tenant "${slug}". Use one of: ${[...INBOUND_TENANT_SLUGS].join(", ")}`,
+    };
+  }
+  return { slug };
 }
 
 export async function POST(request) {
@@ -42,9 +46,14 @@ export async function POST(request) {
       return Response.json({ ok: false, reason: "Missing or invalid phone" });
     }
 
-    const tenantSlug = resolveInboundTenantSlug(request, body);
+    const resolved = resolveInboundTenantSlug(request, body);
+    if (resolved.error) {
+      return Response.json({ ok: false, error: resolved.error }, { status: 400 });
+    }
+    const tenantSlug = resolved.slug;
+
     const tenant = await getTenantBySlug(tenantSlug);
-    const lead = await upsertPixxiLead(tenant.id, body);
+    const lead = await upsertInboundLead(tenant.id, body);
     // ghl-courses: always dial now (no overnight queue) so opt-ins ring within ~60s of Zap.
     const immediate = tenantSlug === "ghl-courses";
     const result = await dialOrQueueLead({ tenant, lead, fields: body, immediate });

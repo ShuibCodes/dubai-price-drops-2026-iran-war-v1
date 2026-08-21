@@ -32,7 +32,7 @@ function safeEqualHex(a, b) {
 }
 
 /**
- * @returns {Promise<{ v: number, exp: number, username: string, tenantSlug: string } | null>}
+ * @returns {Promise<{ v: number, exp: number, agentId: string, tenantId: string, tenantSlug: string } | null>}
  */
 export async function verifyCopilotSessionTokenEdge(token) {
   const secret = process.env.COPILOT_SESSION_SECRET;
@@ -50,12 +50,15 @@ export async function verifyCopilotSessionTokenEdge(token) {
     const payload = JSON.parse(body);
     if (!payload?.exp || Date.now() > payload.exp) return null;
     const tenantSlug = String(payload.tenantSlug || "").trim();
-    const username = String(payload.username || "").trim();
-    if (!tenantSlug || !username) return null;
+    const agentId = String(payload.agentId || "").trim();
+    const tenantId = String(payload.tenantId || "").trim();
+    if (!tenantSlug || !agentId || !tenantId) return null;
+    if (Number(payload.v) !== 3) return null;
     return {
-      v: Number(payload.v) || 2,
+      v: 3,
       exp: payload.exp,
-      username,
+      agentId,
+      tenantId,
       tenantSlug,
     };
   } catch {

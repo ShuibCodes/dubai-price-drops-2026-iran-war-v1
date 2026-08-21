@@ -219,7 +219,7 @@ that version's prompt and dials the session agent's own `wa_phone` via
 touching the live assistant.
 
 Never accepts a destination number from the request body — always the
-authenticated agent's own number. Rate limit 5 per agent per hour.
+authenticated agent's own number.
 
 Cap 5 non-archived scripts per tenant, 409 past that.
 

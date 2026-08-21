@@ -4,7 +4,8 @@ import { COPILOT_SESSION_COOKIE } from "@/lib/copilot-auth-constants";
 export { COPILOT_SESSION_COOKIE };
 
 const SESSION_MAX_AGE_SEC = 60 * 60 * 24 * 30;
-const SESSION_VERSION = 2;
+/** v3 binds agent_id + tenant_id. v2 username-only cookies must re-login. */
+const SESSION_VERSION = 3;
 
 function getSecret() {
   const secret = process.env.COPILOT_SESSION_SECRET;
@@ -88,29 +89,37 @@ export function verifyCopilotCredentials(username, password) {
   return matched;
 }
 
+/** Unset or anything other than 0/false/off → fallback on (migration safety). */
+export function isCopilotJsonFallbackEnabled() {
+  const raw = String(process.env.COPILOT_AUTH_JSON_FALLBACK ?? "1").trim().toLowerCase();
+  return raw !== "0" && raw !== "false" && raw !== "off";
+}
+
 function signPayload(payload) {
   const body = JSON.stringify(payload);
   const sig = createHmac("sha256", getSecret()).update(body).digest("hex");
   return `${body}|${sig}`;
 }
 
-export function createCopilotSessionToken({ username, tenantSlug }) {
+export function createCopilotSessionToken({ agentId, tenantId, tenantSlug }) {
   const slug = String(tenantSlug || "").trim();
-  const name = String(username || "").trim();
-  if (!slug || !name) {
-    throw new Error("username and tenantSlug are required for session token");
+  const agent = String(agentId || "").trim();
+  const tenant = String(tenantId || "").trim();
+  if (!slug || !agent || !tenant) {
+    throw new Error("agentId, tenantId, and tenantSlug are required for session token");
   }
   const payload = {
     v: SESSION_VERSION,
     exp: Date.now() + SESSION_MAX_AGE_SEC * 1000,
-    username: name,
+    agentId: agent,
+    tenantId: tenant,
     tenantSlug: slug,
   };
   return signPayload(payload);
 }
 
 /**
- * @returns {{ v: number, exp: number, username: string, tenantSlug: string } | null}
+ * @returns {{ v: number, exp: number, agentId: string, tenantId: string, tenantSlug: string } | null}
  */
 export function verifyCopilotSessionToken(token) {
   if (!token || typeof token !== "string") return null;
@@ -128,13 +137,15 @@ export function verifyCopilotSessionToken(token) {
     const payload = JSON.parse(body);
     if (!payload?.exp || Date.now() > payload.exp) return null;
     const tenantSlug = String(payload.tenantSlug || "").trim();
-    const username = String(payload.username || "").trim();
-    // Reject legacy v1 sessions (no tenant binding).
-    if (!tenantSlug || !username) return null;
+    const agentId = String(payload.agentId || "").trim();
+    const tenantId = String(payload.tenantId || "").trim();
+    if (!tenantSlug || !agentId || !tenantId) return null;
+    if (Number(payload.v) !== SESSION_VERSION) return null;
     return {
-      v: Number(payload.v) || SESSION_VERSION,
+      v: SESSION_VERSION,
       exp: payload.exp,
-      username,
+      agentId,
+      tenantId,
       tenantSlug,
     };
   } catch {

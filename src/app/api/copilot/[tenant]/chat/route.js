@@ -1,9 +1,5 @@
 import { runCopilotTurn } from "@/lib/copilot/engine";
-import {
-  COPILOT_SESSION_COOKIE,
-  sessionAllowsTenant,
-  verifyCopilotSessionToken,
-} from "@/lib/copilot-auth";
+import { getSession } from "@/lib/copilot/session";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -12,15 +8,18 @@ export const maxDuration = 60;
 
 export async function POST(request, { params }) {
   try {
-    const sessionToken = request.cookies.get(COPILOT_SESSION_COOKIE)?.value;
-    const session = sessionToken ? verifyCopilotSessionToken(sessionToken) : null;
+    const slug = String(params?.tenant || "").trim();
+    let session;
+    try {
+      session = await getSession(request, { tenantSlug: slug });
+    } catch (error) {
+      if (error.status === 403) {
+        return Response.json({ error: "Forbidden for this tenant." }, { status: 403 });
+      }
+      throw error;
+    }
     if (!session) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const slug = String(params?.tenant || "").trim();
-    if (!sessionAllowsTenant(session, slug)) {
-      return Response.json({ error: "Forbidden for this tenant." }, { status: 403 });
     }
 
     const supabase = getSupabaseServerClient();
@@ -31,7 +30,7 @@ export async function POST(request, { params }) {
     const { data: tenant, error: tenantError } = await supabase
       .from("tenants")
       .select("id, name, slug")
-      .eq("slug", slug)
+      .eq("id", session.tenantId)
       .maybeSingle();
     if (tenantError) throw new Error(`Tenant lookup failed: ${tenantError.message}`);
     if (!tenant) return Response.json({ error: "Tenant not found" }, { status: 404 });
@@ -45,7 +44,7 @@ export async function POST(request, { params }) {
       tenantId: tenant.id,
       tenantName: tenant.name || tenant.slug,
       messages: body.messages,
-      agentName: String(body.agentName || "").trim() || session.username || "Team member",
+      agentName: String(body.agentName || "").trim() || "Team member",
     });
 
     return Response.json({ message: result.text });

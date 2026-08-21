@@ -9,6 +9,14 @@ import {
   queueLeadCalls,
   resolveBatchDialStart,
 } from "../calls/outbound.js";
+import {
+  isResolvedMatch,
+  listScripts,
+  resolveFailurePayload,
+  resolveScript,
+} from "../scripts/resolve.js";
+
+export { listScripts };
 
 function db() {
   const supabase = getSupabaseServerClient();
@@ -735,6 +743,7 @@ async function queryColdCandidatesPage(
     .from("leads")
     .select("id, push_name, wa_id, source, owns_property, pixxi_lead_id, first_seen")
     .eq("tenant_id", tenantId);
+  candidateQuery = candidateQuery.eq("opted_out", false);
   candidateQuery = applySource(candidateQuery);
   if (countryCode) candidateQuery = candidateQuery.eq("country_code", countryCode);
   return candidateQuery
@@ -871,12 +880,34 @@ function summarizeQueuedLeads(leads = []) {
   };
 }
 
-export async function startColdBatch(tenantId, count, requestedBy, country, sourceFilter) {
+export async function startColdBatch(
+  tenantId,
+  count,
+  requestedBy,
+  country,
+  sourceFilter,
+  scriptPhrase
+) {
+  const phrase = String(scriptPhrase || "").trim();
+  let resolved = null;
+  if (phrase) {
+    resolved = await resolveScript({ tenantId, phrase });
+    if (!isResolvedMatch(resolved)) {
+      return resolveFailurePayload(resolved);
+    }
+  }
+
   const countryCode = normalizeCountryCode(country);
   return auditedWrite(
     tenantId,
     "start_cold_batch",
-    { count, country: countryCode, source: sourceFilter || null },
+    {
+      count,
+      country: countryCode,
+      source: sourceFilter || null,
+      script: phrase || null,
+      scriptId: resolved?.match?.id || null,
+    },
     requestedBy,
     async (supabase) => {
       const tenant = await getOutboundTenant(supabase, tenantId);
@@ -920,6 +951,7 @@ export async function startColdBatch(tenantId, count, requestedBy, country, sour
         scheduledTimes: times,
         source: "copilot-cold-batch",
         requestedBy,
+        ...(resolved?.match?.id ? { scriptId: resolved.match.id } : {}),
       });
       const byTimezone = {};
       for (const lead of leads) {
@@ -938,6 +970,12 @@ export async function startColdBatch(tenantId, count, requestedBy, country, sour
         country: countryCode,
         byTimezone,
         queuedLeads: summarizeQueuedLeads(leads),
+        script: resolved?.match
+          ? {
+              display_name: resolved.match.display_name,
+              current_version: resolved.match.current_version,
+            }
+          : null,
       };
     }
   );
@@ -954,7 +992,7 @@ export async function startTargetCall(tenantId, leadId, requestedBy) {
       assertOutboundActive(tenant);
       const { data: lead, error } = await supabase
         .from("leads")
-        .select("id, push_name, wa_id, source, owns_property, pixxi_lead_id")
+        .select("id, push_name, wa_id, source, owns_property, pixxi_lead_id, opted_out")
         .eq("tenant_id", tenantId)
         .eq("id", leadId)
         .maybeSingle();

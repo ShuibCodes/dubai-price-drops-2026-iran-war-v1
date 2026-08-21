@@ -1,0 +1,5 @@
+-- Cutover 2026-08-20: inbound calls.source / call_queue.source is labeled from
+-- the webhook payload (pixxi_lead_id → pixxi-inbound, client_source ghl →
+-- ghl-inbound, Meta Instant Form → meta-instant-form), not from tenant slug.
+-- Do not backfill the 29 existing 1416 rows tagged pixxi-inbound (including
+-- the 2026-08-13 GHL payload that was mislabeled by elimination).

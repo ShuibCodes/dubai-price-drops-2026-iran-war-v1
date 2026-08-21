@@ -6,6 +6,12 @@ import {
 import { buildPropertyInterest, normalizePhone } from "../leads/normalize.js";
 import { getLeadTimezone } from "../leads/phone-timezone.js";
 import { startLeadCall } from "../vapi/dial.js";
+import {
+  scriptPointerForScript,
+  scriptPointerForSource,
+} from "../scripts/pointers.js";
+import { createCallBatch } from "../console/batches.js";
+import { assertLeadCallable } from "../console/opt-out.js";
 
 /**
  * Hard max batch dials per tenant per Asia/Dubai day. Not overridable.
@@ -26,6 +32,7 @@ export const BATCH_QUEUE_SOURCES = [
   "pixxi-batch",
   "pixxi-queue",
   "jarvis-batch-callback",
+  "console-run",
 ];
 
 const DUBAI_OFFSET_MS = 4 * 60 * 60 * 1000;
@@ -236,27 +243,98 @@ export async function buildCappedBatchSchedule(
 export async function queueLeadCalls({
   supabase,
   tenantId,
-  leadIds,
+  leadIds = [],
+  jarvisLeadIds = [],
   startAt,
   scheduledTimes: explicitTimes,
   source,
   requestedBy,
+  scriptId,
+  scriptVersionId,
+  agentId,
+  sourceType,
+  filter,
+  windowStart,
+  windowEnd,
+  estCostAed,
+  batchId: existingBatchId,
 }) {
-  if (!leadIds.length) return [];
+  const campaignIds = Array.isArray(leadIds) ? leadIds.filter(Boolean) : [];
+  const inboxIds = Array.isArray(jarvisLeadIds) ? jarvisLeadIds.filter(Boolean) : [];
+  if (!campaignIds.length && !inboxIds.length) return [];
+
+  const count = campaignIds.length || inboxIds.length;
   const scheduledTimes =
-    explicitTimes && explicitTimes.length >= leadIds.length
+    explicitTimes && explicitTimes.length >= count
       ? explicitTimes
-      : buildScheduledTimes(leadIds.length, startAt);
-  const rows = leadIds.map((leadId, index) => ({
+      : buildScheduledTimes(count, startAt);
+
+  let pointer = { script_id: null, script_version_id: null };
+  if (scriptId) {
+    pointer = await scriptPointerForScript(supabase, tenantId, scriptId);
+    if (scriptVersionId) pointer = { ...pointer, script_version_id: scriptVersionId };
+  } else {
+    pointer = await scriptPointerForSource(supabase, tenantId, source, {
+      jarvisLead: inboxIds.length > 0,
+    });
+  }
+
+  let batchId = existingBatchId || null;
+  const shouldBatch =
+    Boolean(existingBatchId) ||
+    Boolean(sourceType) ||
+    [
+      "copilot-cold-batch",
+      "copilot-scheduled-batch",
+      "pixxi-batch",
+      "jarvis-batch-callback",
+      "console-run",
+    ].includes(String(source || ""));
+  if (!batchId && shouldBatch) {
+    const batch = await createCallBatch(supabase, {
+      tenantId,
+      agentId,
+      scriptId: pointer.script_id,
+      scriptVersionId: pointer.script_version_id,
+      sourceType: sourceType || source || "console-run",
+      filter: filter || {},
+      windowStart,
+      windowEnd,
+      estCostAed,
+      queued: count,
+    });
+    batchId = batch.id;
+  }
+
+  const shared = {
     tenant_id: tenantId,
-    lead_id: leadId,
-    scheduled_for: scheduledTimes[index],
+    scheduled_for: null,
     processed: false,
     source,
     requested_by: requestedBy || null,
-  }));
+    script_id: pointer.script_id,
+    script_version_id: pointer.script_version_id,
+    batch_id: batchId,
+  };
 
-  const { data, error } = await supabase.from("call_queue").insert(rows).select("id, lead_id, scheduled_for");
+  const rows = campaignIds.length
+    ? campaignIds.map((leadId, index) => ({
+        ...shared,
+        lead_id: leadId,
+        jarvis_lead_id: null,
+        scheduled_for: scheduledTimes[index],
+      }))
+    : inboxIds.map((jarvisLeadId, index) => ({
+        ...shared,
+        lead_id: null,
+        jarvis_lead_id: jarvisLeadId,
+        scheduled_for: scheduledTimes[index],
+      }));
+
+  const { data, error } = await supabase
+    .from("call_queue")
+    .insert(rows)
+    .select("id, lead_id, jarvis_lead_id, scheduled_for, batch_id");
   if (error) throw new Error(`Queue insert failed: ${error.message}`);
   return data || [];
 }
@@ -278,8 +356,12 @@ export async function dialLeadNow({
   fields = {},
   source,
   jarvisLead = false,
+  scriptId = null,
+  scriptVersionId = null,
+  batchId = null,
 }) {
   assertOutboundActive(tenant);
+  if (!jarvisLead) assertLeadCallable(lead);
 
   const leadName = String(lead.push_name || fields.name || "").trim() || "there";
   const leadSource = lead.source || fields.client_source || "one of the property portals";
@@ -287,18 +369,53 @@ export async function dialLeadNow({
   const phone = normalizePhone(fields.phone || lead.wa_id);
   if (!phone) throw new Error("Lead has no valid phone number");
 
-  // Jarvis personal dials must NEVER fall back to Pixxi/Allan (vapi_assistant_id).
-  let assistantId = tenant.vapi_assistant_id;
+  let pointer = { script_id: scriptId || null, script_version_id: scriptVersionId || null };
+  if (pointer.script_id && !pointer.script_version_id) {
+    pointer = await scriptPointerForScript(supabase, tenant.id, pointer.script_id);
+  }
+  if (!pointer.script_id) {
+    pointer = await scriptPointerForSource(supabase, tenant.id, source, { jarvisLead });
+  }
+
+  let scriptAssistantId = null;
+  if (pointer.script_id) {
+    const { data: script, error: scriptError } = await supabase
+      .from("scripts")
+      .select("id, vapi_assistant_id")
+      .eq("id", pointer.script_id)
+      .eq("tenant_id", tenant.id)
+      .maybeSingle();
+    if (scriptError) throw new Error(`Script assistant lookup failed: ${scriptError.message}`);
+    scriptAssistantId = String(script?.vapi_assistant_id || "").trim() || null;
+  }
+
+  // 1. script_version → its script's vapi_assistant_id
+  // 2. else jarvisLead → tenants.vapi_assistant_id_jarvis (never cold)
+  // 3. else tenants.vapi_assistant_id
+  // 4. else env fallback, with a warning
+  let assistantId = scriptAssistantId;
   if (jarvisLead) {
-    if (!tenant.vapi_assistant_id_jarvis) {
+    if (!assistantId) assistantId = tenant.vapi_assistant_id_jarvis;
+    if (!assistantId) {
       throw new Error(
         "Missing tenants.vapi_assistant_id_jarvis — refuse to dial with the cold-call assistant"
       );
     }
-    assistantId = tenant.vapi_assistant_id_jarvis;
-  }
-  if (!assistantId) {
-    throw new Error("Missing Vapi assistant id for this tenant");
+  } else {
+    if (!assistantId) assistantId = tenant.vapi_assistant_id;
+    if (!assistantId) {
+      assistantId = process.env.VAPI_ASSISTANT_ID || null;
+      if (assistantId) {
+        console.warn("[dialLeadNow] env VAPI_ASSISTANT_ID fallback", {
+          tenantId: tenant.id,
+          scriptId: pointer.script_id,
+          source,
+        });
+      }
+    }
+    if (!assistantId) {
+      throw new Error("Missing Vapi assistant id for this tenant");
+    }
   }
 
   const result = await startLeadCall({
@@ -320,6 +437,9 @@ export async function dialLeadNow({
       jarvisLeadId: jarvisLead ? lead.id : null,
       pixxiLeadId: lead.pixxi_lead_id,
       source,
+      scriptId: pointer.script_id,
+      scriptVersionId: pointer.script_version_id,
+      batchId: batchId || null,
     },
   });
 
@@ -330,6 +450,9 @@ export async function dialLeadNow({
     status: "initiated",
     source,
     raw: result.raw,
+    script_id: pointer.script_id,
+    script_version_id: pointer.script_version_id,
+    batch_id: batchId || null,
   };
   if (jarvisLead) {
     callRow.lead_id = null;

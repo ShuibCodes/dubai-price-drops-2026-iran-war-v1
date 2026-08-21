@@ -1,9 +1,10 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { startLeadCall } from "@/lib/vapi/client";
 import {
   assertOutboundActive,
+  dialLeadNow,
   isLeadWithinBusinessHours,
   nextLeadWindowStart,
+  queueLeadCalls,
 } from "@/lib/calls/outbound";
 import {
   buildPropertyInterest,
@@ -18,9 +19,10 @@ import {
   normalizeOwnsProperty,
 } from "@/lib/leads/meta-form";
 
-const TENANT_SLUG = "1416";
+export async function getTenantBySlug(slug) {
+  const normalized = String(slug || "").trim();
+  if (!normalized) throw new Error("tenant slug is required");
 
-export async function getTenantBySlug(slug = TENANT_SLUG) {
   const supabase = getSupabaseServerClient();
   if (!supabase) throw new Error("Supabase not configured");
 
@@ -29,15 +31,15 @@ export async function getTenantBySlug(slug = TENANT_SLUG) {
     .select(
       "id, name, slug, outbound_paused, vapi_assistant_id, vapi_assistant_id_meta, vapi_phone_number_id, phone_number_id, business_token"
     )
-    .eq("slug", slug)
+    .eq("slug", normalized)
     .maybeSingle();
 
   if (error) throw new Error(`Tenant lookup failed: ${error.message}`);
-  if (!data) throw new Error(`Tenant not found for slug: ${slug}`);
+  if (!data) throw new Error(`Tenant not found for slug: ${normalized}`);
   return data;
 }
 
-export async function upsertPixxiLead(tenantId, fields) {
+export async function upsertInboundLead(tenantId, fields) {
   const supabase = getSupabaseServerClient();
   if (!supabase) throw new Error("Supabase not configured");
 
@@ -134,17 +136,14 @@ export function buildCallVariables(lead, fields = {}) {
   };
 }
 
-export function resolveAssistantId(tenant, fields = {}) {
-  if (isMetaInstantFormSource(fields) && tenant.vapi_assistant_id_meta) {
-    return tenant.vapi_assistant_id_meta;
-  }
-  return tenant.vapi_assistant_id;
-}
-
-function inboundCallSource(tenant, fields = {}) {
+function inboundCallSource(fields = {}) {
   if (isMetaInstantFormSource(fields)) return "meta-instant-form";
-  if (tenant?.slug === "ghl-courses") return "ghl-inbound";
-  return "pixxi-inbound";
+  if (String(fields.pixxi_lead_id || "").trim()) return "pixxi-inbound";
+  const raw = String(fields.client_source || fields.custom_client_source || "")
+    .trim()
+    .toLowerCase();
+  if (raw === "ghl" || raw.startsWith("ghl")) return "ghl-inbound";
+  return "inbound";
 }
 
 /**
@@ -160,14 +159,15 @@ export async function dialOrQueueLead({
   immediate = false,
 }) {
   assertOutboundActive(tenant);
+  if (lead.opted_out) {
+    throw new Error("Lead has opted out");
+  }
   const variables = buildCallVariables(lead, fields);
-  const { leadName, leadSource, propertyInterest, campaignTopic, formWhen, ownsProperty } =
-    variables;
   const supabase = getSupabaseServerClient();
   if (!supabase) throw new Error("Supabase not configured");
 
   const phone = normalizePhone(fields.phone || lead.wa_id);
-  const source = inboundCallSource(tenant, fields);
+  const source = inboundCallSource(fields);
 
   if (!immediate && !isLeadWithinBusinessHours(phone)) {
     const scheduledFor = nextLeadWindowStart(phone);
@@ -175,14 +175,13 @@ export async function dialOrQueueLead({
       return { queued: true, scheduledFor: scheduledFor.toISOString(), dryRun: true };
     }
 
-    const { error } = await supabase.from("call_queue").insert({
-      tenant_id: tenant.id,
-      lead_id: lead.id,
-      scheduled_for: scheduledFor.toISOString(),
-      processed: false,
+    await queueLeadCalls({
+      supabase,
+      tenantId: tenant.id,
+      leadIds: [lead.id],
+      scheduledTimes: [scheduledFor.toISOString()],
       source,
     });
-    if (error) throw new Error(`Queue insert failed: ${error.message}`);
     return { queued: true, scheduledFor: scheduledFor.toISOString() };
   }
 
@@ -190,39 +189,13 @@ export async function dialOrQueueLead({
     return { queued: false, dryRun: true, ...variables };
   }
 
-  const assistantId = resolveAssistantId(tenant, fields);
-  const result = await startLeadCall({
-    name: leadName,
-    phone,
-    assistantId,
-    phoneNumberId: tenant.vapi_phone_number_id,
-    variableValues: {
-      leadName,
-      leadSource,
-      propertyInterest,
-      campaignTopic,
-      formWhen,
-      ownsProperty,
-    },
-    metadata: {
-      tenantId: tenant.id,
-      leadId: lead.id,
-      pixxiLeadId: lead.pixxi_lead_id,
-      source,
-      assistantId,
-    },
-  });
-
-  const { error: callError } = await supabase.from("calls").insert({
-    tenant_id: tenant.id,
-    lead_id: lead.id,
-    vapi_call_id: result.callId,
-    direction: "outbound",
-    status: "initiated",
+  const result = await dialLeadNow({
+    supabase,
+    tenant,
+    lead,
+    fields,
     source,
-    raw: result.raw,
   });
-  if (callError) throw new Error(`Call insert failed: ${callError.message}`);
 
   return {
     queued: false,

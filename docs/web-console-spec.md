@@ -108,19 +108,22 @@ first. Only build what is missing, and match what is there.
 ## 3. Screens
 
 ### `/copilot/[tenant]/join` — setup wizard
-**Two steps, not four.** WhatsApp is connected once per tenant and is already
-live, so there is no per-agent connect step and no sync screen. What remains is
-the part that is genuinely per-agent.
+Linear, no nav chrome, resumable. WhatsApp is **one number per tenant**.
+If the tenant is not connected, **step 0 is Connect WhatsApp** — Meta
+Embedded Signup, with copy first: AgentZero sits on the existing business
+number; we are an official Meta tech provider; messages go through Meta’s
+Cloud API; the app is Meta-verified. Then the button. Already-connected
+tenants skip this step. There is no per-agent connect and no sync screen.
 
-Linear, no nav chrome, resumable. Progress is two ticks.
+Progress ticks: connect (if needed) → profile → brief.
 
-**Step 1 — About you, and your material.** Profile: name, team, areas covered,
+**About you, and your material.** Profile: name, team, areas covered,
 typical ticket range, languages. Every field must change what AgentZero says or
 it doesn't belong. Then tenant material upload — price lists, payment plans,
 brochures — with inherited `scope: 'tenant'` docs shown pre-ticked and
 untickable-to-hide. Skippable.
 
-**Step 2 — Morning brief.** Prose explaining the overnight pipeline scan. One
+**Morning brief.** Prose explaining the overnight pipeline scan. One
 toggle, one time. Then **"Send me one now →"**, which builds a real brief from
 real pipeline data and pushes it to their WhatsApp. This is the activation
 moment — an agent who receives one live brief during setup is a retained agent.
@@ -132,7 +135,8 @@ console home replaces it. Confirm nobody is actively using the chat before
 deleting it, then take the route.
 
 Status strip: two booleans (tenant WhatsApp healthy / brief on), amber if
-degraded. There is no per-agent connection state to show.
+degraded. If WhatsApp is not connected, the primary action is Connect WhatsApp
+(join). There is no per-agent connection state to show.
 One primary action: New call run. Secondary: Add material to your KB. Muted text
 link: Edit your scripts →. Then recent runs as `Row`s, with the script name in
 each sub-line linking to that script's editor. Persistent footer link back to
