@@ -1,5 +1,5 @@
-import { enquiryClauseForSource } from "@/lib/scripts/enquiry-source";
-import { VOICE_ALLOWLIST } from "@/lib/scripts/schema";
+import { enquiryClauseForSource } from "../scripts/enquiry-source.js";
+import { VOICE_ALLOWLIST } from "../scripts/schema.js";
 
 function getRequiredEnv(name) {
   const value = process.env[name];
