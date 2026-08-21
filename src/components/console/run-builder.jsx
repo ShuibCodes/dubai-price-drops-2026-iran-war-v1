@@ -93,7 +93,7 @@ export function RunBuilder({ tenant }) {
         setError(
           parseError
             ? `Could not read the file: ${parseError}`
-            : "No phone numbers in that file. Use a CSV with a phone / mobile / WhatsApp column."
+            : "No phone numbers found in that file. Names can use any header — we only need a number on each row."
         );
       }
     } catch (err) {
@@ -162,7 +162,7 @@ export function RunBuilder({ tenant }) {
         >
           {contacts.length
             ? `${contacts.length} numbers from the file.`
-            : "CSV with a phone column. Excel workbooks: File → Save As → CSV."}
+            : "CSV with names and numbers. Headers can be anything."}
         </Drop>
         {contacts.length ? (
           <div className="mb-6 border-t border-rule">

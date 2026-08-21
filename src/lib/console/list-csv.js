@@ -1,41 +1,5 @@
 import PapaImport from "papaparse";
 
-const PHONE_KEYS = new Set([
-  "phone",
-  "mobile",
-  "whatsapp",
-  "phonenumber",
-  "mobilenumber",
-  "contact",
-  "tel",
-  "telephone",
-  "cell",
-  "waid",
-  "wa",
-  "clientphone",
-  "phoneno",
-  "number",
-  "msisdn",
-  "whatsappnumber",
-  "mobilephone",
-  "cellphone",
-  "contactnumber",
-  "phone1",
-  "mobile1",
-]);
-
-const NAME_KEYS = new Set([
-  "name",
-  "fullname",
-  "leadname",
-  "clientname",
-  "contactname",
-  "customer",
-  "customername",
-  "pushname",
-  "firstname",
-]);
-
 function papa() {
   const lib = PapaImport?.parse ? PapaImport : PapaImport?.default || PapaImport;
   if (typeof lib?.parse !== "function") {
@@ -52,9 +16,20 @@ function canon(header) {
     .replace(/[^a-z0-9]/g, "");
 }
 
-function looksLikePhone(value) {
+export function looksLikePhone(value) {
   const digits = String(value || "").replace(/\D/g, "");
   return digits.length >= 8 && digits.length <= 15;
+}
+
+export function looksLikeName(value) {
+  const text = String(value || "").trim();
+  if (!text || looksLikePhone(text) || /@/.test(text)) return false;
+  if (/^https?:\/\//i.test(text)) return false;
+  if (/^\d+([.,]\d+)?$/.test(text)) return false;
+  return (
+    /[A-Za-z\u00C0-\u024F\u0400-\u04FF\u0600-\u06FF]/.test(text) &&
+    text.length <= 80
+  );
 }
 
 export function isSpreadsheetFile(file) {
@@ -79,11 +54,88 @@ export async function readFileText(file) {
   return new TextDecoder("utf-8").decode(bytes);
 }
 
-function pickFromRow(row, keys) {
-  for (const [header, value] of Object.entries(row || {})) {
-    if (keys.has(canon(header))) return String(value || "").trim();
+function sampleRows(rows, limit = 40) {
+  return rows.filter((row) => row && typeof row === "object").slice(0, limit);
+}
+
+function headerHint(header, kind) {
+  const key = canon(header);
+  if (!key) return 0;
+  if (kind === "phone") {
+    if (
+      /(phone|mobile|whatsapp|waid|tel|cell|msisdn|contactno|phoneno)/.test(key)
+    ) {
+      return 3;
+    }
+    if (key === "number" || key === "contact" || key === "wa") return 1;
+    return 0;
   }
-  return "";
+  if (/(firstname|lastname|surname|fullname|pushname|leadname|clientname|contactname|customername)/.test(key)) {
+    return 3;
+  }
+  if (key === "name" || key === "customer" || key === "client" || key === "contact") {
+    return 2;
+  }
+  return 0;
+}
+
+function scoreColumns(rows, headers) {
+  const sample = sampleRows(rows);
+  return headers.map((header) => {
+    let filled = 0;
+    let phoneHits = 0;
+    let nameHits = 0;
+    for (const row of sample) {
+      const value = row?.[header];
+      if (value == null || String(value).trim() === "") continue;
+      filled += 1;
+      if (looksLikePhone(value)) phoneHits += 1;
+      if (looksLikeName(value)) nameHits += 1;
+    }
+    return {
+      header,
+      filled,
+      phoneScore: phoneHits * 4 + headerHint(header, "phone"),
+      nameScore: nameHits * 4 + headerHint(header, "name"),
+      phoneHits,
+      nameHits,
+    };
+  });
+}
+
+function pickPhoneHeader(scores) {
+  const ranked = [...scores].sort((a, b) => b.phoneScore - a.phoneScore);
+  const best = ranked[0];
+  if (!best) return null;
+  if (best.phoneHits > 0 || headerHint(best.header, "phone") >= 3) return best.header;
+  return null;
+}
+
+function pickNameHeaders(scores, phoneHeader) {
+  const ranked = [...scores]
+    .filter((item) => item.header !== phoneHeader)
+    .sort((a, b) => b.nameScore - a.nameScore);
+  const usable = ranked.filter(
+    (item) => item.nameHits > 0 || headerHint(item.header, "name") >= 2
+  );
+  if (!usable.length) return [];
+  const first = usable[0];
+  const key = canon(first.header);
+  if (key === "firstname" || key === "first") {
+    const last = usable.find((item) => {
+      const k = canon(item.header);
+      return k === "lastname" || k === "last" || k === "surname";
+    });
+    return last ? [first.header, last.header] : [first.header];
+  }
+  return [first.header];
+}
+
+function cellName(row, headers) {
+  const parts = headers
+    .map((header) => String(row?.[header] || "").trim())
+    .filter(Boolean);
+  return parts.join(" ").trim();
 }
 
 function phoneFromAnyCell(row) {
@@ -93,20 +145,30 @@ function phoneFromAnyCell(row) {
   return "";
 }
 
-function nameFromRow(row) {
-  const first = pickFromRow(row, new Set(["firstname"]));
-  const last = pickFromRow(row, new Set(["lastname", "surname"]));
-  return pickFromRow(row, NAME_KEYS) || [first, last].filter(Boolean).join(" ");
+function nameFromAnyCell(row, phone) {
+  for (const value of Object.values(row || {})) {
+    const text = String(value || "").trim();
+    if (!text || text === phone || looksLikePhone(text)) continue;
+    if (looksLikeName(text)) return text;
+  }
+  return "";
 }
 
-function contactsFromObjects(rows) {
+function contactsFromObjects(rows, headers) {
+  const scores = scoreColumns(rows, headers);
+  const phoneHeader = pickPhoneHeader(scores);
+  const nameHeaders = pickNameHeaders(scores, phoneHeader);
   const contacts = [];
   for (const row of rows) {
     if (!row || typeof row !== "object" || Array.isArray(row)) continue;
-    const headerPhone = Object.keys(row).find((header) => looksLikePhone(header));
-    const phone = pickFromRow(row, PHONE_KEYS) || phoneFromAnyCell(row) || headerPhone || "";
-    if (!phone || !looksLikePhone(phone)) continue;
-    contacts.push({ phone, name: nameFromRow(row) });
+    const phone = phoneHeader
+      ? String(row[phoneHeader] || "").trim() || phoneFromAnyCell(row)
+      : phoneFromAnyCell(row);
+    if (!looksLikePhone(phone)) continue;
+    const name = nameHeaders.length
+      ? cellName(row, nameHeaders) || nameFromAnyCell(row, phone)
+      : nameFromAnyCell(row, phone);
+    contacts.push({ phone, name });
   }
   return contacts;
 }
@@ -117,13 +179,24 @@ function contactsFromArrays(rows) {
     if (!Array.isArray(row)) continue;
     const phoneCell = row.find((cell) => looksLikePhone(cell));
     if (!phoneCell) continue;
-    const nameCell = row.find((cell) => String(cell || "").trim() && !looksLikePhone(cell));
+    const nameCell = row.find(
+      (cell) => looksLikeName(cell) && String(cell).trim() !== String(phoneCell).trim()
+    );
     contacts.push({
       phone: String(phoneCell).trim(),
       name: nameCell ? String(nameCell).trim() : "",
     });
   }
   return contacts;
+}
+
+function headersLookLikeData(headers) {
+  if (!headers.length) return false;
+  const phoneish = headers.filter((header) => looksLikePhone(header)).length;
+  const nameish = headers.filter((header) => looksLikeName(header)).length;
+  if (phoneish && (nameish || headers.length <= 3)) return true;
+  if (phoneish === headers.length) return true;
+  return false;
 }
 
 export function contactsFromCsvText(text) {
@@ -133,17 +206,20 @@ export function contactsFromCsvText(text) {
     skipEmptyLines: "greedy",
     transformHeader: (header) => String(header || "").replace(/^\uFEFF/, "").trim(),
   });
-  let contacts = contactsFromObjects(withHeader.data || []);
-  if (!contacts.length) {
-    const raw = Papa.parse(String(text || ""), {
-      header: false,
-      skipEmptyLines: "greedy",
-    });
-    contacts = contactsFromArrays(raw.data || []);
-  }
+  const headers = (withHeader.meta?.fields || []).filter(Boolean);
+  const raw = Papa.parse(String(text || ""), {
+    header: false,
+    skipEmptyLines: "greedy",
+  });
+  const fromHeader = headersLookLikeData(headers)
+    ? []
+    : contactsFromObjects(withHeader.data || [], headers);
+  const contacts = fromHeader.length
+    ? fromHeader
+    : contactsFromArrays(raw.data || []);
   return {
     contacts,
-    headers: withHeader.meta?.fields || [],
+    headers: fromHeader.length ? headers : [],
     parseError: withHeader.errors?.[0]?.message || "",
   };
 }
