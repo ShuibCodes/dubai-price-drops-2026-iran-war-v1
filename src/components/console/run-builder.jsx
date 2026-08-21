@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Papa from "papaparse";
 import { Button } from "@/components/ui/button";
 import { Drop } from "@/components/ui/drop";
 import { Field } from "@/components/ui/field";
@@ -12,6 +11,11 @@ import { Row } from "@/components/ui/row";
 import { Strip } from "@/components/ui/strip";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { estCostAed } from "@/lib/console/format";
+import {
+  contactsFromCsvText,
+  isSpreadsheetFile,
+  readFileText,
+} from "@/lib/console/list-csv";
 
 const SOURCES = [
   { id: "upload", label: "Upload a list" },
@@ -72,22 +76,30 @@ export function RunBuilder({ tenant }) {
       .catch((err) => setError(err.message));
   }, [source, areas, bedrooms, contacts.length]);
 
-  function parseCsv(files) {
+  async function parseCsv(files) {
     const file = files[0];
     if (!file) return;
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: (result) => {
-        const rows = (result.data || [])
-          .map((row) => ({
-            phone: row.phone || row.Phone || row.mobile || row.wa_id,
-            name: row.name || row.Name || row.push_name,
-          }))
-          .filter((row) => row.phone);
-        setContacts(rows);
-      },
-    });
+    setError("");
+    if (isSpreadsheetFile(file)) {
+      setContacts([]);
+      setError("That is an Excel workbook. Save it as CSV (comma separated) and drop that file.");
+      return;
+    }
+    try {
+      const text = await readFileText(file);
+      const { contacts: rows, parseError } = contactsFromCsvText(text);
+      setContacts(rows);
+      if (!rows.length) {
+        setError(
+          parseError
+            ? `Could not read the file: ${parseError}`
+            : "No phone numbers in that file. Use a CSV with a phone / mobile / WhatsApp column."
+        );
+      }
+    } catch (err) {
+      setContacts([]);
+      setError(err.message || "Could not read that file.");
+    }
   }
 
   async function commit() {
@@ -143,9 +155,31 @@ export function RunBuilder({ tenant }) {
       </div>
 
       {source === "upload" ? (
-        <Drop accept=".csv,text/csv" className="mb-6" onFiles={parseCsv}>
-          {contacts.length ? `${contacts.length} numbers from the file.` : "Drop a CSV with phone and name columns."}
+        <Drop
+          accept=".csv,.txt,text/csv,text/plain,application/csv,application/vnd.ms-excel"
+          className="mb-4"
+          onFiles={(files) => parseCsv(files)}
+        >
+          {contacts.length
+            ? `${contacts.length} numbers from the file.`
+            : "CSV with a phone column. Excel workbooks: File → Save As → CSV."}
         </Drop>
+        {contacts.length ? (
+          <div className="mb-6 border-t border-rule">
+            {contacts.slice(0, 25).map((row, index) => (
+              <Row
+                key={`${row.phone}-${index}`}
+                sub={row.phone}
+                title={row.name || row.phone}
+              />
+            ))}
+            {contacts.length > 25 ? (
+              <p className="py-3 text-sm text-ink-3">
+                And {contacts.length - 25} more.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       ) : (
         <div className="mb-6 grid gap-3 sm:grid-cols-2">
           <div>

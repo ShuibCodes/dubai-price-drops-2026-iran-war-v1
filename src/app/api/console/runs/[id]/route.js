@@ -72,34 +72,78 @@ export async function GET(request, { params }) {
       return jsonError("Run not found.", 404);
     }
 
-    const { data: calls, error: callsError } = await supabase
-      .from("calls")
-      .select(
-        "id, lead_id, jarvis_lead_id, status, summary, transcript, recording_url, qualification, created_at, ended_at, duration_seconds, leads(push_name, wa_id), jarvis_leads(push_name, wa_id)"
-      )
-      .eq("tenant_id", session.tenantId)
-      .eq("batch_id", id)
-      .order("created_at", { ascending: false });
+    const [{ data: calls, error: callsError }, { data: queue, error: queueError }] =
+      await Promise.all([
+        supabase
+          .from("calls")
+          .select(
+            "id, lead_id, jarvis_lead_id, status, summary, transcript, recording_url, qualification, created_at, ended_at, duration_seconds, leads(push_name, wa_id), jarvis_leads(push_name, wa_id)"
+          )
+          .eq("tenant_id", session.tenantId)
+          .eq("batch_id", id)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("call_queue")
+          .select(
+            "id, lead_id, jarvis_lead_id, scheduled_for, processed, failed_at, failure_reason, leads(push_name, wa_id), jarvis_leads(push_name, wa_id)"
+          )
+          .eq("tenant_id", session.tenantId)
+          .eq("batch_id", id)
+          .order("scheduled_for", { ascending: true }),
+      ]);
     if (callsError) throw new Error(callsError.message);
+    if (queueError) throw new Error(queueError.message);
 
     const findOut = batch.script_versions?.config_json?.find_out || [];
-    const rows = (calls || [])
-      .map((call) => {
-        const person = call.leads || call.jarvis_leads || {};
+    const callRows = (calls || []).map((call) => {
+      const person = call.leads || call.jarvis_leads || {};
+      return {
+        id: call.id,
+        lead_id: call.lead_id,
+        jarvis_lead_id: call.jarvis_lead_id,
+        name: person.push_name || (person.wa_id ? `+${person.wa_id}` : "Lead"),
+        phone: person.wa_id ? `+${person.wa_id}` : null,
+        status: call.status,
+        quote: quotedSentence(call),
+        recording_url: call.recording_url || null,
+        transcript: call.transcript || null,
+        extracted: extractedSub(call, findOut),
+        worth: worthScore(call),
+        ended_at: call.ended_at,
+      };
+    });
+    const seen = new Set(
+      callRows.map((row) => row.lead_id || row.jarvis_lead_id).filter(Boolean)
+    );
+    const queueRows = (queue || [])
+      .filter((row) => !seen.has(row.lead_id || row.jarvis_lead_id))
+      .map((row) => {
+        const person = row.leads || row.jarvis_leads || {};
+        const failed = Boolean(row.failed_at);
         return {
-          id: call.id,
+          id: row.id,
+          lead_id: row.lead_id,
+          jarvis_lead_id: row.jarvis_lead_id,
           name: person.push_name || (person.wa_id ? `+${person.wa_id}` : "Lead"),
           phone: person.wa_id ? `+${person.wa_id}` : null,
-          status: call.status,
-          quote: quotedSentence(call),
-          recording_url: call.recording_url || null,
-          transcript: call.transcript || null,
-          extracted: extractedSub(call, findOut),
-          worth: worthScore(call),
-          ended_at: call.ended_at,
+          status: failed ? "failed" : row.processed ? "dialed" : "queued",
+          quote: row.failure_reason || null,
+          recording_url: null,
+          transcript: null,
+          extracted: row.scheduled_for
+            ? `Scheduled ${new Date(row.scheduled_for).toLocaleString("en-GB", {
+                timeZone: "Asia/Dubai",
+                day: "numeric",
+                month: "short",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}`
+            : null,
+          worth: 0,
+          ended_at: row.failed_at,
         };
-      })
-      .sort((a, b) => b.worth - a.worth);
+      });
+    const rows = [...callRows, ...queueRows].sort((a, b) => b.worth - a.worth);
 
     const counts = batch.counts || {};
     return Response.json({
@@ -116,9 +160,10 @@ export async function GET(request, { params }) {
         window_end: batch.window_end,
       },
       stats: {
-        dialed: counts.dialed || rows.length,
-        qualified: counts.qualified || rows.filter((row) => row.worth >= 50).length,
-        callbacks: rows.filter((row) => /callback/i.test(row.extracted || "")).length,
+        dialed: counts.dialed || callRows.length,
+        queued: counts.queued || rows.length,
+        qualified: counts.qualified || callRows.filter((row) => row.worth >= 50).length,
+        callbacks: callRows.filter((row) => /callback/i.test(row.extracted || "")).length,
       },
       calls: rows,
     });

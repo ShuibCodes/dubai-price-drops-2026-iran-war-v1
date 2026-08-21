@@ -70,7 +70,19 @@ export function RunResults({ tenant, runId }) {
           <div key={call.id}>
             <Row
               onClick={() => setOpenId(openId === call.id ? null : call.id)}
-              right={<Pill tone={call.worth >= 50 ? "live" : "required"}>{call.status}</Pill>}
+              right={
+                <Pill
+                  tone={
+                    call.worth >= 50
+                      ? "live"
+                      : call.status === "queued"
+                        ? "warn"
+                        : "required"
+                  }
+                >
+                  {call.status}
+                </Pill>
+              }
               sub={call.extracted || call.phone}
               title={call.name}
             />
@@ -100,7 +112,8 @@ export function RunResults({ tenant, runId }) {
         ))}
         {data && data.calls.length === 0 ? (
           <p className="py-6 text-sm text-ink-2">
-            No completed calls on this run yet. Queue rows dial in the window.
+            Nobody is on this run yet. If you just queued a list, go back and
+            check the match count before Start.
           </p>
         ) : null}
       </div>
