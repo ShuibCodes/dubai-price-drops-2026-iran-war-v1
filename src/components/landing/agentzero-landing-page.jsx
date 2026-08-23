@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import logo1416 from "@/app/images/1416-logo.png";
 import logoCondCity from "@/app/images/cond-city-logo.png";
+import logoMeta from "@/app/images/meta-logo-new.jpeg";
 import logoSterling from "@/app/images/sterling.jpg";
 
 const CLIENT_LOGOS = [
@@ -240,7 +241,7 @@ export default function AgentZeroLandingPage() {
             </div>
           ))}
         </div>
-        <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
+        <div className="grid gap-4 sm:gap-6 lg:grid-cols-3">
           <article className="rounded-[28px] border border-[#ff2d55]/20 bg-[#ff2d55]/[0.06] p-6 sm:rounded-[32px] sm:p-10">
             <div className="flex flex-wrap items-baseline gap-x-2 font-semibold leading-none text-white">
               <span className="text-xl text-white/70 sm:text-3xl">AED</span>
@@ -254,6 +255,24 @@ export default function AgentZeroLandingPage() {
             </div>
             <p className="mt-4 text-base leading-7 text-white/65 sm:mt-5 sm:text-lg">
               Sold with AI in the last 90 days
+            </p>
+          </article>
+
+          <article className="rounded-[28px] border border-[#ff2d55]/20 bg-[#ff2d55]/[0.06] p-6 sm:rounded-[32px] sm:p-10">
+            <p className="text-base leading-7 text-white/65 sm:text-lg">
+              Brokerages using AgentZero added
+            </p>
+            <div className="mt-3 flex flex-wrap items-baseline gap-x-2 font-semibold leading-none text-white">
+              <span className="text-xl text-white/70 sm:text-3xl">AED</span>
+              <span className="text-4xl tracking-tight text-[#ff2d55] sm:text-6xl">
+                <CountUp
+                  to={20000000}
+                  format={(v) => Math.round(v).toLocaleString()}
+                />
+              </span>
+            </div>
+            <p className="mt-4 text-base leading-7 text-white/65 sm:mt-5 sm:text-lg">
+              to their pipelines within first 14 days
             </p>
           </article>
 
@@ -307,6 +326,18 @@ export default function AgentZeroLandingPage() {
               className="h-[380px] w-full sm:h-[420px] lg:h-[520px]"
             />
           </div>
+        </div>
+        <div className="mt-10 flex flex-col items-center text-center sm:mt-14">
+          <div className="flex items-center justify-center rounded-xl bg-white px-3 py-2 sm:px-4 sm:py-2.5">
+            <Image
+              alt="Meta Tech Provider"
+              className="h-9 w-auto sm:h-10"
+              src={logoMeta}
+            />
+          </div>
+          <p className="mt-3 text-base text-white sm:text-lg">
+            we&apos;re Meta verified!
+          </p>
         </div>
       </section>
 
