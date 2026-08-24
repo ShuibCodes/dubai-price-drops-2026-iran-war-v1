@@ -15,8 +15,22 @@ import { Loader2 } from "lucide-react";
 import { formatCurrency } from "@/lib/format";
 
 function formatDateTick(dateStr) {
-  const d = new Date(`${dateStr}T00:00:00`);
+  const d = new Date(`${String(dateStr).slice(0, 10)}T00:00:00`);
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function formatMonthYear(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(`${String(dateStr).slice(0, 10)}T00:00:00`);
+  return d.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+}
+
+function formatRange(start, end) {
+  const a = formatMonthYear(start);
+  const b = formatMonthYear(end);
+  if (!a && !b) return "";
+  if (a === b) return a;
+  return `${a} — ${b}`;
 }
 
 function ChartTooltip({ active, payload, label }) {
@@ -84,7 +98,10 @@ export default function MacroTimelineChart() {
             Dubai sales since conflict began
           </h3>
           <p className="mt-0.5 text-[11px] text-white/45">
-            {summary.totalTransactions.toLocaleString()} transactions · Feb — Apr 2026
+            {summary.totalTransactions.toLocaleString()} transactions
+            {formatRange(summary.dateStart, summary.dateEnd)
+              ? ` · ${formatRange(summary.dateStart, summary.dateEnd)}`
+              : ""}
           </p>
         </div>
         <div className="flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.14em]">

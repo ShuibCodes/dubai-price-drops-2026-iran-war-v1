@@ -437,7 +437,11 @@ export default function TransactionsExplorer() {
                 <h3 className="text-lg font-semibold text-white">Transaction Explorer</h3>
               </div>
               <p className="text-xs text-white/40">
-                {data.summary.totalTransactions.toLocaleString()} transactions · Feb 16 — Apr 2, 2026 · Pre-war vs post-war comparison
+                {data.summary.totalTransactions.toLocaleString()} transactions
+                {data.summary.dateStart && data.summary.dateEnd
+                  ? ` · ${data.summary.dateStart} — ${data.summary.dateEnd}`
+                  : ""}{" "}
+                · Pre-war vs post-war comparison
               </p>
             </div>
             <div className="flex items-center gap-2">

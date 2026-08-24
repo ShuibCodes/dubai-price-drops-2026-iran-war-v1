@@ -10,7 +10,7 @@ let cachedAt = 0;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
 function parseRow(row) {
-  const date = (row.INSTANCE_DATE || "").split(" ")[0];
+  const date = String(row.INSTANCE_DATE || "").replace("T", " ").slice(0, 10);
   const amount = parseFloat(row.TRANS_VALUE) || 0;
   const size = parseFloat(row.ACTUAL_AREA) || 0;
   const rooms = (row.ROOMS_EN || "").trim();
@@ -124,6 +124,8 @@ function buildAggregations(transactions) {
       preWarAvg: preWarCount ? Math.round(preWarValue / preWarCount) : 0,
       postWarAvg: postWarCount ? Math.round(postWarValue / postWarCount) : 0,
       warStart: WAR_START,
+      dateStart: dateList[0]?.date || null,
+      dateEnd: dateList.at(-1)?.date || null,
     },
     byArea: areaList.slice(0, 30),
     byProject: projectList.slice(0, 30),
@@ -141,11 +143,33 @@ export async function GET() {
       return NextResponse.json(cached);
     }
 
-    const csvPath = path.join(process.cwd(), "src", "lib", "transaction db", "transactions-pre-vs-post-war.csv");
+    const dir = path.join(process.cwd(), "src", "lib", "transaction db");
+    const candidates = [
+      "transactions-2026-08-24.csv",
+      "transactions-pre-vs-post-war.csv",
+    ];
+    let csvPath = null;
+    for (const name of candidates) {
+      const next = path.join(dir, name);
+      try {
+        await fs.access(next);
+        csvPath = next;
+        break;
+      } catch {
+        /* try next extract */
+      }
+    }
+    if (!csvPath) {
+      return NextResponse.json({ error: "Transaction extract not found" }, { status: 404 });
+    }
+
     const raw = await fs.readFile(csvPath, "utf-8");
     const { data } = Papa.parse(raw, { header: true, skipEmptyLines: true });
 
-    const transactions = data.map(parseRow).filter((t) => t.date && t.amount > 0);
+    const transactions = data
+      .filter((row) => (row.GROUP_EN || "").trim() === "Sales")
+      .map(parseRow)
+      .filter((t) => t.date && t.amount > 0);
     const result = buildAggregations(transactions);
 
     cached = result;
