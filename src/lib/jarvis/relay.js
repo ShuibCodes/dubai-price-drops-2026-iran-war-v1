@@ -21,6 +21,7 @@ import {
   cleanJarvisSearchName,
   jarvisNameSearchTerms,
 } from "@/lib/jarvis/name-search";
+import { resolveJarvisSender } from "@/lib/jarvis/resolve-sender";
 import { isJarvisSenderAllowed } from "@/lib/jarvis/sender-allowlist";
 import { normalizePhone, phoneToWaId } from "@/lib/leads/normalize";
 import { getSupabaseServerClient, normalizeWaId } from "@/lib/supabase/server";
@@ -42,11 +43,11 @@ It is not a note to the user and not a transcript of what the user typed.
 Rewrite the user's instruction into what the assistant should SAY to the recipient:
 
 Drop all wrapper phrasing: "tell him", "say that", "ask her to", "let them know".
-Refer to the user in the THIRD person by name (Shuayb), never "I" or "me".
+Refer to the user in the THIRD person by the AGENT NAME from the system prompt, never "I" or "me".
 Address the recipient in the SECOND person ("you", "your").
 Keep it short and speakable. No greetings, no sign-off — the assistant handles those.
 
-Examples (opening already says "message from Shuayb", so do NOT start task with "Shuayb…"):
+Examples (opening already says "message from {agent}", so do NOT start the task with the agent's name):
 User: "call Tom and tell him to meet me at Dubai Mall at 2pm"
 → task: "he'd like to meet you at Dubai Mall at 2pm"
 User: "ring Tom, I'm running 10 late"
@@ -90,7 +91,7 @@ function isRelayWithinHours(date = new Date()) {
   return hour >= RELAY_HOURS_START && hour < RELAY_HOURS_END;
 }
 
-export function isRelaySenderAllowed(senderPhone) {
+export async function isRelaySenderAllowed(senderPhone) {
   return isJarvisSenderAllowed(senderPhone);
 }
 
@@ -244,10 +245,13 @@ async function dialAndLogRelay({
   customerName,
   task,
 }) {
+  const sender = await resolveJarvisSender(senderPhone).catch(() => null);
+  const fromName = sender?.agentFirstName || sender?.agentName || "your agent";
   const result = await startRelayCall({
     phoneE164,
     customerName,
     task,
+    fromName,
     metadata: {
       tenantId,
       leadId,
@@ -295,10 +299,10 @@ export async function placeRelayCall({
   forceAfterHours = false,
   forceCooldown = false,
 }) {
-  if (!isRelaySenderAllowed(senderPhone)) {
+  if (!(await isRelaySenderAllowed(senderPhone))) {
     return {
       status: "forbidden",
-      error: "Relay calls are only available for allowlisted Jarvis WhatsApp senders.",
+      error: "Relay calls are only available for AgentZero agents on this number.",
     };
   }
 
@@ -447,11 +451,11 @@ export async function handleRelayConfirmationMessage({
     return null;
   }
 
-  if (!isRelaySenderAllowed(senderPhone)) {
+  if (!(await isRelaySenderAllowed(senderPhone))) {
     await clearPendingRelay(senderPhone);
     return {
       handled: true,
-      text: "Relay calls are locked to your allowlisted WhatsApp number.",
+      text: "Relay calls are locked to your AgentZero WhatsApp number.",
     };
   }
 

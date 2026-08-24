@@ -43,8 +43,8 @@ import { HELP_TEXT, isHelpMessage } from "@/lib/console/help";
 
 const MODEL = "claude-sonnet-4-6";
 const MAX_TOOL_ROUNDS = 5;
-// Default Sterling AZ personal workspace. Override with JARVIS_TENANT_SLUG env
-// if a host (e.g. Railway) still needs to be flipped without a code change.
+// Fallback slug for /api/jarvis/chat and scripts when no sender phone is sent.
+// Live AZ WhatsApp does not use this — it resolves tenant from agents.wa_id.
 export const JARVIS_TENANT_SLUG =
   String(process.env.JARVIS_TENANT_SLUG || "sterling").trim() || "sterling";
 
@@ -296,8 +296,12 @@ export const jarvisToolDefinitions = [
   },
 ];
 
-function systemPrompt({ liveContext, savedListsPrompt }) {
+function systemPrompt({ liveContext, savedListsPrompt, agentName }) {
+  const who = String(agentName || "").trim() || "the agent";
   return `You are Jarvis — a live WhatsApp knowledge base and action desk.
+
+AGENT NAME: ${who}
+You are talking to ${who}. For relay voice tasks, the call opening already says "message from ${who.split(/\s+/)[0]}". Never invent a different sender name.
 
 DATA SOURCE (CRITICAL):
 - Your primary knowledge is the owner's connected WhatsApp Business inbox, continuously ingested via Whautomate coexistence into Supabase. These are the owner's own business conversations.
@@ -609,7 +613,7 @@ export async function runJarvisTurn({ tenantId, messages, agentName, senderPhone
     const response = await client.messages.create({
       model: MODEL,
       max_tokens: 1400,
-      system: systemPrompt({ liveContext, savedListsPrompt }),
+      system: systemPrompt({ liveContext, savedListsPrompt, agentName }),
       tools: jarvisToolDefinitions,
       messages: conversation,
     });

@@ -149,7 +149,13 @@ export async function startTargetLeadCall() {
  * Outbound relay call — dedicated assistant, no KB/lead context.
  * Injects customerName + task as call-time variableValues.
  */
-export async function startRelayCall({ phoneE164, customerName, task, metadata = {} }) {
+export async function startRelayCall({
+  phoneE164,
+  customerName,
+  task,
+  fromName,
+  metadata = {},
+}) {
   const { apiKey, phoneNumberId, baseUrl, createPath } = getVapiConfig();
   const assistantId = process.env.VAPI_RELAY_ASSISTANT_ID;
   if (!assistantId) {
@@ -164,7 +170,12 @@ export async function startRelayCall({ phoneE164, customerName, task, metadata =
 
   // Bake firstMessage at dial-time so Vapi never speaks a literal "{{task}}"
   // placeholder if template substitution fails.
-  const firstMessage = `Hi, I've got a quick message from Shuayb: ${spokenTask}`;
+  const speaker =
+    String(fromName || "")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)[0] || "your agent";
+  const firstMessage = `Hi, I've got a quick message from ${speaker}: ${spokenTask}`;
 
   const payload = {
     assistantId,

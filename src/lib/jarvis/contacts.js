@@ -46,10 +46,10 @@ export async function saveJarvisContact({
   name,
   phone,
 }) {
-  if (!isJarvisSenderAllowed(senderPhone)) {
+  if (!(await isJarvisSenderAllowed(senderPhone))) {
     return {
       status: "forbidden",
-      error: "Saving contacts is only available for allowlisted Jarvis WhatsApp senders.",
+      error: "Saving contacts is only available for AgentZero agents on this number.",
     };
   }
 
@@ -159,11 +159,11 @@ export async function handleContactConfirmationMessage({
     return null;
   }
 
-  if (!isJarvisSenderAllowed(senderPhone)) {
+  if (!(await isJarvisSenderAllowed(senderPhone))) {
     await clearPendingContact(senderPhone);
     return {
       handled: true,
-      text: "Contact saves are locked to your allowlisted WhatsApp number.",
+      text: "Contact saves are locked to your AgentZero WhatsApp number.",
     };
   }
 
