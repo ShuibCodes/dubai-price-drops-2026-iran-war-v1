@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Drop } from "@/components/ui/drop";
 import { Pill } from "@/components/ui/pill";
 import { Strip } from "@/components/ui/strip";
 import { ConsoleShell } from "@/components/console/console-shell";
+import { consoleBase, consoleJson } from "@/lib/console/client";
 
 function fileType(filename) {
   const ext = String(filename || "").split(".").pop();
@@ -23,17 +24,18 @@ export function KbPage({ tenant }) {
   const [docs, setDocs] = useState(null);
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState("");
+  const base = consoleBase(tenant);
 
-  async function load() {
-    const res = await fetch("/api/console/kb");
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error || "Could not load KB.");
+  const load = useCallback(async () => {
+    const body = await consoleJson(base, "/api/console/kb", {
+      fallback: "Could not load KB.",
+    });
     setDocs(body.documents || []);
-  }
+  }, [base]);
 
   useEffect(() => {
     load().catch((err) => setError(err.message));
-  }, []);
+  }, [load]);
 
   async function upload(files) {
     setError("");
@@ -41,9 +43,11 @@ export function KbPage({ tenant }) {
       const form = new FormData();
       form.set("file", file);
       form.set("scope", "private");
-      const res = await fetch("/api/console/kb", { method: "POST", body: form });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Upload failed.");
+      await consoleJson(base, "/api/console/kb", {
+        method: "POST",
+        body: form,
+        fallback: "Upload failed.",
+      });
     }
     await load();
   }
@@ -51,13 +55,12 @@ export function KbPage({ tenant }) {
   async function patch(id, body) {
     setBusyId(id);
     try {
-      const res = await fetch(`/api/console/kb/${id}`, {
+      await consoleJson(base, `/api/console/kb/${id}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
+        fallback: "Update failed.",
         body: JSON.stringify(body),
       });
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(payload.error || "Update failed.");
       await load();
     } finally {
       setBusyId("");

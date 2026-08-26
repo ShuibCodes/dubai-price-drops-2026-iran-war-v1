@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Strip } from "@/components/ui/strip";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { Tooltip } from "@/components/console/tooltip";
+import { consoleBase, consoleJson } from "@/lib/console/client";
 import { waDeepLink } from "@/lib/console/format";
 
 function greeting(tz) {
@@ -103,26 +104,18 @@ export function ConsoleHome({ tenant }) {
   const [docs, setDocs] = useState(null);
   const [lists, setLists] = useState(null);
   const [error, setError] = useState("");
-  const base = `/copilot/${encodeURIComponent(tenant)}`;
+  const base = consoleBase(tenant);
 
   useEffect(() => {
     let live = true;
 
-    async function readJson(url) {
-      const res = await fetch(url);
-      if (res.status === 401) {
-        window.location.href = `/copilot/login?next=${encodeURIComponent(base)}`;
-        return null;
-      }
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Could not load the console.");
-      return body;
-    }
+    const readJson = (url) =>
+      consoleJson(base, url, { fallback: "Could not load the console." });
 
     (async () => {
       try {
         const home = await readJson("/api/console/home");
-        if (!home || !live) return;
+        if (!live) return;
         setData(home);
         const [scriptBody, kbBody, listBody] = await Promise.all([
           readJson("/api/scripts").catch(() => ({ scripts: [] })),

@@ -11,6 +11,7 @@ import { Field } from "@/components/ui/field";
 import { Label } from "@/components/ui/label";
 import { Pill } from "@/components/ui/pill";
 import { Strip } from "@/components/ui/strip";
+import { consoleJson } from "@/lib/console/client";
 import {
   formatDay,
   formatRelative,
@@ -169,9 +170,10 @@ export function ScriptEditor({ tenant, scriptId, role, waPhone }) {
     setSaving(true);
     setError("");
     try {
-      const res = await fetch(`/api/scripts/${scriptId}`, {
+      await consoleJson(listHref, `/api/scripts/${scriptId}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
+        fallback: "Save failed.",
         body: JSON.stringify({
           display_name: name.trim(),
           config: {
@@ -180,8 +182,6 @@ export function ScriptEditor({ tenant, scriptId, role, waPhone }) {
           },
         }),
       });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Save failed.");
       await load();
     } catch (err) {
       setError(err.message);
@@ -197,9 +197,10 @@ export function ScriptEditor({ tenant, scriptId, role, waPhone }) {
     setError("");
     try {
       if (dirty || !latest) await save();
-      const res = await fetch(`/api/scripts/${scriptId}/publish`, { method: "POST" });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Publish failed.");
+      await consoleJson(listHref, `/api/scripts/${scriptId}/publish`, {
+        method: "POST",
+        fallback: "Publish failed.",
+      });
       await load();
     } catch (err) {
       setError(err.message);
@@ -213,13 +214,12 @@ export function ScriptEditor({ tenant, scriptId, role, waPhone }) {
     setBusy(true);
     setError("");
     try {
-      const res = await fetch(`/api/scripts/${scriptId}/restore`, {
+      await consoleJson(listHref, `/api/scripts/${scriptId}/restore`, {
         method: "POST",
         headers: { "content-type": "application/json" },
+        fallback: "Restore failed.",
         body: JSON.stringify({ version_no: versionNo }),
       });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Restore failed.");
       setHistoryOpen(false);
       await load();
     } catch (err) {
@@ -253,13 +253,12 @@ export function ScriptEditor({ tenant, scriptId, role, waPhone }) {
       await unlockMicrophone();
       await leaveWebTalk(webSession.current);
       webSession.current = null;
-      const res = await fetch(`/api/scripts/${scriptId}/test-call`, {
+      const body = await consoleJson(listHref, `/api/scripts/${scriptId}/test-call`, {
         method: "POST",
         headers: { "content-type": "application/json" },
+        fallback: "Talk here failed.",
         body: JSON.stringify({ mode: "web" }),
       });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Talk here failed.");
       if (!body.webCallUrl) throw new Error("Talk here did not return a join URL.");
       const session = await joinWebTalk({
         webCallUrl: body.webCallUrl,
@@ -302,13 +301,12 @@ export function ScriptEditor({ tenant, scriptId, role, waPhone }) {
     testTimer.current = window.setTimeout(async () => {
       testTimer.current = null;
       try {
-        const res = await fetch(`/api/scripts/${scriptId}/test-call`, {
+        await consoleJson(listHref, `/api/scripts/${scriptId}/test-call`, {
           method: "POST",
           headers: { "content-type": "application/json" },
+          fallback: "Test call failed.",
           body: JSON.stringify({}),
         });
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(body.error || "Test call failed.");
         setTestState("calling");
       } catch (err) {
         setTestState(null);

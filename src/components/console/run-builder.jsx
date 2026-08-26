@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,8 @@ import { Field } from "@/components/ui/field";
 import { Label } from "@/components/ui/label";
 import { Strip } from "@/components/ui/strip";
 import { ConsoleShell } from "@/components/console/console-shell";
-import { estCostAed } from "@/lib/console/format";
+import { consoleBase, consoleJson } from "@/lib/console/client";
+import { estCostAed, waDeepLink } from "@/lib/console/format";
 import {
   contactsFromCsvText,
   isSpreadsheetFile,
@@ -107,19 +108,20 @@ export function RunBuilder({ tenant }) {
   const [saving, setSaving] = useState(false);
   const [savingList, setSavingList] = useState(false);
   const [home, setHome] = useState(null);
-  const base = `/copilot/${encodeURIComponent(tenant)}`;
+  const base = consoleBase(tenant);
 
-  function loadLists() {
-    return fetch("/api/console/lists")
-      .then((res) => res.json())
-      .then((body) => setLists(body.lists || []))
-      .catch(() => {});
-  }
+  const loadLists = useCallback(
+    () =>
+      consoleJson(base, "/api/console/lists")
+        .then((body) => setLists(body.lists || []))
+        .catch(() => {}),
+    [base]
+  );
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/scripts").then((res) => res.json()),
-      fetch("/api/console/home").then((res) => res.json()),
+      consoleJson(base, "/api/scripts", { fallback: "Could not load scripts." }),
+      consoleJson(base, "/api/console/home", { fallback: "Could not load the console." }),
       loadLists(),
     ])
       .then(([scriptBody, homeBody]) => {
@@ -129,33 +131,45 @@ export function RunBuilder({ tenant }) {
         setHome(homeBody);
       })
       .catch((err) => setError(err.message));
-  }, []);
+  }, [base, loadLists]);
 
   useEffect(() => {
     if (source === "upload") {
-      setPreview({
-        matched: contacts.length,
-        exclusions: [],
-      });
-      return;
+      setPreview({ matched: contacts.length, exclusions: [] });
+      return undefined;
     }
-    fetch("/api/console/runs/preview", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        source_type: source,
-        list_name: listName,
-        areas: areas.split(",").map((s) => s.trim()).filter(Boolean),
-        bedrooms,
-      }),
-    })
-      .then(async (res) => {
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(body.error || "Preview failed.");
-        setPreview(body);
+    // An unnamed list is not "every lead in the tenant" — the matcher drops the
+    // source filter when the name is blank, so don't ask until one is picked.
+    if (source === "segment" && listName.trim().length < 2) {
+      setPreview(null);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      consoleJson(base, "/api/console/runs/preview", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        signal: controller.signal,
+        fallback: "Preview failed.",
+        body: JSON.stringify({
+          source_type: source,
+          list_name: listName,
+          areas: areas.split(",").map((s) => s.trim()).filter(Boolean),
+          bedrooms,
+        }),
       })
-      .catch((err) => setError(err.message));
-  }, [source, areas, bedrooms, contacts.length, listName]);
+        .then(setPreview)
+        .catch((err) => {
+          if (err.name !== "AbortError") setError(err.message);
+        });
+    }, 350);
+
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [base, source, areas, bedrooms, contacts.length, listName]);
 
   async function parseCsv(files) {
     const file = files[0];
@@ -189,13 +203,12 @@ export function RunBuilder({ tenant }) {
     setError("");
     setSavedMsg("");
     try {
-      const res = await fetch("/api/console/lists", {
+      const body = await consoleJson(base, "/api/console/lists", {
         method: "POST",
         headers: { "content-type": "application/json" },
+        fallback: "Could not save the list.",
         body: JSON.stringify({ name: listName, contacts }),
       });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Could not save the list.");
       await loadLists();
       setSavedMsg(
         `Saved ${body.saved} as “${body.name}”. No calls yet. Later, in WhatsApp: call my ${body.name} with the cold list script.`
@@ -211,9 +224,10 @@ export function RunBuilder({ tenant }) {
     setSaving(true);
     setError("");
     try {
-      const res = await fetch("/api/console/runs", {
+      const body = await consoleJson(base, "/api/console/runs", {
         method: "POST",
         headers: { "content-type": "application/json" },
+        fallback: "Could not start the run.",
         body: JSON.stringify({
           source_type: source,
           script_id: scriptId,
@@ -224,8 +238,11 @@ export function RunBuilder({ tenant }) {
           contacts,
         }),
       });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Could not start the run.");
+      if (!body.batch_id) {
+        throw new Error(
+          `Queued ${body.queued || 0} calls, but the run has no id to open. Check Home for the run.`
+        );
+      }
       router.push(`${base}/runs/${body.batch_id}`);
     } catch (err) {
       setError(err.message);
@@ -233,6 +250,8 @@ export function RunBuilder({ tenant }) {
     }
   }
 
+  const needsList = source === "segment" && listName.trim().length < 2;
+  const counting = preview == null && !needsList;
   const matched = preview?.matched || 0;
   const exclusions = preview?.exclusions || [];
   const skipped = exclusions.reduce((total, item) => total + (Number(item.n) || 0), 0);
@@ -245,7 +264,13 @@ export function RunBuilder({ tenant }) {
     (source !== "segment" || listName.trim().length >= 2);
 
   return (
-    <ConsoleShell tenant={tenant} width={760}>
+    <ConsoleShell
+      tenant={tenant}
+      waLink={
+        home ? waDeepLink(home.tenant?.display_phone || home.agent?.wa_id) : undefined
+      }
+      width={760}
+    >
       <h1 className="az-h1 mb-3 text-fg">New call run</h1>
       <p className="mb-3 text-lg leading-snug text-fg-2">
         Nothing dials until the last button. You will see exactly how many people
@@ -504,7 +529,11 @@ export function RunBuilder({ tenant }) {
           </div>
         </div>
         <div className="grid gap-1.5 border-b border-[#1d3327] pb-5.5 text-sm text-dim">
-          {exclusions.length ? (
+          {needsList ? (
+            <div>Pick a saved list to see who is in it.</div>
+          ) : counting ? (
+            <div>Counting who is in this list…</div>
+          ) : exclusions.length ? (
             <div>
               {exclusions
                 .map((item) => `${item.n} ${item.reason}`)
@@ -522,9 +551,13 @@ export function RunBuilder({ tenant }) {
           <Button disabled={saving || !canStart} onClick={commit}>
             {saving
               ? "Queueing…"
-              : windowStart
-                ? `Schedule ${matched} calls`
-                : `Start calling ${matched} people`}
+              : needsList
+                ? "Pick a list first"
+                : counting
+                  ? "Counting…"
+                  : windowStart
+                    ? `Schedule ${matched} calls`
+                    : `Start calling ${matched} people`}
           </Button>
           {scriptId ? (
             <Button

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
@@ -11,6 +11,7 @@ import { Toggle } from "@/components/ui/toggle";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { WhatsAppConnect } from "@/components/console/whatsapp-connect";
 import { Tooltip } from "@/components/console/tooltip";
+import { consoleBase, consoleJson } from "@/lib/console/client";
 import { waDeepLink } from "@/lib/console/format";
 
 const LEAD_SOURCES = [
@@ -28,44 +29,60 @@ export function SettingsPage({ tenant }) {
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const [briefSending, setBriefSending] = useState(false);
   const [briefSent, setBriefSent] = useState(false);
+  const [draft, setDraft] = useState(null);
+  const base = consoleBase(tenant);
 
-  async function load() {
-    const res = await fetch("/api/console/settings");
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error || "Could not load settings.");
+  const load = useCallback(async () => {
+    const body = await consoleJson(base, "/api/console/settings", {
+      fallback: "Could not load settings.",
+    });
     setData(body);
-  }
+    setDraft(null);
+  }, [base]);
 
   useEffect(() => {
     load().catch((err) => setError(err.message));
-  }, []);
+  }, [load]);
 
   async function save(patch) {
     setSaving(true);
     setError("");
     try {
-      const res = await fetch("/api/console/settings", {
+      const body = await consoleJson(base, "/api/console/settings", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
+        fallback: "Could not save.",
         body: JSON.stringify(patch),
       });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Could not save.");
       setData((current) => ({ ...current, agent: body.agent }));
+      setDraft(null);
     } catch (err) {
       setError(err.message);
+      setDraft(null);
     } finally {
       setSaving(false);
     }
+  }
+
+  // Text fields commit on blur — saving per keystroke wrote a PATCH for every
+  // character, and the API takes any string as a timezone.
+  function commitDraft(field) {
+    const next = draft?.[field];
+    if (next == null || next === (data?.agent?.[field] || "")) {
+      setDraft(null);
+      return;
+    }
+    save({ [field]: next });
   }
 
   async function disconnect() {
     setDisconnecting(true);
     setError("");
     try {
-      const res = await fetch("/api/console/settings/disconnect", { method: "POST" });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Disconnect failed.");
+      await consoleJson(base, "/api/console/settings/disconnect", {
+        method: "POST",
+        fallback: "Disconnect failed.",
+      });
       setConfirmDisconnect(false);
       await load();
     } catch (err) {
@@ -79,9 +96,10 @@ export function SettingsPage({ tenant }) {
     setBriefSending(true);
     setError("");
     try {
-      const res = await fetch("/api/console/brief/send-now", { method: "POST" });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Could not send the brief.");
+      await consoleJson(base, "/api/console/brief/send-now", {
+        method: "POST",
+        fallback: "Could not send the brief.",
+      });
       setBriefSent(true);
     } catch (err) {
       setError(err.message);
@@ -230,18 +248,29 @@ export function SettingsPage({ tenant }) {
           <div>
             <Label htmlFor="brief">Time</Label>
             <Field
+              disabled={saving || !data}
               id="brief"
-              onChange={(e) => save({ brief_time: e.target.value })}
+              onBlur={() => commitDraft("brief_time")}
+              onChange={(e) =>
+                setDraft((current) => ({ ...current, brief_time: e.target.value }))
+              }
               type="time"
-              value={String(agent.brief_time || "07:30").slice(0, 5)}
+              value={
+                draft?.brief_time ??
+                String(agent.brief_time || "07:30").slice(0, 5)
+              }
             />
           </div>
           <div>
             <Label htmlFor="tz">Timezone</Label>
             <Field
+              disabled={saving || !data}
               id="tz"
-              onChange={(e) => save({ tz: e.target.value })}
-              value={agent.tz || "Asia/Dubai"}
+              onBlur={() => commitDraft("tz")}
+              onChange={(e) =>
+                setDraft((current) => ({ ...current, tz: e.target.value }))
+              }
+              value={draft?.tz ?? (agent.tz || "Asia/Dubai")}
             />
           </div>
         </div>

@@ -12,6 +12,7 @@ import { Toggle } from "@/components/ui/toggle";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { WhatsAppConnect } from "@/components/console/whatsapp-connect";
 import { Tooltip } from "@/components/console/tooltip";
+import { consoleBase, consoleJson } from "@/lib/console/client";
 import { waDeepLink } from "@/lib/console/format";
 
 export function JoinWizard({ tenant }) {
@@ -30,11 +31,13 @@ export function JoinWizard({ tenant }) {
   const [briefOn, setBriefOn] = useState(true);
   const [briefTime, setBriefTime] = useState("07:30");
 
+  const base = consoleBase(tenant);
+
   useEffect(() => {
-    fetch("/api/console/profile")
-      .then(async (res) => {
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(body.error || "Could not load profile.");
+    consoleJson(base, "/api/console/profile", {
+      fallback: "Could not load profile.",
+    })
+      .then((body) => {
         setProfile(body);
         const agent = body.agent || {};
         setName(agent.name || "");
@@ -48,7 +51,7 @@ export function JoinWizard({ tenant }) {
         setStep(body.tenant?.whatsapp_connected ? 1 : 0);
       })
       .catch((err) => setError(err.message));
-  }, []);
+  }, [base]);
 
   const connected = Boolean(profile?.tenant?.whatsapp_connected);
   const total = connected ? 2 : 3;
@@ -57,9 +60,10 @@ export function JoinWizard({ tenant }) {
     step === 0 ? "SETUP" : step === 1 ? "ABOUT YOU" : "MORNING BRIEF";
 
   async function saveProfile(extra = {}) {
-    const res = await fetch("/api/console/profile", {
+    return consoleJson(base, "/api/console/profile", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
+      fallback: "Could not save.",
       body: JSON.stringify({
         name,
         team,
@@ -72,9 +76,6 @@ export function JoinWizard({ tenant }) {
         ...extra,
       }),
     });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error || "Could not save.");
-    return body;
   }
 
   async function uploadFiles(files) {
@@ -82,21 +83,29 @@ export function JoinWizard({ tenant }) {
       const form = new FormData();
       form.set("file", file);
       form.set("scope", "tenant");
-      const res = await fetch("/api/console/kb", { method: "POST", body: form });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Upload failed.");
+      await consoleJson(base, "/api/console/kb", {
+        method: "POST",
+        body: form,
+        fallback: "Upload failed.",
+      });
     }
   }
 
+  async function reloadProfile() {
+    const body = await consoleJson(base, "/api/console/profile", {
+      fallback: "Could not load profile.",
+    });
+    setProfile(body);
+  }
+
   async function hideDoc(id, hide) {
-    await fetch(`/api/console/kb/${id}`, {
+    await consoleJson(base, `/api/console/kb/${id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
+      fallback: "Update failed.",
       body: JSON.stringify({ hide }),
     });
-    const res = await fetch("/api/console/profile");
-    const body = await res.json();
-    if (res.ok) setProfile(body);
+    await reloadProfile();
   }
 
   async function sendBrief() {
@@ -104,10 +113,12 @@ export function JoinWizard({ tenant }) {
     setError("");
     try {
       await saveProfile({ onboarded: true });
-      const res = await fetch("/api/console/brief/send-now", { method: "POST" });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Could not send the brief.");
-      setSent(body);
+      setSent(
+        await consoleJson(base, "/api/console/brief/send-now", {
+          method: "POST",
+          fallback: "Could not send the brief.",
+        })
+      );
     } catch (err) {
       setError(err.message);
     } finally {
@@ -116,7 +127,6 @@ export function JoinWizard({ tenant }) {
   }
 
   const waLink = waDeepLink(profile?.tenant?.display_phone || profile?.agent?.wa_id);
-  const base = `/copilot/${encodeURIComponent(tenant)}`;
 
   return (
     <ConsoleShell bare footer={false} tenant={tenant} width={620}>
@@ -167,11 +177,11 @@ export function JoinWizard({ tenant }) {
         <div className="az-card p-6.5">
           <WhatsAppConnect
             onConnected={async () => {
-              const res = await fetch("/api/console/profile");
-              const body = await res.json();
-              if (res.ok) {
-                setProfile(body);
+              try {
+                await reloadProfile();
                 setStep(1);
+              } catch (err) {
+                setError(err.message);
               }
             }}
             tenantSlug={tenant}
@@ -277,7 +287,9 @@ export function JoinWizard({ tenant }) {
                 <Check
                   checked={!doc.hidden}
                   key={doc.id}
-                  onChange={(checked) => hideDoc(doc.id, !checked)}
+                  onChange={(checked) =>
+                    hideDoc(doc.id, !checked).catch((err) => setError(err.message))
+                  }
                 >
                   {doc.filename} · inherited
                 </Check>

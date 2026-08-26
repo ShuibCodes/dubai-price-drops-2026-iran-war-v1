@@ -7,6 +7,7 @@ import { Stat } from "@/components/ui/stat";
 import { Strip } from "@/components/ui/strip";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { Expandable } from "@/components/console/expandable";
+import { consoleBase, consoleJson } from "@/lib/console/client";
 
 function metaLine(run) {
   if (!run) return "";
@@ -69,25 +70,24 @@ export function RunResults({ tenant, runId }) {
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [showRest, setShowRest] = useState(false);
-  const base = `/copilot/${encodeURIComponent(tenant)}`;
+  const base = consoleBase(tenant);
 
   useEffect(() => {
-    fetch(`/api/console/runs/${runId}`)
-      .then(async (res) => {
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(body.error || "Could not load run.");
-        setData(body);
-      })
+    consoleJson(base, `/api/console/runs/${runId}`, {
+      fallback: "Could not load run.",
+    })
+      .then(setData)
       .catch((err) => setError(err.message));
-  }, [runId]);
+  }, [base, runId]);
 
   async function sendWhatsApp() {
     setSending(true);
     setError("");
     try {
-      const res = await fetch(`/api/console/runs/${runId}/whatsapp`, { method: "POST" });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Send failed.");
+      await consoleJson(base, `/api/console/runs/${runId}/whatsapp`, {
+        method: "POST",
+        fallback: "Send failed.",
+      });
       setSent(true);
     } catch (err) {
       setError(err.message);

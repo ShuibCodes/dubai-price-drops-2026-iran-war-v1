@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Label } from "@/components/ui/label";
 import { Strip } from "@/components/ui/strip";
 import { ConsoleShell } from "@/components/console/console-shell";
+import { consoleBase, consoleJson } from "@/lib/console/client";
 import { runsLabel } from "@/lib/scripts/display";
 
 export function ScriptsList({ tenant }) {
@@ -17,20 +18,18 @@ export function ScriptsList({ tenant }) {
   const [newName, setNewName] = useState("");
   const [saving, setSaving] = useState(false);
 
-  async function load() {
-    const res = await fetch("/api/scripts");
-    if (res.status === 401) {
-      window.location.href = `/copilot/login?next=/copilot/${encodeURIComponent(tenant)}/scripts`;
-      return;
-    }
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error || "Could not load scripts.");
+  const base = consoleBase(tenant);
+
+  const load = useCallback(async () => {
+    const body = await consoleJson(base, "/api/scripts", {
+      fallback: "Could not load scripts.",
+    });
     setScripts(body.scripts || []);
-  }
+  }, [base]);
 
   useEffect(() => {
     load().catch((err) => setError(err.message));
-  }, [tenant]);
+  }, [load]);
 
   async function createScript(event) {
     event.preventDefault();
@@ -39,14 +38,13 @@ export function ScriptsList({ tenant }) {
     setSaving(true);
     setError("");
     try {
-      const res = await fetch("/api/scripts", {
+      const body = await consoleJson(base, "/api/scripts", {
         method: "POST",
         headers: { "content-type": "application/json" },
+        fallback: "Could not create script.",
         body: JSON.stringify({ display_name }),
       });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Could not create script.");
-      router.push(`/copilot/${encodeURIComponent(tenant)}/scripts/${body.id}`);
+      router.push(`${base}/scripts/${body.id}`);
     } catch (err) {
       setError(err.message);
       setSaving(false);
@@ -54,7 +52,7 @@ export function ScriptsList({ tenant }) {
   }
 
   function openScript(id) {
-    router.push(`/copilot/${encodeURIComponent(tenant)}/scripts/${id}`);
+    router.push(`${base}/scripts/${id}`);
   }
 
   return (
