@@ -61,52 +61,51 @@ function LoginForm() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4 py-12 text-slate-100">
-      <div className="w-full max-w-sm">
-        <div className="mb-8 flex flex-col items-center text-center">
-          <h1 className="text-4xl font-extrabold tracking-tight text-emerald-400">
-            Operations Copilot
-          </h1>
-          <p className="mt-4 text-sm leading-relaxed text-slate-400">
-            One place to run your cold calls — batch campaigns across
-            timezones, ask questions about any call, and keep dialing around
-            the clock without sleeping or missing a beat.
-          </p>
+    <main className="az-shell grid min-h-screen place-items-center px-6 py-10 font-sans">
+      <div className="w-full max-w-[420px]">
+        <div className="mb-10 font-mono text-[13px] font-bold tracking-[.18em] text-az">
+          AGENTZERO
         </div>
+        <h1 className="mb-2.5 text-[38px] font-semibold leading-[1.05] tracking-[-.02em] text-fg">
+          Sign in
+        </h1>
+        <p className="mb-8 text-base leading-relaxed text-dim">
+          Use the username your brokerage admin set up for you. Everything after
+          this happens on WhatsApp.
+        </p>
 
-        <form
-          onSubmit={handleSubmit}
-          className="rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl"
-        >
-          <label className="block text-sm font-medium text-slate-300">
-            Username
-            <input
-              type="text"
-              name="username"
-              autoComplete="username"
-              value={username}
-              onChange={(event) => setUsername(event.target.value)}
-              className="mt-1 block w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-emerald-500"
-              required
-            />
+        <form onSubmit={handleSubmit}>
+          <label className="az-label uppercase" htmlFor="username">
+            USERNAME
           </label>
+          <input
+            autoComplete="username"
+            className="az-input"
+            id="username"
+            name="username"
+            onChange={(event) => setUsername(event.target.value)}
+            required
+            type="text"
+            value={username}
+          />
 
-          <label className="mt-4 block text-sm font-medium text-slate-300">
-            Password
-            <input
-              type="password"
-              name="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              className="mt-1 block w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-emerald-500"
-              required
-            />
+          <label className="az-label mt-5 uppercase" htmlFor="password">
+            PASSWORD
           </label>
+          <input
+            autoComplete="current-password"
+            className="az-input"
+            id="password"
+            name="password"
+            onChange={(event) => setPassword(event.target.value)}
+            required
+            type="password"
+            value={password}
+          />
 
           {error ? (
             <p
-              className="mt-4 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300"
+              className="mt-5 rounded-[10px] border border-markup-edge bg-markup-wash px-4 py-3 text-sm text-markup"
               role="alert"
             >
               {error}
@@ -114,13 +113,18 @@ function LoginForm() {
           ) : null}
 
           <button
-            type="submit"
+            className="mt-5 block w-full rounded-[10px] bg-az py-4 text-center text-base font-semibold text-az-ink transition-colors hover:bg-az-hover disabled:cursor-not-allowed disabled:opacity-50"
             disabled={loading}
-            className="mt-6 w-full rounded-lg bg-emerald-500 px-3 py-2.5 text-sm font-semibold text-slate-950 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            type="submit"
           >
             {loading ? "Signing in…" : "Sign in"}
           </button>
         </form>
+
+        <div className="mt-7 border-t border-line pt-5 text-sm leading-relaxed text-faint">
+          Never used AgentZero? Your brokerage admin adds you, then you get a
+          WhatsApp invite.
+        </div>
       </div>
     </main>
   );
@@ -130,7 +134,7 @@ export default function CopilotLoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-100">
+        <div className="az-shell grid min-h-screen place-items-center font-sans text-dim">
           Loading…
         </div>
       }

@@ -1,21 +1,23 @@
 const TONE = {
-  live: "text-live",
+  live: "text-az",
   warn: "text-warn",
   markup: "text-markup",
-  ink: "text-ink",
+  ink: "text-fg",
+  dim: "text-dim",
 };
 
-export function Stat({ n, label, tone = "live", className = "" }) {
+export function Stat({ n, label, sub, tone = "live", className = "" }) {
   return (
-    <div className={`min-w-0 ${className}`}>
+    <div
+      className={`min-w-[150px] flex-1 ${tone === "live" ? "az-card-live" : "az-card"} p-6.5 ${className}`}
+    >
       <div
-        className={`font-mono text-2xl tabular-nums tracking-tight ${TONE[tone] || TONE.live}`}
+        className={`text-[52px] font-semibold leading-none tracking-[-.04em] tabular-nums ${TONE[tone] || TONE.live}`}
       >
         {n}
       </div>
-      <div className="mt-1 font-mono text-[10px] uppercase tracking-label text-ink-3">
-        {label}
-      </div>
+      <div className="mt-2 text-base text-fg">{label}</div>
+      {sub ? <div className="mt-1 text-[13px] text-dim">{sub}</div> : null}
     </div>
   );
 }

@@ -1,13 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Drop } from "@/components/ui/drop";
 import { Field } from "@/components/ui/field";
 import { Label } from "@/components/ui/label";
-import { Pill } from "@/components/ui/pill";
-import { Row } from "@/components/ui/row";
 import { Strip } from "@/components/ui/strip";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { estCostAed } from "@/lib/console/format";
@@ -18,14 +17,81 @@ import {
 } from "@/lib/console/list-csv";
 
 const SOURCES = [
-  { id: "upload", label: "Upload a list" },
+  { id: "segment", label: "A saved list" },
+  { id: "upload", label: "Upload a new CSV" },
   { id: "whatsapp", label: "From your WhatsApp" },
-  { id: "segment", label: "Saved list" },
 ];
+
+function localValue(date) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function thisEvening() {
+  const date = new Date();
+  if (date.getHours() >= 17) date.setDate(date.getDate() + 1);
+  date.setHours(17, 0, 0, 0);
+  return localValue(date);
+}
+
+function tomorrowMorning() {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  date.setHours(9, 0, 0, 0);
+  return localValue(date);
+}
+
+function StepHead({ n, children }) {
+  return (
+    <div className="mb-3.5 flex items-baseline gap-3">
+      <div className="grid h-[26px] w-[26px] flex-none place-items-center rounded-full bg-az text-[13px] font-bold text-az-ink">
+        {n}
+      </div>
+      <div className="text-[21px] font-semibold text-fg">{children}</div>
+    </div>
+  );
+}
+
+function Radio({ on, title, sub, right, onClick }) {
+  return (
+    <button
+      className={`flex w-full items-center gap-3.5 rounded-[11px] border px-5 py-4.5 text-left ${
+        on ? "border-az bg-az-wash" : "border-line-2 bg-panel hover:border-line-3"
+      }`}
+      onClick={onClick}
+      type="button"
+    >
+      <span
+        className={
+          on
+            ? "h-[18px] w-[18px] flex-none rounded-full border-[5px] border-az bg-az-ink"
+            : "h-[18px] w-[18px] flex-none rounded-full border border-line-4"
+        }
+      />
+      <div className="min-w-0 flex-1">
+        <div className="text-[17px] font-medium text-fg">{title}</div>
+        <div className="mt-1 text-[13px] text-faint">{sub}</div>
+      </div>
+      {right}
+    </button>
+  );
+}
+
+function Tab({ on, children, onClick }) {
+  return (
+    <button
+      className={on ? "az-btn-white" : "az-btn-quiet"}
+      onClick={onClick}
+      type="button"
+    >
+      {children}
+    </button>
+  );
+}
 
 export function RunBuilder({ tenant }) {
   const router = useRouter();
-  const [source, setSource] = useState("whatsapp");
+  const [source, setSource] = useState("segment");
   const [scripts, setScripts] = useState([]);
   const [scriptId, setScriptId] = useState("");
   const [areas, setAreas] = useState("");
@@ -33,6 +99,7 @@ export function RunBuilder({ tenant }) {
   const [listName, setListName] = useState("");
   const [lists, setLists] = useState([]);
   const [windowStart, setWindowStart] = useState("");
+  const [pickTime, setPickTime] = useState(false);
   const [contacts, setContacts] = useState([]);
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState("");
@@ -40,6 +107,7 @@ export function RunBuilder({ tenant }) {
   const [saving, setSaving] = useState(false);
   const [savingList, setSavingList] = useState(false);
   const [home, setHome] = useState(null);
+  const base = `/copilot/${encodeURIComponent(tenant)}`;
 
   function loadLists() {
     return fetch("/api/console/lists")
@@ -158,7 +226,7 @@ export function RunBuilder({ tenant }) {
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || "Could not start the run.");
-      router.push(`/copilot/${encodeURIComponent(tenant)}/runs/${body.batch_id}`);
+      router.push(`${base}/runs/${body.batch_id}`);
     } catch (err) {
       setError(err.message);
       setSaving(false);
@@ -166,6 +234,8 @@ export function RunBuilder({ tenant }) {
   }
 
   const matched = preview?.matched || 0;
+  const exclusions = preview?.exclusions || [];
+  const skipped = exclusions.reduce((total, item) => total + (Number(item.n) || 0), 0);
   const selected = scripts.find((row) => row.id === scriptId);
   const canSave = source === "upload" && contacts.length > 0 && listName.trim().length >= 2;
   const canStart =
@@ -175,113 +245,123 @@ export function RunBuilder({ tenant }) {
     (source !== "segment" || listName.trim().length >= 2);
 
   return (
-    <ConsoleShell tenant={tenant} title="New call run">
+    <ConsoleShell tenant={tenant} width={760}>
+      <h1 className="az-h1 mb-3 text-fg">New call run</h1>
+      <p className="mb-3 text-lg leading-snug text-fg-2">
+        Nothing dials until the last button. You will see exactly how many people
+        and what it costs first.
+      </p>
+      <Link className="mb-11 inline-block text-base text-az" href={base}>
+        See past runs →
+      </Link>
+
       {error ? (
-        <Strip className="mb-4" tone="markup">
+        <Strip className="mb-6" tone="markup">
           <span>{error}</span>
         </Strip>
       ) : null}
       {savedMsg ? (
-        <Strip className="mb-4" tone="live">
+        <Strip className="mb-6" tone="live">
           <span>{savedMsg}</span>
         </Strip>
       ) : null}
 
-      <Label>Source</Label>
-      <div className="mb-6 flex flex-wrap gap-2">
+      <StepHead n={1}>Who are we calling?</StepHead>
+      <div className="mb-5 flex flex-wrap gap-2 pl-[38px]">
         {SOURCES.map((item) => (
-          <button
-            className={`rounded-md border px-3 py-1.5 text-sm ${
-              source === item.id ? "border-ink bg-ink text-background" : "border-dotted border-ink-2"
-            }`}
+          <Tab
             key={item.id}
+            on={source === item.id}
             onClick={() => {
               setSource(item.id);
               if (item.id !== "segment") setSavedMsg("");
             }}
-            type="button"
           >
             {item.label}
-          </button>
+          </Tab>
         ))}
       </div>
 
-      {source === "upload" ? (
-        <>
-          <div className="mb-4">
-            <Label htmlFor="list-name">Name this list</Label>
-            <Field
-              id="list-name"
-              onChange={(e) => setListName(e.target.value)}
-              placeholder="Marina August"
-              value={listName}
-            />
-            <p className="mt-1 text-sm text-ink-3">
-              You will call it by this name in WhatsApp: call my Marina August with the cold list script.
+      <div className="mb-10 pl-[38px]">
+        {source === "segment" ? (
+          lists.length === 0 ? (
+            <p className="text-[15px] text-dim">
+              No saved lists yet. Upload a CSV and save it without calling.
             </p>
-          </div>
-          <Drop
-            accept=".csv,.txt,text/csv,text/plain,application/csv,application/vnd.ms-excel"
-            className="mb-4"
-            onFiles={(files) => parseCsv(files)}
-          >
-            {contacts.length
-              ? `${contacts.length} numbers from the file.`
-              : "CSV with names and numbers. Headers can be anything."}
-          </Drop>
-          {contacts.length ? (
-            <div className="mb-4 border-t border-rule">
-              {contacts.slice(0, 25).map((row, index) => (
-                <Row
-                  key={`${row.phone}-${index}`}
-                  sub={row.phone}
-                  title={row.name || row.phone}
+          ) : (
+            <div className="grid gap-2.5">
+              {lists.map((item) => (
+                <Radio
+                  key={item.name}
+                  on={listName === item.name}
+                  onClick={() => setListName(item.name)}
+                  sub={`${item.count} numbers`}
+                  title={item.name}
                 />
               ))}
-              {contacts.length > 25 ? (
-                <p className="py-3 text-sm text-ink-3">
-                  And {contacts.length - 25} more.
-                </p>
-              ) : null}
             </div>
-          ) : null}
-          <div className="mb-6">
-            <Button disabled={savingList || !canSave} onClick={saveList} variant="secondary">
+          )
+        ) : null}
+
+        {source === "upload" ? (
+          <>
+            <div className="mb-4">
+              <Label htmlFor="list-name">Name this list</Label>
+              <Field
+                id="list-name"
+                onChange={(e) => setListName(e.target.value)}
+                placeholder="Marina August"
+                value={listName}
+              />
+              <p className="mt-2 text-[13px] text-faint">
+                You will call it by this name in WhatsApp: call my Marina August
+                with the cold list script.
+              </p>
+            </div>
+            <Drop
+              accept=".csv,.txt,text/csv,text/plain,application/csv,application/vnd.ms-excel"
+              className="mb-4"
+              hint="Headers can be anything — we only need a number on each row."
+              onFiles={(files) => parseCsv(files)}
+            >
+              {contacts.length
+                ? `${contacts.length} numbers from the file`
+                : "Drop a CSV here"}
+            </Drop>
+            {contacts.length ? (
+              <div className="mb-4 border-t border-line">
+                {contacts.slice(0, 25).map((row, index) => (
+                  <div
+                    className="flex items-center gap-4 border-b border-hairline px-1 py-3"
+                    key={`${row.phone}-${index}`}
+                  >
+                    <span className="flex-1 text-[15px] text-fg">
+                      {row.name || row.phone}
+                    </span>
+                    <span className="font-mono text-[13px] text-faint">
+                      {row.phone}
+                    </span>
+                  </div>
+                ))}
+                {contacts.length > 25 ? (
+                  <p className="py-3 text-[13px] text-faint">
+                    And {contacts.length - 25} more.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+            <Button
+              disabled={savingList || !canSave}
+              onClick={saveList}
+              variant="secondary"
+            >
               {savingList ? "Saving…" : "Save the list, don’t call yet"}
             </Button>
-          </div>
-        </>
-      ) : (
-        <>
-          {source === "segment" ? (
-            <div className="mb-4">
-              <Label>Saved lists</Label>
-              {lists.length === 0 ? (
-                <p className="mb-3 text-sm text-ink-2">
-                  No saved lists yet. Upload a CSV and save it without calling.
-                </p>
-              ) : (
-                <div className="mb-4 flex flex-wrap gap-2">
-                  {lists.map((item) => (
-                    <button
-                      className={`rounded-md border px-3 py-1.5 text-sm ${
-                        listName === item.name
-                          ? "border-ink bg-ink text-background"
-                          : "border-dotted border-ink-2"
-                      }`}
-                      key={item.name}
-                      onClick={() => setListName(item.name)}
-                      type="button"
-                    >
-                      {item.name}
-                      <span className="ml-2 font-mono text-[10px] opacity-70">{item.count}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : null}
-          <div className="mb-6 grid gap-3 sm:grid-cols-2">
+          </>
+        ) : null}
+
+        {source === "whatsapp" ? (
+          <div className="grid gap-4.5 sm:grid-cols-2">
             <div>
               <Label htmlFor="areas">Areas</Label>
               <Field
@@ -301,75 +381,163 @@ export function RunBuilder({ tenant }) {
               />
             </div>
           </div>
-        </>
-      )}
+        ) : null}
+      </div>
 
-      <Strip className="mb-6" tone="default">
-        <span>
-          {matched} match
-          {(preview?.exclusions || []).length
-            ? ` — ${(preview.exclusions || [])
-                .map((item) => `${item.n} excluded (${item.reason})`)
-                .join(", ")}`
-            : ""}
-        </span>
-      </Strip>
-
-      <Label>Live scripts only</Label>
-      <div className="mb-6 border-t border-rule">
+      <StepHead n={2}>Which script?</StepHead>
+      <div className="mb-10 pl-[38px]">
         {scripts.length === 0 ? (
-          <p className="py-4 text-sm text-ink-2">Publish a script before you dial.</p>
+          <p className="text-[15px] text-dim">
+            Drafts don’t appear here.{" "}
+            <Link className="text-az" href={`${base}/scripts`}>
+              Publish one →
+            </Link>
+          </p>
         ) : (
-          scripts.map((script) => (
-            <Row
-              key={script.id}
-              onClick={() => setScriptId(script.id)}
-              right={
-                scriptId === script.id ? <Pill tone="live">Selected</Pill> : <Pill>Live</Pill>
-              }
-              sub={script.goal_label || "Live"}
-              title={script.display_name}
-            />
-          ))
+          <>
+            <div className="grid gap-2.5">
+              {scripts.map((script) => (
+                <Radio
+                  key={script.id}
+                  on={scriptId === script.id}
+                  onClick={() => setScriptId(script.id)}
+                  right={
+                    <span className="font-mono text-[10px] tracking-[.12em] text-az">
+                      LIVE
+                    </span>
+                  }
+                  sub={script.goal_label || "Live script"}
+                  title={
+                    <>
+                      {script.display_name}{" "}
+                      <span className="font-mono text-[11px] text-az">
+                        v{script.current_version}
+                      </span>
+                    </>
+                  }
+                />
+              ))}
+            </div>
+            <div className="mt-2.5 text-sm text-faint">
+              Drafts don’t appear here.{" "}
+              <Link className="text-az" href={`${base}/scripts`}>
+                Publish one →
+              </Link>
+            </div>
+          </>
         )}
       </div>
 
-      <div className="mb-6">
-        <Label htmlFor="window">Window start</Label>
-        <Field
-          id="window"
-          onChange={(e) => setWindowStart(e.target.value)}
-          type="datetime-local"
-          value={windowStart}
-        />
+      <StepHead n={3}>When should it start?</StepHead>
+      <div className="mb-11 pl-[38px]">
+        <div className="mb-3.5 flex flex-wrap gap-2">
+          <Tab
+            on={!windowStart && !pickTime}
+            onClick={() => {
+              setWindowStart("");
+              setPickTime(false);
+            }}
+          >
+            As soon as possible
+          </Tab>
+          <Tab
+            on={windowStart === thisEvening() && !pickTime}
+            onClick={() => {
+              setWindowStart(thisEvening());
+              setPickTime(false);
+            }}
+          >
+            This evening, 17:00
+          </Tab>
+          <Tab
+            on={windowStart === tomorrowMorning() && !pickTime}
+            onClick={() => {
+              setWindowStart(tomorrowMorning());
+              setPickTime(false);
+            }}
+          >
+            Tomorrow morning
+          </Tab>
+          <Tab on={pickTime} onClick={() => setPickTime(true)}>
+            Pick a time
+          </Tab>
+        </div>
+        {pickTime ? (
+          <div className="mb-3.5">
+            <Label htmlFor="window">Start at</Label>
+            <Field
+              id="window"
+              onChange={(e) => setWindowStart(e.target.value)}
+              type="datetime-local"
+              value={windowStart}
+            />
+          </div>
+        ) : null}
+        <div className="text-sm text-faint">
+          Calls only go out inside calling hours, {home?.agent?.tz || "Asia/Dubai"}{" "}
+          time. Anything outside waits.
+        </div>
       </div>
 
-      <div className="border border-rule-2 bg-surface p-4">
-        <p className="font-mono text-[10px] uppercase tracking-label text-ink-3">
-          Confirm
-        </p>
-        <p className="mt-2 text-sm leading-6 text-ink-2">
-          Caller ID: {home?.tenant?.display_phone || "your AgentZero line"}.
-          AI disclosure is required on every call. Estimate AED {estCostAed(matched)} for{" "}
-          {matched} dials
-          {selected ? ` with ${selected.display_name}` : ""}
-          {windowStart ? ", starting at the window you set" : ""}.
-        </p>
-        <div className="mt-4 flex flex-wrap gap-2">
+      <div className="rounded-2xl border border-az-edge bg-az-wash p-7">
+        <div className="mb-5 font-mono text-[11px] tracking-[.16em] text-az">
+          BEFORE YOU START
+        </div>
+        <div className="mb-5.5 flex flex-wrap gap-9">
+          <div>
+            <div className="text-[40px] font-semibold leading-none tracking-[-.03em] text-fg">
+              {matched}
+            </div>
+            <div className="mt-1.5 text-sm text-dim">will be called</div>
+          </div>
+          <div>
+            <div className="text-[40px] font-semibold leading-none tracking-[-.03em] text-dim">
+              {skipped}
+            </div>
+            <div className="mt-1.5 text-sm text-dim">skipped</div>
+          </div>
+          <div>
+            <div className="text-[40px] font-semibold leading-none tracking-[-.03em] text-fg">
+              AED {estCostAed(matched)}
+            </div>
+            <div className="mt-1.5 text-sm text-dim">estimated</div>
+          </div>
+        </div>
+        <div className="grid gap-1.5 border-b border-[#1d3327] pb-5.5 text-sm text-dim">
+          {exclusions.length ? (
+            <div>
+              {exclusions
+                .map((item) => `${item.n} ${item.reason}`)
+                .join(" · ")}
+            </div>
+          ) : (
+            <div>Nobody excluded from this list.</div>
+          )}
+          <div>
+            Caller ID: {home?.tenant?.display_phone || "your AgentZero line"}.
+            Every call states it is an AI.
+          </div>
+        </div>
+        <div className="mt-5.5 flex flex-wrap gap-3">
           <Button disabled={saving || !canStart} onClick={commit}>
-            {saving ? "Queueing…" : windowStart ? "Schedule the run" : "Start the run"}
+            {saving
+              ? "Queueing…"
+              : windowStart
+                ? `Schedule ${matched} calls`
+                : `Start calling ${matched} people`}
           </Button>
           {scriptId ? (
             <Button
-              onClick={() =>
-                router.push(`/copilot/${encodeURIComponent(tenant)}/scripts/${scriptId}`)
-              }
-              type="button"
+              onClick={() => router.push(`${base}/scripts/${scriptId}`)}
               variant="secondary"
             >
               Test on my own number first
             </Button>
           ) : null}
+        </div>
+        <div className="mt-4.5 text-sm text-dim">
+          Results land in your WhatsApp as they come in. You don’t need to sit
+          here.
         </div>
       </div>
     </ConsoleShell>

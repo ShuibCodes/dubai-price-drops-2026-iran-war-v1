@@ -4,12 +4,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ConsoleShell } from "@/components/console/console-shell";
+import { Tooltip } from "@/components/console/tooltip";
 import { Button } from "@/components/ui/button";
 import { Check } from "@/components/ui/check";
 import { Field } from "@/components/ui/field";
 import { Label } from "@/components/ui/label";
 import { Pill } from "@/components/ui/pill";
-import { Row } from "@/components/ui/row";
 import { Strip } from "@/components/ui/strip";
 import {
   formatDay,
@@ -319,7 +319,7 @@ export function ScriptEditor({ tenant, scriptId, role, waPhone }) {
 
   const status = script?.status === "live" ? "live" : "draft";
   const needsSave = dirty || !latest;
-  let barLeft = "Draft";
+  let barLeft = "Hear it before your leads do.";
   if (dirty) barLeft = "Unsaved changes";
   else if (latestPublished) {
     barLeft = `v${latestPublished.version_no} · published ${formatRelative(latestPublished.published_at)}`;
@@ -328,180 +328,144 @@ export function ScriptEditor({ tenant, scriptId, role, waPhone }) {
   }
 
   return (
-    <ConsoleShell tenant={tenant} title={name || "Script"}>
+    <ConsoleShell footer={false} tenant={tenant} width={760}>
       <Link
-        className="mb-6 inline-block text-sm text-ink-3 hover:text-ink-2"
+        className="mb-5 inline-block font-mono text-[11px] tracking-[.14em] text-faint hover:text-fg"
         href={listHref}
       >
-        ← All scripts
+        ← ALL SCRIPTS
       </Link>
 
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <input
+          aria-label="Script name"
+          className="min-w-0 flex-1 rounded-lg border border-transparent bg-transparent text-[40px] font-semibold leading-none tracking-[-.03em] text-fg outline-none hover:border-line-2 focus:border-az"
+          onChange={(event) => setName(event.target.value)}
+          value={name}
+        />
+        <span className={status === "live" ? "az-pill-live" : "az-pill-draft"}>
+          {status === "live" ? `LIVE · v${script?.current_version}` : "DRAFT"}
+        </span>
+      </div>
+      <p className="mb-4 text-[17px] text-dim">
+        Four questions. Plain English — write it the way you would brief a new
+        junior.
+      </p>
+      <div className="mb-10 font-mono text-[11px] text-faint">
+        {latestPublished ? (
+          <>
+            Last published by {latestPublished.published_by_name || "Unknown"} ·{" "}
+            {formatDay(latestPublished.published_at)}
+          </>
+        ) : (
+          <>Not published yet</>
+        )}
+      </div>
+
       {error ? (
-        <Strip className="mb-4" tone="markup">
+        <Strip className="mb-8" tone="markup">
           <span>{error}</span>
         </Strip>
       ) : null}
 
       {loading ? (
-        <div className="border border-rule bg-surface p-5 text-sm text-ink-3">Loading…</div>
+        <div className="az-card p-6.5 text-[15px] text-dim">Loading…</div>
       ) : (
-        <div className="border border-rule bg-surface">
-          <div className="space-y-8 p-5 pb-28">
-            <div>
-              <div className="relative">
-                <Field
-                  className="pr-20 text-lg font-medium"
-                  onChange={(event) => setName(event.target.value)}
-                  value={name}
-                />
-                <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                  <Pill tone={status === "live" ? "live" : "draft"}>
-                    {status === "live" ? "LIVE" : "DRAFT"}
-                  </Pill>
-                </div>
-              </div>
-              <div className="mt-2 font-mono text-[11px] text-ink-3">
-                {latestPublished ? (
-                  <>
-                    Last published by {latestPublished.published_by_name || "Unknown"} ·{" "}
-                    {formatDay(latestPublished.published_at)} ·{" "}
-                  </>
-                ) : (
-                  <>Not published yet · </>
-                )}
-                <button
-                  className="underline-offset-2 hover:underline"
-                  onClick={() => setHistoryOpen((open) => !open)}
-                  type="button"
+        <div className="grid gap-[30px]">
+          <div>
+            <Label className="flex items-center gap-2" htmlFor="goal">
+              What is the goal of the call
+              <Tooltip>
+                One sentence. The call ends as soon as this is answered — so keep
+                it to a single thing.
+              </Tooltip>
+            </Label>
+            <Field
+              as="select"
+              id="goal"
+              onChange={(event) => patchConfig({ goal: event.target.value })}
+              value={config.goal}
+            >
+              {GOALS.map((goal) => (
+                <option key={goal.id} value={goal.id}>
+                  {goal.label}
+                </option>
+              ))}
+            </Field>
+          </div>
+
+          <div>
+            <Label htmlFor="opening">How should it open</Label>
+            <Field
+              as="textarea"
+              id="opening"
+              maxLength={200}
+              onChange={(event) => patchConfig({ opening_line: event.target.value })}
+              placeholder="After they give permission, this is the frame."
+              rows={3}
+              trailing={`${(config.opening_line || "").length}/200`}
+              value={config.opening_line}
+            />
+            <div className="mt-2 text-[13px] text-faint">
+              The AI disclosure is required on every call in the UAE. It stays
+              in. Supports {"{{lead}}"} and {"{{agent}}"}.
+            </div>
+          </div>
+
+          <div>
+            <Label className="flex items-center gap-2">
+              What must it find out
+              <Tooltip>
+                These come back to you as one line per lead in WhatsApp. Three or
+                four max — more and the call drags.
+              </Tooltip>
+            </Label>
+            <div className="grid gap-2.5">
+              {(config.find_out || []).map((item, index) => (
+                <div
+                  className="flex items-center gap-3 rounded-[10px] border border-line-2 bg-field px-[18px] py-3.5"
+                  key={`${item.label}-${index}`}
                 >
-                  View history
-                </button>
-              </div>
-              {historyOpen ? (
-                <div className="mt-3 border-t border-rule">
-                  {versions.length === 0 ? (
-                    <p className="py-3 text-sm text-ink-3">No versions yet.</p>
-                  ) : (
-                    versions.map((row) => (
-                      <Row
-                        key={row.id}
-                        right={
-                          isAdmin ? (
-                            <Button
-                              disabled={busy}
-                              onClick={() => restore(row.version_no)}
-                              variant="secondary"
-                            >
-                              Restore
-                            </Button>
-                          ) : null
-                        }
-                        sub={runsLabel(row.runs)}
-                        title={`v${row.version_no} · ${row.published_by_name || "Draft"} · ${formatDay(row.published_at || row.created_at)}`}
-                      />
-                    ))
-                  )}
-                </div>
-              ) : null}
-            </div>
-
-            <div>
-              <Label htmlFor="goal">Goal</Label>
-              <Field
-                as="select"
-                id="goal"
-                onChange={(event) => patchConfig({ goal: event.target.value })}
-                value={config.goal}
-              >
-                {GOALS.map((goal) => (
-                  <option key={goal.id} value={goal.id}>
-                    {goal.label}
-                  </option>
-                ))}
-              </Field>
-            </div>
-
-            <div>
-              <Label htmlFor="voice">Voice</Label>
-              <div className="flex gap-2">
-                <Field
-                  as="select"
-                  className="flex-1"
-                  id="voice"
-                  onChange={(event) => patchConfig({ voice_id: event.target.value })}
-                  value={config.voice_id}
-                >
-                  {VOICE_ALLOWLIST.map((voice) => (
-                    <option key={voice.id} value={voice.id}>
-                      {voice.label}
-                    </option>
-                  ))}
-                </Field>
-                <Button onClick={() => setVoicePreview(true)} variant="secondary">
-                  Preview
-                </Button>
-              </div>
-              {voicePreview ? (
-                <Strip className="mt-2" tone="default">
-                  <span>You’ll hear this voice on the next test call.</span>
-                  <Button onClick={() => setVoicePreview(false)} variant="ghost">
-                    Dismiss
-                  </Button>
-                </Strip>
-              ) : null}
-            </div>
-
-            <div>
-              <Label htmlFor="opening">Opening line</Label>
-              <Field
-                as="textarea"
-                id="opening"
-                maxLength={200}
-                onChange={(event) => patchConfig({ opening_line: event.target.value })}
-                placeholder="After they give permission, this is the frame."
-                rows={3}
-                trailing={`${(config.opening_line || "").length}/200`}
-                value={config.opening_line}
-              />
-              <p className="mt-1 font-mono text-[10px] text-ink-3">
-                Supports {"{{lead}}"} and {"{{agent}}"}.
-              </p>
-            </div>
-
-            <div>
-              <Label>What it should find out</Label>
-              <div className="border-t border-rule">
-                {(config.find_out || []).map((item, index) => (
-                  <Check
-                    checked
-                    key={`${item.label}-${index}`}
-                    meta={
-                      <span className="font-mono text-[10px] uppercase tracking-label text-ink-3">
-                        → {item.type}
-                      </span>
-                    }
-                    onChange={(on) => {
-                      if (!on) removeFindOut(index);
-                    }}
+                  <span className="font-mono text-xs text-ghost">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <span className="flex-1 text-base text-fg">{item.label}</span>
+                  <span className="font-mono text-[10px] uppercase tracking-[.12em] text-ghost">
+                    → {item.type}
+                  </span>
+                  <button
+                    aria-label={`Remove ${item.label}`}
+                    className="text-[15px] text-ghost hover:text-fg"
+                    onClick={() => removeFindOut(index)}
+                    type="button"
                   >
-                    {item.label}
-                  </Check>
-                ))}
-              </div>
+                    ✕
+                  </button>
+                </div>
+              ))}
+
               {addingFindOut ? (
-                <div className="mt-3 space-y-2">
+                <div className="grid gap-2.5 rounded-[10px] border border-line-2 bg-panel-2 p-4">
                   <Field
+                    autoFocus
                     onChange={(event) =>
-                      setNewFindOut((current) => ({ ...current, label: event.target.value }))
+                      setNewFindOut((current) => ({
+                        ...current,
+                        label: event.target.value,
+                      }))
                     }
                     placeholder="The question to ask"
                     value={newFindOut.label}
                   />
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2.5">
                     <Field
                       as="select"
+                      className="flex-1"
                       onChange={(event) =>
-                        setNewFindOut((current) => ({ ...current, type: event.target.value }))
+                        setNewFindOut((current) => ({
+                          ...current,
+                          type: event.target.value,
+                        }))
                       }
                       value={newFindOut.type}
                     >
@@ -512,133 +476,241 @@ export function ScriptEditor({ tenant, scriptId, role, waPhone }) {
                       ))}
                     </Field>
                     <Button
-                      disabled={!newFindOut.label.trim() || (config.find_out || []).length >= 8}
+                      disabled={
+                        !newFindOut.label.trim() ||
+                        (config.find_out || []).length >= 8
+                      }
                       onClick={addFindOut}
                     >
                       Add
                     </Button>
-                    <Button onClick={() => setAddingFindOut(false)} variant="ghost">
+                    <Button
+                      onClick={() => setAddingFindOut(false)}
+                      variant="quiet"
+                    >
                       Cancel
                     </Button>
                   </div>
                 </div>
               ) : (
-                <Button
-                  className="mt-3"
+                <button
+                  className="rounded-[10px] border border-dashed border-[#2c332f] px-[18px] py-3.5 text-left text-[15px] text-dim hover:border-az hover:text-az disabled:opacity-40"
                   disabled={(config.find_out || []).length >= 8}
                   onClick={() => setAddingFindOut(true)}
-                  variant="secondary"
+                  type="button"
                 >
-                  Add question
-                </Button>
+                  + Add another
+                </button>
               )}
-            </div>
-
-            <div>
-              <Label>Rules</Label>
-              <div className="border-t border-rule">
-                {RULES.map((rule) => (
-                  <Check
-                    checked={(config.rules || []).includes(rule.key)}
-                    key={rule.key}
-                    locked={rule.locked}
-                    meta={rule.locked ? <Pill>Required</Pill> : null}
-                    onChange={(on) => toggleRule(rule.key, on)}
-                  >
-                    {rule.label}
-                  </Check>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <Label htmlFor="extra">Anything else?</Label>
-              <Field
-                as="textarea"
-                id="extra"
-                maxLength={300}
-                onChange={(event) => patchConfig({ extra_context: event.target.value })}
-                placeholder="Mention we're the only Emaar-approved brokerage in JLT"
-                rows={3}
-                trailing={`${(config.extra_context || "").length}/300`}
-                value={config.extra_context}
-              />
-              <p className="mt-1 text-xs text-ink-3">
-                Extra context for this script. Core behaviour and privacy rules are
-                set by AgentZero and can’t be changed here.
-              </p>
             </div>
           </div>
 
-          <div className="sticky bottom-0 border-t border-rule bg-surface">
-            {testState === "confirm" ? (
-              <Strip tone="live">
-                <span>
-                  Calling {maskPhone(waPhone)} now with this version.
-                </span>
-                <Button onClick={cancelTest} variant="ghost">
-                  Cancel
-                </Button>
-              </Strip>
-            ) : null}
-            {testState === "calling" ? (
-              <Strip>
-                <span className="text-ink-3">Calling you now…</span>
-              </Strip>
-            ) : null}
-            {webState === "connecting" ? (
-              <Strip>
-                <span className="text-ink-3">Connecting in this tab…</span>
-              </Strip>
-            ) : null}
-            {webState === "live" ? (
-              <Strip tone="live">
-                <span>
-                  {webHearing
-                    ? "Hearing you — keep talking."
-                    : "In this tab · speak to start. Not the live line."}
-                </span>
-                <Button onClick={hangUpWeb} variant="ghost">
-                  Hang up
-                </Button>
-              </Strip>
-            ) : null}
-            <div className="flex items-center justify-between gap-3 px-4 py-3">
-              <p
-                className={`font-mono text-[11px] ${dirty ? "text-warn" : "text-ink-3"}`}
+          <div>
+            <Label htmlFor="voice">Voice</Label>
+            <div className="flex flex-wrap gap-2.5">
+              <Field
+                as="select"
+                className="flex-1"
+                id="voice"
+                onChange={(event) => patchConfig({ voice_id: event.target.value })}
+                value={config.voice_id}
               >
-                {barLeft}
-              </p>
-              <div className="flex items-center gap-2">
-                {needsSave ? (
-                  <Button disabled={saving} onClick={() => save().catch(() => {})} variant="secondary">
-                    {saving ? "Saving…" : "Save"}
-                  </Button>
-                ) : null}
-                <Button
-                  disabled={needsSave || saving || publishing || Boolean(testState) || Boolean(webState)}
-                  onClick={talkHere}
-                  variant="ghost"
-                >
-                  Talk here
-                </Button>
-                <Button
-                  disabled={needsSave || saving || publishing || Boolean(testState) || Boolean(webState)}
-                  onClick={testCall}
-                  variant={needsSave ? "ghost" : "secondary"}
-                >
-                  Test call me
-                </Button>
-                {isAdmin ? (
-                  <Button disabled={publishing || saving || Boolean(webState)} onClick={publish}>
-                    {publishing ? "Publishing…" : "Publish"}
-                  </Button>
-                ) : null}
-              </div>
+                {VOICE_ALLOWLIST.map((voice) => (
+                  <option key={voice.id} value={voice.id}>
+                    {voice.label}
+                  </option>
+                ))}
+              </Field>
+              <Button onClick={() => setVoicePreview(true)} variant="secondary">
+                Preview
+              </Button>
             </div>
+            {voicePreview ? (
+              <Strip
+                className="mt-2.5"
+                onDismiss={() => setVoicePreview(false)}
+                tone="default"
+              >
+                <span>You will hear this voice on the next test call.</span>
+              </Strip>
+            ) : null}
+          </div>
+
+          <div>
+            <Label>Rules</Label>
+            <div className="az-card px-5 py-1">
+              {RULES.map((rule) => (
+                <Check
+                  checked={(config.rules || []).includes(rule.key)}
+                  key={rule.key}
+                  locked={rule.locked}
+                  meta={rule.locked ? <Pill>Required</Pill> : null}
+                  onChange={(on) => toggleRule(rule.key, on)}
+                >
+                  {rule.label}
+                </Check>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <Label htmlFor="extra">Anything else?</Label>
+            <Field
+              as="textarea"
+              id="extra"
+              maxLength={300}
+              onChange={(event) => patchConfig({ extra_context: event.target.value })}
+              placeholder="Mention we're the only Emaar-approved brokerage in JLT"
+              rows={3}
+              trailing={`${(config.extra_context || "").length}/300`}
+              value={config.extra_context}
+            />
+            <p className="mt-2 text-[13px] text-faint">
+              Colour for this script only. Core behaviour and privacy rules are
+              set by AgentZero and cannot be changed here.
+            </p>
+          </div>
+
+          <div>
+            <button
+              className="flex w-full items-center justify-between border-t border-line py-4 font-mono text-[11px] tracking-[.14em] text-faint hover:text-fg"
+              onClick={() => setHistoryOpen((open) => !open)}
+              type="button"
+            >
+              <span>VERSION HISTORY</span>
+              <span>{historyOpen ? "−" : "+"}</span>
+            </button>
+            {historyOpen ? (
+              versions.length === 0 ? (
+                <p className="py-3 text-[15px] text-dim">No versions yet.</p>
+              ) : (
+                <div className="grid gap-px overflow-hidden rounded-[10px] bg-hairline">
+                  {versions.map((row) => {
+                    const isLive = Boolean(row.published_at);
+                    return (
+                      <div
+                        className="flex flex-wrap items-center gap-4 bg-panel px-[18px] py-[15px]"
+                        key={row.id}
+                      >
+                        <span
+                          className={`w-7 font-mono text-xs ${isLive ? "text-az" : "text-faint"}`}
+                        >
+                          v{row.version_no}
+                        </span>
+                        <span
+                          className={`min-w-[120px] flex-1 text-[15px] ${isLive ? "text-fg-soft" : "text-dim"}`}
+                        >
+                          {runsLabel(row.runs)}
+                        </span>
+                        <span className="text-[13px] text-faint">
+                          {formatDay(row.published_at || row.created_at)} ·{" "}
+                          {row.published_by_name || "Draft"}
+                        </span>
+                        {isLive && row.version_no === latestPublished?.version_no ? (
+                          <span className="font-mono text-[10px] text-az">LIVE</span>
+                        ) : isAdmin ? (
+                          <button
+                            className="text-[13px] text-dim hover:text-az disabled:opacity-40"
+                            disabled={busy}
+                            onClick={() => restore(row.version_no)}
+                            type="button"
+                          >
+                            Restore
+                          </button>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              )
+            ) : null}
           </div>
         </div>
       )}
+
+      <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-line-2 bg-shell/95 backdrop-blur">
+        <div className="mx-auto max-w-[760px] px-6 py-4">
+          {testState === "confirm" ? (
+            <Strip className="mb-3" tone="live">
+              <span>Calling {maskPhone(waPhone)} now with this version.</span>
+              <Button onClick={cancelTest} variant="quiet">
+                Cancel
+              </Button>
+            </Strip>
+          ) : null}
+          {testState === "calling" ? (
+            <Strip className="mb-3">
+              <span>Calling you now…</span>
+            </Strip>
+          ) : null}
+          {webState === "connecting" ? (
+            <Strip className="mb-3">
+              <span>Connecting in this tab…</span>
+            </Strip>
+          ) : null}
+          {webState === "live" ? (
+            <Strip className="mb-3" tone="live">
+              <span>
+                {webHearing
+                  ? "Hearing you — keep talking."
+                  : "In this tab · speak to start. Not the live line."}
+              </span>
+              <Button onClick={hangUpWeb} variant="quiet">
+                Hang up
+              </Button>
+            </Strip>
+          ) : null}
+
+          <div className="flex flex-wrap items-center gap-3">
+            <div
+              className={`min-w-[160px] flex-1 text-sm ${dirty ? "text-warn" : "text-dim"}`}
+            >
+              {barLeft}
+            </div>
+            {needsSave ? (
+              <Button
+                disabled={saving}
+                onClick={() => save().catch(() => {})}
+                variant="secondary"
+              >
+                {saving ? "Saving…" : "Save"}
+              </Button>
+            ) : null}
+            <Button
+              disabled={
+                needsSave || saving || publishing || Boolean(testState) || Boolean(webState)
+              }
+              onClick={talkHere}
+              variant="secondary"
+            >
+              ▶ Talk here
+            </Button>
+            <Button
+              disabled={
+                needsSave || saving || publishing || Boolean(testState) || Boolean(webState)
+              }
+              onClick={testCall}
+              variant="secondary"
+            >
+              Test call me
+            </Button>
+            {isAdmin ? (
+              <span className="relative inline-flex items-center gap-2">
+                <Button
+                  disabled={publishing || saving || Boolean(webState)}
+                  onClick={publish}
+                >
+                  {publishing ? "Publishing…" : "Publish"}
+                </Button>
+                <Tooltip align="right">
+                  Publishing makes this LIVE — it can then be used on real lists.
+                  Admins only.
+                </Tooltip>
+              </span>
+            ) : null}
+          </div>
+        </div>
+      </div>
     </ConsoleShell>
   );
 }
