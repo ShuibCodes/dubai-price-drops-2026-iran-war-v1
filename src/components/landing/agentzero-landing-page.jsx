@@ -154,6 +154,99 @@ const BROKERAGE_PLAN_FEATURES = [
   "No CRM, no app, no login. It all runs on WhatsApp",
 ];
 
+const FAQS = [
+  {
+    q: "Is connecting WhatsApp a privacy risk?",
+    a: "AgentZero is an official Meta Tech Provider. Meta’s own team reviewed and approved our system in June 2026. Your chats go through Meta’s Cloud API — the official channel — not an unofficial WhatsApp workaround.",
+  },
+  {
+    q: "Who is this for?",
+    a: "Dubai brokerages and agents. If your leads live on WhatsApp and your day is spent dialling, this is built for you — one desk or a full roster.",
+  },
+  {
+    q: "How do we use it?",
+    a: "Connect your WhatsApp Business number. Then run it from the chat you already live in: morning briefs, “call this lead”, send a listing pack. No new app. No login. No CRM training.",
+  },
+  {
+    q: "Does it replace my agents?",
+    a: "No. It dials, qualifies, logs and follows up. Your agents get the people with budget, timeline and intent — then they close.",
+  },
+  {
+    q: "Who owns our data?",
+    a: "You do. It is not sold, not shared with other brokerages, and not used to train someone else’s model.",
+  },
+  {
+    q: "How fast can we go live?",
+    a: "A single agent can connect the same day. A brokerage rollout is a short onboarding, not a six-month CRM project.",
+  },
+  {
+    q: "What does it cost?",
+    a: "AED 750 per agent / month, or a custom plan for the whole roster. 15 qualified conversations in your first month, or that month is free.",
+  },
+];
+
+function FaqList() {
+  return (
+    <div className="overflow-hidden rounded-[24px] border border-white/10 bg-white/[0.03] sm:rounded-[28px]">
+      {FAQS.map((item, index) => (
+        <FaqItem
+          key={item.q}
+          answer={item.a}
+          question={item.q}
+          showMeta={index === 0}
+          startOpen={index === 0}
+        />
+      ))}
+    </div>
+  );
+}
+
+function FaqItem({ question, answer, startOpen = false, showMeta = false }) {
+  const [open, setOpen] = useState(startOpen);
+
+  return (
+    <details
+      className={`group border-b border-white/10 last:border-b-0 ${
+        showMeta ? "bg-[#ff2d55]/[0.06]" : ""
+      }`}
+      open={open}
+      onToggle={(event) => {
+        const nextOpen = event.currentTarget.open;
+        if (nextOpen !== open) setOpen(nextOpen);
+      }}
+    >
+      <summary className="flex cursor-pointer list-none items-start justify-between gap-4 px-5 py-5 sm:px-7 sm:py-6 [&::-webkit-details-marker]:hidden">
+        <h3 className="text-base font-semibold leading-snug text-white sm:text-lg">
+          {question}
+        </h3>
+        <span
+          aria-hidden="true"
+          className="mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border border-white/25 text-white transition group-open:rotate-45 group-open:border-[#ffd60a]/40 group-open:text-[#ffd60a]"
+        >
+          <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none">
+            <path
+              d="M6 1v10M1 6h10"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
+          </svg>
+        </span>
+      </summary>
+      <div className="px-5 pb-5 sm:px-7 sm:pb-6">
+        {showMeta ? (
+          <div className="mb-3 inline-flex items-center rounded-lg bg-white px-2 py-1">
+            <Image alt="Meta Tech Provider" className="h-5 w-auto" src={logoMeta} />
+          </div>
+        ) : null}
+        <p className="max-w-3xl text-sm leading-7 text-white sm:text-base sm:leading-8">
+          {answer}
+        </p>
+      </div>
+    </details>
+  );
+}
+
 function GoldCheck() {
   return (
     <svg
@@ -175,11 +268,11 @@ function GoldCheck() {
 
 export default function AgentZeroLandingPage() {
   return (
-    <main className="min-h-screen bg-black text-white">
+    <main className="min-h-screen bg-black font-medium text-white">
       <section className="border-b border-white/5">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-5 sm:px-6 lg:px-8">
           <div>
-            <div className="mono text-[10px] uppercase tracking-[0.34em] text-white/35">
+            <div className="mono text-[10px] uppercase tracking-[0.34em] text-white">
               AgentZero
             </div>
           </div>
@@ -187,7 +280,7 @@ export default function AgentZeroLandingPage() {
             href={WHATSAPP_URL}
             target="_blank"
             rel="noreferrer"
-            className="rounded-full border border-white/10 px-4 py-2 text-sm text-white/75 transition hover:text-white"
+            className="rounded-full border border-white/10 px-4 py-2 text-sm text-white transition hover:text-white"
           >
             Book a call
           </a>
@@ -244,7 +337,7 @@ export default function AgentZeroLandingPage() {
         <div className="grid gap-4 sm:gap-6 lg:grid-cols-3">
           <article className="rounded-[28px] border border-[#ff2d55]/20 bg-[#ff2d55]/[0.06] p-6 sm:rounded-[32px] sm:p-10">
             <div className="flex flex-wrap items-baseline gap-x-2 font-semibold leading-none text-white">
-              <span className="text-xl text-white/70 sm:text-3xl">AED</span>
+              <span className="text-xl text-white sm:text-3xl">AED</span>
               <span className="text-4xl tracking-tight text-[#ff2d55] sm:text-6xl">
                 <CountUp
                   to={30000000}
@@ -253,17 +346,17 @@ export default function AgentZeroLandingPage() {
               </span>
               <span className="text-3xl text-[#ff2d55] sm:text-5xl">+</span>
             </div>
-            <p className="mt-4 text-base leading-7 text-white/65 sm:mt-5 sm:text-lg">
+            <p className="mt-4 text-base leading-7 text-white sm:mt-5 sm:text-lg">
               Sold with AI in the last 90 days
             </p>
           </article>
 
           <article className="rounded-[28px] border border-[#ff2d55]/20 bg-[#ff2d55]/[0.06] p-6 sm:rounded-[32px] sm:p-10">
-            <p className="text-base leading-7 text-white/65 sm:text-lg">
+            <p className="text-base leading-7 text-white sm:text-lg">
               Brokerages using AgentZero added
             </p>
             <div className="mt-3 flex flex-wrap items-baseline gap-x-2 font-semibold leading-none text-white">
-              <span className="text-xl text-white/70 sm:text-3xl">AED</span>
+              <span className="text-xl text-white sm:text-3xl">AED</span>
               <span className="text-4xl tracking-tight text-[#ff2d55] sm:text-6xl">
                 <CountUp
                   to={20000000}
@@ -271,7 +364,7 @@ export default function AgentZeroLandingPage() {
                 />
               </span>
             </div>
-            <p className="mt-4 text-base leading-7 text-white/65 sm:mt-5 sm:text-lg">
+            <p className="mt-4 text-base leading-7 text-white sm:mt-5 sm:text-lg">
               to their pipelines within first 14 days
             </p>
           </article>
@@ -280,7 +373,7 @@ export default function AgentZeroLandingPage() {
             <div className="text-4xl font-semibold leading-none tracking-tight text-[#ffd60a] sm:text-6xl">
               7 years
             </div>
-            <p className="mt-4 text-base leading-7 text-white/65 sm:mt-5 sm:text-lg">
+            <p className="mt-4 text-base leading-7 text-white sm:mt-5 sm:text-lg">
               of broker experience, built in
             </p>
           </article>
@@ -290,13 +383,13 @@ export default function AgentZeroLandingPage() {
       <section className="mx-auto max-w-7xl px-4 pb-14 sm:px-6 sm:pb-20 lg:px-8">
         <div className="grid gap-8 lg:grid-cols-2 lg:items-center lg:gap-10">
           <div>
-            <div className="mono text-[11px] uppercase tracking-[0.32em] text-white/35">
+            <div className="mono text-[11px] uppercase tracking-[0.32em] text-white">
               How it works
             </div>
             <h2 className="mt-4 text-[1.7rem] font-semibold leading-tight text-white sm:text-4xl">
               You close. It does everything before and after.
             </h2>
-            <p className="mt-5 text-base leading-7 text-white/75 sm:text-lg sm:leading-8">
+            <p className="mt-5 text-base leading-7 text-white sm:text-lg sm:leading-8">
               AgentZero learns from your own conversations, emails and call
               records —{" "}
               <span className="font-semibold text-[#ffd60a]">
@@ -354,13 +447,13 @@ export default function AgentZeroLandingPage() {
             />
           </div>
           <div className="order-1 lg:order-2">
-            <div className="mono text-[11px] uppercase tracking-[0.32em] text-white/35">
+            <div className="mono text-[11px] uppercase tracking-[0.32em] text-white">
               Why it wins
             </div>
             <h2 className="mt-4 text-[1.7rem] font-semibold leading-tight text-white sm:text-4xl">
               Every morning: who to call, and why.
             </h2>
-            <p className="mt-5 text-base leading-7 text-white/75 sm:text-lg sm:leading-8">
+            <p className="mt-5 text-base leading-7 text-white sm:text-lg sm:leading-8">
               AgentZero reads across your chats, emails and calls, spots the
               leads showing intent — a reply, a revisit, a timeline that just
               got real — and puts them at the top of your WhatsApp before your
@@ -382,23 +475,23 @@ export default function AgentZeroLandingPage() {
 
       <section className="mx-auto max-w-7xl px-4 pb-14 sm:px-6 sm:pb-20 lg:px-8">
         <div className="mb-8 sm:mb-10">
-          <div className="mono text-[11px] uppercase tracking-[0.32em] text-white/35">
+          <div className="mono text-[11px] uppercase tracking-[0.32em] text-white">
             Before and after
           </div>
           <h2 className="mt-4 text-[1.7rem] font-semibold leading-tight text-white sm:text-4xl">
             The same working day, with and without it.
           </h2>
-          <p className="mt-4 max-w-2xl text-base leading-7 text-white/65 sm:text-lg sm:leading-8">
+          <p className="mt-4 max-w-2xl text-base leading-7 text-white sm:text-lg sm:leading-8">
             The work you already do, done the moment it needs doing.
           </p>
         </div>
 
         <div className="overflow-hidden rounded-[24px] border border-white/10 bg-white/[0.03] sm:rounded-[28px]">
           <div className="hidden grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)] border-b border-white/10 lg:grid">
-            <div className="px-6 py-4 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/40">
+            <div className="px-6 py-4 text-[11px] font-semibold uppercase tracking-[0.22em] text-white">
               Scenario
             </div>
-            <div className="border-l border-white/10 px-6 py-4 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/40">
+            <div className="border-l border-white/10 px-6 py-4 text-[11px] font-semibold uppercase tracking-[0.22em] text-white">
               Without AgentZero
             </div>
             <div className="border-l border-[#ff2d55]/25 bg-[#ff2d55]/[0.06] px-6 py-4 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#ff9ab0]">
@@ -414,7 +507,7 @@ export default function AgentZeroLandingPage() {
               }`}
             >
               <div className="lg:px-6 lg:py-6">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/35 lg:hidden">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white lg:hidden">
                   Scenario
                 </div>
                 <p className="mt-1 text-base font-semibold leading-snug text-white lg:mt-0">
@@ -423,13 +516,13 @@ export default function AgentZeroLandingPage() {
               </div>
 
               <div className="rounded-2xl border border-white/10 bg-black/40 p-4 lg:rounded-none lg:border-0 lg:border-l lg:border-white/10 lg:bg-transparent lg:px-6 lg:py-6">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/35 lg:hidden">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white lg:hidden">
                   Without AgentZero
                 </div>
-                <p className="mt-1 text-base font-semibold text-white/45 lg:mt-0">
+                <p className="mt-1 text-base font-semibold text-white lg:mt-0">
                   {row.without.headline}
                 </p>
-                <p className="mt-1 text-sm leading-6 text-white/35">{row.without.detail}</p>
+                <p className="mt-1 text-sm leading-6 text-white">{row.without.detail}</p>
               </div>
 
               <div className="rounded-2xl border border-[#ff2d55]/25 bg-[#ff2d55]/[0.08] p-4 lg:rounded-none lg:border-0 lg:border-l lg:border-[#ff2d55]/25 lg:bg-[#ff2d55]/[0.06] lg:px-6 lg:py-6">
@@ -439,7 +532,7 @@ export default function AgentZeroLandingPage() {
                 <p className="mt-1 text-base font-semibold text-[#ffd60a] lg:mt-0">
                   {row.with.headline}
                 </p>
-                <p className="mt-1 text-sm leading-6 text-white/75">{row.with.detail}</p>
+                <p className="mt-1 text-sm leading-6 text-white">{row.with.detail}</p>
               </div>
             </div>
           ))}
@@ -459,7 +552,7 @@ export default function AgentZeroLandingPage() {
 
       <section className="mx-auto max-w-7xl px-4 pb-14 sm:px-6 sm:pb-20 lg:px-8">
         <div className="mb-6 sm:mb-8">
-          <div className="mono text-[11px] uppercase tracking-[0.32em] text-white/35">
+          <div className="mono text-[11px] uppercase tracking-[0.32em] text-white">
             Product stack
           </div>
           <h2 className="mt-4 text-[1.7rem] font-semibold text-white sm:text-3xl">
@@ -475,7 +568,7 @@ export default function AgentZeroLandingPage() {
               <div className="text-xs uppercase tracking-[0.22em] text-[#ffd60a] sm:text-sm sm:tracking-[0.28em]">
                 ✅ {item.name}
               </div>
-              <p className="mt-4 text-sm leading-7 text-white/75 sm:mt-5">{item.description}</p>
+              <p className="mt-4 text-sm leading-7 text-white sm:mt-5">{item.description}</p>
             </article>
           ))}
         </div>
@@ -486,7 +579,7 @@ export default function AgentZeroLandingPage() {
           <p className="text-xl font-semibold leading-tight text-white sm:text-3xl">
             Most AI tools are built on your data but owned by someone else. This one isn&apos;t.
           </p>
-          <p className="mt-4 text-base leading-7 text-white/75 sm:mt-5 sm:text-lg sm:leading-8">
+          <p className="mt-4 text-base leading-7 text-white sm:mt-5 sm:text-lg sm:leading-8">
             Every deal trains the system — so when a new agent joins, their AgentZero
             already knows your clients, your market, and how your best people close. They
             ramp in days, not months.
@@ -517,13 +610,13 @@ export default function AgentZeroLandingPage() {
                 AED 750
               </span>
             </div>
-            <p className="mt-2 text-sm text-[#a1a1a1]">/ agent / month</p>
+            <p className="mt-2 text-sm text-white">/ agent / month</p>
 
             <ul className="mt-7 space-y-4 sm:mt-8">
               {AGENT_PLAN_FEATURES.map((feature) => (
                 <li key={feature} className="flex items-start gap-3">
                   <GoldCheck />
-                  <span className="text-sm leading-7 text-white/80">{feature}</span>
+                  <span className="text-sm leading-7 text-white">{feature}</span>
                 </li>
               ))}
             </ul>
@@ -547,13 +640,13 @@ export default function AgentZeroLandingPage() {
                 Custom
               </span>
             </div>
-            <p className="mt-2 text-sm text-[#a1a1a1]">tailored to your roster</p>
+            <p className="mt-2 text-sm text-white">tailored to your roster</p>
 
             <ul className="mt-7 space-y-4 sm:mt-8">
               {BROKERAGE_PLAN_FEATURES.map((feature) => (
                 <li key={feature} className="flex items-start gap-3">
                   <GoldCheck />
-                  <span className="text-sm leading-7 text-white/80">{feature}</span>
+                  <span className="text-sm leading-7 text-white">{feature}</span>
                 </li>
               ))}
             </ul>
@@ -572,10 +665,23 @@ export default function AgentZeroLandingPage() {
         </div>
 
         <div className="mt-5 rounded-[20px] border-l-2 border-[#ffd60a] bg-[#ffd60a]/[0.06] px-5 py-4 text-center sm:mt-6 sm:px-6 sm:py-5">
-          <p className="text-base leading-7 text-white/85 sm:text-lg">
+          <p className="text-base leading-7 text-white sm:text-lg">
             15 qualified conversations in your first month, or the month is free.
           </p>
         </div>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-4 pb-14 sm:px-6 sm:pb-20 lg:px-8">
+        <div className="mb-6 sm:mb-8">
+          <div className="mono text-[11px] uppercase tracking-[0.32em] text-white">
+            FAQ
+          </div>
+          <h2 className="mt-4 text-[1.7rem] font-semibold leading-tight text-white sm:text-4xl">
+            Straight answers, before you book a call.
+          </h2>
+        </div>
+
+        <FaqList />
       </section>
 
       <section className="mx-auto max-w-7xl px-4 pb-14 sm:px-6 sm:pb-20 lg:px-8">

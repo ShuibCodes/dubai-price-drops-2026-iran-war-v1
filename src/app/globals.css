@@ -8,15 +8,15 @@
   --surface-elevated: #151515;
   --border: #1a1a1a;
   --foreground: #ffffff;
-  --muted: #555555;
+  --muted: #c8c8c8;
   --hot: #ff2d55;
   --amber: #ffd60a;
   --cyan: #00e5ff;
   --live: #3dff8a;
 
   --ink: var(--foreground);
-  --ink-2: #b3b3b3;
-  --ink-3: var(--muted);
+  --ink-2: #e0e0e0;
+  --ink-3: #b0b0b0;
   --surface-2: var(--surface-elevated);
   --rule: var(--border);
   --rule-2: #2a2a2a;
