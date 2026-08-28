@@ -4,6 +4,10 @@ import {
   verifyCopilotSessionToken,
 } from "@/lib/copilot-auth";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import {
+  createReadOnlyAuthClient,
+  isSupabaseAuthConfigured,
+} from "@/lib/supabase/auth-server";
 
 function readSessionCookie(source) {
   if (!source) return null;
@@ -26,6 +30,22 @@ export function waIdToE164(waId) {
 }
 
 /**
+ * getUser() validates the JWT against Supabase rather than trusting the cookie,
+ * so a forged session cannot resolve to an agent row.
+ */
+async function supabaseAuthUserId(source) {
+  if (!isSupabaseAuthConfigured()) return null;
+  try {
+    const client = createReadOnlyAuthClient(source);
+    const { data, error } = await client.auth.getUser();
+    if (error || !data?.user) return null;
+    return data.user.id;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * @param {Request | { cookies: { get: Function } } | { get: Function }} source
  *   Route `request`, or `cookies()` from next/headers.
  * @param {{ tenantSlug?: string }} [opts]
@@ -33,32 +53,39 @@ export function waIdToE164(waId) {
  * @returns {Promise<{ agentId: string, tenantId: string, tenantSlug: string, role: string, waPhone: string | null } | null>}
  */
 export async function getSession(source, { tenantSlug } = {}) {
-  const token = readSessionCookie(source);
-  const payload = token ? verifyCopilotSessionToken(token) : null;
-  if (!payload?.agentId || !payload?.tenantId || !payload?.tenantSlug) {
-    return null;
-  }
-
-  if (tenantSlug && !sessionAllowsTenant(payload, tenantSlug)) {
-    const error = new Error("Forbidden for this tenant.");
-    error.status = 403;
-    throw error;
-  }
-
   const supabase = getSupabaseServerClient();
   if (!supabase) throw new Error("Supabase not configured");
 
-  const { data: agent, error } = await supabase
-    .from("agents")
-    .select("id, tenant_id, role, wa_id, tenants!inner(id, slug)")
-    .eq("id", payload.agentId)
-    .eq("tenant_id", payload.tenantId)
-    .maybeSingle();
+  const select = "id, tenant_id, role, wa_id, tenants!inner(id, slug)";
+  let query = supabase.from("agents").select(select);
+  let fallbackSlug = null;
 
+  // Supabase Auth first; agents still on the legacy form fall through to the
+  // HMAC cookie until every account has migrated.
+  const authUserId = await supabaseAuthUserId(source);
+  if (authUserId) {
+    query = query.eq("auth_user_id", authUserId);
+  } else {
+    const token = readSessionCookie(source);
+    const payload = token ? verifyCopilotSessionToken(token) : null;
+    if (!payload?.agentId || !payload?.tenantId || !payload?.tenantSlug) {
+      return null;
+    }
+    if (tenantSlug && !sessionAllowsTenant(payload, tenantSlug)) {
+      const error = new Error("Forbidden for this tenant.");
+      error.status = 403;
+      throw error;
+    }
+    query = query.eq("id", payload.agentId).eq("tenant_id", payload.tenantId);
+    fallbackSlug = payload.tenantSlug;
+  }
+
+  const { data: agent, error } = await query.maybeSingle();
   if (error) throw new Error(`Agent session lookup failed: ${error.message}`);
   if (!agent) return null;
 
-  const slug = agent.tenants?.slug || payload.tenantSlug;
+  // Authoritative for both paths: role and tenant come from the row, never a claim.
+  const slug = agent.tenants?.slug || fallbackSlug;
   if (tenantSlug && slug !== String(tenantSlug).trim()) {
     const mismatch = new Error("Forbidden for this tenant.");
     mismatch.status = 403;
