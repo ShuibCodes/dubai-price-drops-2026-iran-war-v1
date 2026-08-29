@@ -1,12 +1,14 @@
 import twilio from "twilio";
 import { waitUntil } from "@vercel/functions";
-import { defaultKbState, runKbTurn } from "@/lib/kb/engine";
+import { defaultKbState } from "@/lib/kb/engine";
 import { runJarvisTurn } from "@/lib/jarvis/engine";
 import { handleContactConfirmationMessage } from "@/lib/jarvis/contacts";
 import { getPendingContact } from "@/lib/jarvis/pending-contact";
 import { getPendingRelay } from "@/lib/jarvis/pending-relay";
 import { handleRelayConfirmationMessage } from "@/lib/jarvis/relay";
 import { resolveJarvisSender } from "@/lib/jarvis/resolve-sender";
+import { PRIVATE_AZ_REPLY } from "@/lib/jarvis/private-line";
+import { twilioAzDecision } from "@/lib/jarvis/az-gate";
 import {
   getSenderState,
   hasProcessedMessageSid,
@@ -42,6 +44,34 @@ function xmlResponse(xml) {
   });
 }
 
+async function jarvisReplyForSender({ sender, nextMessages, userText }) {
+  const contactConfirm = await handleContactConfirmationMessage({
+    tenantId: sender.tenantId,
+    senderPhone: sender.waId,
+    message: userText,
+  });
+  if (contactConfirm?.handled) {
+    return truncateWhatsAppBody(contactConfirm.text);
+  }
+
+  const relayConfirm = await handleRelayConfirmationMessage({
+    tenantId: sender.tenantId,
+    senderPhone: sender.waId,
+    message: userText,
+  });
+  if (relayConfirm?.handled) {
+    return truncateWhatsAppBody(relayConfirm.text);
+  }
+
+  const result = await runJarvisTurn({
+    tenantId: sender.tenantId,
+    messages: nextMessages,
+    agentName: sender.agentName,
+    senderPhone: sender.waId,
+  });
+  return truncateWhatsAppBody(result.text);
+}
+
 async function runJarvisAndReply({
   from,
   to,
@@ -52,54 +82,13 @@ async function runJarvisAndReply({
   sender,
 }) {
   try {
-    const senderPhone = sender.waId;
-
-    const contactConfirm = await handleContactConfirmationMessage({
-      tenantId: sender.tenantId,
-      senderPhone,
-      message: userText,
+    const replyText = await jarvisReplyForSender({
+      sender,
+      nextMessages,
+      userText,
     });
-    if (contactConfirm?.handled) {
-      const replyText = truncateWhatsAppBody(contactConfirm.text);
-      await sendWhatsAppText({ to: from, from: to, body: replyText });
-      setSenderState(from, {
-        ...state,
-        mode: "jarvis",
-        messages: [
-          ...nextMessages,
-          { role: "assistant", content: replyText },
-        ].slice(-30),
-      });
-      return;
-    }
-
-    const relayConfirm = await handleRelayConfirmationMessage({
-      tenantId: sender.tenantId,
-      senderPhone,
-      message: userText,
-    });
-    if (relayConfirm?.handled) {
-      const replyText = truncateWhatsAppBody(relayConfirm.text);
-      await sendWhatsAppText({ to: from, from: to, body: replyText });
-      setSenderState(from, {
-        ...state,
-        mode: "jarvis",
-        messages: [
-          ...nextMessages,
-          { role: "assistant", content: replyText },
-        ].slice(-30),
-      });
-      return;
-    }
-
-    const result = await runJarvisTurn({
-      tenantId: sender.tenantId,
-      messages: nextMessages,
-      agentName: sender.agentName,
-      senderPhone,
-    });
-    const replyText = truncateWhatsAppBody(result.text);
     await sendWhatsAppText({ to: from, from: to, body: replyText });
+    const senderPhone = sender.waId;
     const pendingRelay = await getPendingRelay(senderPhone).catch(() => null);
     const pendingContact = await getPendingContact(senderPhone).catch(() => null);
     setSenderState(from, {
@@ -169,7 +158,8 @@ export async function POST(request) {
 
     const callerWaId = from.replace(/^whatsapp:/i, "").replace(/\D/g, "");
     const sender = callerWaId ? await resolveJarvisSender(callerWaId) : null;
-    const useJarvis = Boolean(sender);
+    const decision = twilioAzDecision(sender);
+    const useJarvis = decision.action === "jarvis";
     if (sender) {
       console.info(
         `[whatsapp] jarvis sender=${sender.waId} tenant=${sender.tenantSlug}`
@@ -202,31 +192,11 @@ export async function POST(request) {
     let nextState = state;
 
     if (useJarvis) {
-      const contactConfirm = await handleContactConfirmationMessage({
-        tenantId: sender.tenantId,
-        senderPhone: sender.waId,
-        message: body,
+      replyText = await jarvisReplyForSender({
+        sender,
+        nextMessages,
+        userText: body,
       });
-      if (contactConfirm?.handled) {
-        replyText = truncateWhatsAppBody(contactConfirm.text);
-      } else {
-        const relayConfirm = await handleRelayConfirmationMessage({
-          tenantId: sender.tenantId,
-          senderPhone: sender.waId,
-          message: body,
-        });
-        if (relayConfirm?.handled) {
-          replyText = truncateWhatsAppBody(relayConfirm.text);
-        } else {
-          const result = await runJarvisTurn({
-            tenantId: sender.tenantId,
-            messages: nextMessages,
-            agentName: sender.agentName,
-            senderPhone: sender.waId,
-          });
-          replyText = truncateWhatsAppBody(result.text);
-        }
-      }
       nextState = {
         ...state,
         mode: "jarvis",
@@ -235,14 +205,10 @@ export async function POST(request) {
         ),
       };
     } else {
-      const result = await runKbTurn({
-        messages: nextMessages,
-        state,
-        callerWaId: callerWaId || null,
-      });
-      replyText = truncateWhatsAppBody(result.text);
+      replyText = PRIVATE_AZ_REPLY;
       nextState = {
-        ...(result.nextState ?? state),
+        ...state,
+        mode: "locked",
         messages: [...nextMessages, { role: "assistant", content: replyText }].slice(
           -30
         ),

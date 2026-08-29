@@ -15,7 +15,7 @@ export default async function ProtectedCopilotLayout({ children, params }) {
 
   const session = await getSession(cookieStore, { tenantSlug: tenant });
   if (!session) {
-    redirect(`/copilot/login?next=/copilot/${encodeURIComponent(tenant)}`);
+    redirect(`/copilot?next=/copilot/${encodeURIComponent(tenant)}`);
   }
 
   return children;

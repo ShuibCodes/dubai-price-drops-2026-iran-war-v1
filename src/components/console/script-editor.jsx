@@ -103,7 +103,7 @@ export function ScriptEditor({ tenant, scriptId, role, waPhone }) {
   async function load() {
     const res = await fetch(`/api/scripts/${scriptId}`);
     if (res.status === 401) {
-      window.location.href = `/copilot/login?next=${encodeURIComponent(listHref + "/" + scriptId)}`;
+      window.location.href = `/copilot?next=${encodeURIComponent(listHref + "/" + scriptId)}`;
       return;
     }
     if (res.status === 404) {

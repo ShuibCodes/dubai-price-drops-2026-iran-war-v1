@@ -1,5 +1,7 @@
+import { waitUntil } from "@vercel/functions";
 import { verifyMetaSignature, shouldSkipMetaSignatureCheck } from "@/lib/meta/signature";
 import { processMetaWebhookPayload } from "@/lib/meta/webhook-handler";
+import { runTenantAgentCopilot } from "@/lib/meta/tenant-agent-copilot";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -38,7 +40,14 @@ export async function POST(request) {
 
   try {
     const payload = rawBody ? JSON.parse(rawBody) : {};
-    await processMetaWebhookPayload(payload);
+    const copilotJobs = await processMetaWebhookPayload(payload);
+    for (const job of copilotJobs) {
+      waitUntil(
+        runTenantAgentCopilot(job).catch((error) => {
+          console.error("Meta copilot error:", error.message);
+        })
+      );
+    }
   } catch (error) {
     console.error("Meta webhook processing error:", error.message);
   }

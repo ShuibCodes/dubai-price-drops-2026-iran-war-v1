@@ -18,7 +18,7 @@ export function ConsoleShell({ tenant, title, action, children, bare = false }) 
     } catch {
       // still leave
     }
-    window.location.href = "/copilot/login";
+    window.location.href = "/copilot";
   }
 
   const base = `/copilot/${encodeURIComponent(tenant)}`;

@@ -27,7 +27,7 @@ export function ConsoleHome({ tenant }) {
     fetch("/api/console/home")
       .then(async (res) => {
         if (res.status === 401) {
-          window.location.href = `/copilot/login?next=${encodeURIComponent(base)}`;
+          window.location.href = `/copilot?next=${encodeURIComponent(base)}`;
           return null;
         }
         const body = await res.json().catch(() => ({}));

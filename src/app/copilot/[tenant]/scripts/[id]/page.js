@@ -10,7 +10,7 @@ export default async function ScriptEditorPage({ params }) {
   const scriptId = String(params?.id || "").trim();
   const session = await getSession(await cookies(), { tenantSlug: tenant });
   if (!session) {
-    redirect(`/copilot/login?next=/copilot/${encodeURIComponent(tenant)}/scripts/${scriptId}`);
+    redirect(`/copilot?next=/copilot/${encodeURIComponent(tenant)}/scripts/${scriptId}`);
   }
 
   return (

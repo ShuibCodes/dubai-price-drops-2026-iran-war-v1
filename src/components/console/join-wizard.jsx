@@ -239,8 +239,8 @@ export function JoinWizard({ tenant }) {
           <p className="text-sm leading-6 text-ink-2">
             Each morning AgentZero scans the overnight pipeline, ranks who is
             worth a call, and texts you the short list. One toggle, one time.
-            The first brief should arrive on your phone now — that is the
-            moment this becomes real.
+            Then open WhatsApp on this phone and text AgentZero from the
+            number we registered. Only that number can see this inbox.
           </p>
           <div className="flex items-center justify-between gap-4 border-b border-rule py-3">
             <span className="text-sm">Send the morning brief</span>

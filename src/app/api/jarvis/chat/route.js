@@ -1,5 +1,5 @@
 import { handleContactConfirmationMessage } from "@/lib/jarvis/contacts";
-import { JARVIS_TENANT_SLUG, runJarvisTurn } from "@/lib/jarvis/engine";
+import { runJarvisTurn } from "@/lib/jarvis/engine";
 import { handleRelayConfirmationMessage } from "@/lib/jarvis/relay";
 import { resolveJarvisSender } from "@/lib/jarvis/resolve-sender";
 import { timingSafeEqual } from "@/lib/security/timing-safe";
@@ -22,16 +22,6 @@ function defaultJarvisSenderPhone() {
     .filter(Boolean)[0] || null;
 }
 
-async function resolveSlugTenant(supabase, slug) {
-  const { data: tenant, error } = await supabase
-    .from("tenants")
-    .select("id, name, slug")
-    .eq("slug", slug)
-    .maybeSingle();
-  if (error) throw new Error(`Tenant lookup failed: ${error.message}`);
-  return tenant || null;
-}
-
 export async function POST(request) {
   try {
     if (!verifyAccess(request)) {
@@ -49,30 +39,22 @@ export async function POST(request) {
 
     const requestedPhone = String(body.senderPhone || "").replace(/\D/g, "");
     const senderPhone = requestedPhone || defaultJarvisSenderPhone();
-    const sender = senderPhone ? await resolveJarvisSender(senderPhone) : null;
-
-    let tenantId = null;
-    let agentName = String(body.agentName || "").trim();
-
-    if (sender) {
-      tenantId = sender.tenantId;
-      if (!agentName) agentName = sender.agentName;
-    } else if (requestedPhone) {
+    if (!senderPhone) {
+      return Response.json(
+        { error: "senderPhone is required." },
+        { status: 400 }
+      );
+    }
+    const sender = await resolveJarvisSender(senderPhone);
+    if (!sender) {
       return Response.json(
         { error: "Unknown AgentZero sender. This WhatsApp number is not on an agent." },
         { status: 403 }
       );
-    } else {
-      const tenant = await resolveSlugTenant(supabase, JARVIS_TENANT_SLUG);
-      if (!tenant) {
-        return Response.json(
-          { error: `Tenant ${JARVIS_TENANT_SLUG} not found` },
-          { status: 404 }
-        );
-      }
-      tenantId = tenant.id;
-      if (!agentName) agentName = "Jarvis user";
     }
+
+    const tenantId = sender.tenantId;
+    const agentName = String(body.agentName || "").trim() || sender.agentName;
 
     const latestUser = [...body.messages]
       .reverse()

@@ -4,6 +4,10 @@ import {
   upsertJarvisLead,
   insertJarvisMessageIfNew,
 } from "@/lib/ingest/jarvis-ingest";
+import { resolveJarvisSender } from "@/lib/jarvis/resolve-sender";
+import { senderOwnsTenant } from "@/lib/jarvis/private-line";
+import { metaInboundDecision } from "@/lib/jarvis/az-gate";
+
 
 function unixToIso(unixSeconds) {
   const value = Number(unixSeconds);
@@ -96,6 +100,11 @@ async function processMessage({
 
   if (!leadWaId) return;
 
+  const sender = await resolveJarvisSender(leadWaId);
+  if (senderOwnsTenant(sender, tenantId)) {
+    return;
+  }
+
   const pushName = contactMap.get(leadWaId) || null;
   const timestamp = unixToIso(message?.timestamp);
 
@@ -124,10 +133,11 @@ async function processMessage({
 }
 
 export async function processMetaWebhookPayload(payload) {
+  const copilotJobs = [];
   const supabase = getSupabaseServerClient();
   if (!supabase) {
     console.error("Meta webhook: Supabase client unavailable");
-    return;
+    return copilotJobs;
   }
 
   const entries = Array.isArray(payload?.entry) ? payload.entry : [];
@@ -156,6 +166,20 @@ export async function processMetaWebhookPayload(payload) {
 
       for (const message of inboundMessages) {
         try {
+          const fromWaId = normalizeWaId(message?.from);
+          const sender = fromWaId ? await resolveJarvisSender(fromWaId) : null;
+          const inbound = metaInboundDecision({
+            sender,
+            tenantId: tenant.id,
+            message,
+          });
+          if (inbound.action === "copilot") {
+            const userText = extractMessageBody(message);
+            if (message?.type === "text" && String(userText || "").trim()) {
+              copilotJobs.push({ tenant, sender, userText: String(userText).trim() });
+            }
+            continue;
+          }
           await processMessage({
             supabase,
             tenantId: tenant.id,
@@ -183,4 +207,6 @@ export async function processMetaWebhookPayload(payload) {
       }
     }
   }
+
+  return copilotJobs;
 }

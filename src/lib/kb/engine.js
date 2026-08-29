@@ -3,10 +3,7 @@ import {
   formatLiveContext,
   getRecentConversations,
 } from "@/lib/kb/live-conversations";
-import {
-  getFirstTenant,
-  resolveTenantByAgent,
-} from "@/lib/kb/resolve-tenant";
+import { resolveTenantByAgent } from "@/lib/kb/resolve-tenant";
 import { normalizeWaId } from "@/lib/supabase/server";
 import { findGroupPosterMatches } from "@/lib/kb/group-intelligence";
 import { buildEmailDraftFromRequest } from "@/lib/email/draft-workflow";
@@ -557,11 +554,7 @@ async function resolveTenantForKbTurn(callerWaId) {
     return { tenant, unregistered: false };
   }
 
-  const tenant = await getFirstTenant();
-  if (tenant) {
-    console.warn("TENANT FALLBACK USED — dev only");
-  }
-  return { tenant, unregistered: false };
+  return { tenant: null, unregistered: true };
 }
 
 async function runLlmPath(messages, userQuery = "", callerWaId = null) {
