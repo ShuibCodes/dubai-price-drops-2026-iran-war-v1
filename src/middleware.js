@@ -4,7 +4,12 @@ import {
   verifyOnboardSessionTokenEdge,
 } from "@/lib/onboard-auth-edge";
 import {
+  COPILOT_LOGIN_PATH,
   COPILOT_SESSION_COOKIE,
+  isCopilotLoginPath,
+  safeCopilotNextPath,
+} from "@/lib/copilot-auth-constants";
+import {
   tenantSlugFromCopilotPath,
   verifyCopilotSessionTokenEdge,
 } from "@/lib/copilot-auth-edge";
@@ -29,18 +34,35 @@ async function handleOnboard(request, pathname, isApi) {
 }
 
 async function handleCopilot(request, pathname, isApi) {
-  if (pathname === "/copilot/login" || pathname === "/api/copilot/auth") {
+  if (pathname === "/api/copilot/auth") {
     return NextResponse.next();
   }
 
   const token = request.cookies.get(COPILOT_SESSION_COOKIE)?.value;
   const session = token ? await verifyCopilotSessionTokenEdge(token) : null;
 
+  if (isCopilotLoginPath(pathname)) {
+    if (session) {
+      const next = safeCopilotNextPath(
+        request.nextUrl.searchParams.get("next"),
+        session.tenantSlug
+      );
+      return NextResponse.redirect(new URL(next, request.url));
+    }
+    if (pathname === "/copilot/login") {
+      const loginUrl = new URL(COPILOT_LOGIN_PATH, request.url);
+      const next = request.nextUrl.searchParams.get("next");
+      if (next) loginUrl.searchParams.set("next", next);
+      return NextResponse.redirect(loginUrl);
+    }
+    return NextResponse.next();
+  }
+
   if (!session) {
     if (isApi) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
-    const loginUrl = new URL("/copilot/login", request.url);
+    const loginUrl = new URL(COPILOT_LOGIN_PATH, request.url);
     loginUrl.searchParams.set("next", pathname);
     return NextResponse.redirect(loginUrl);
   }

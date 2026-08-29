@@ -3,43 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Strip } from "@/components/ui/strip";
-
-const FB_SDK_URL = "https://connect.facebook.net/en_US/sdk.js";
-
-function loadFacebookSdk(appId) {
-  return new Promise((resolve, reject) => {
-    if (typeof window === "undefined") {
-      reject(new Error("Facebook SDK can only load in the browser"));
-      return;
-    }
-    if (window.FB) {
-      resolve(window.FB);
-      return;
-    }
-    window.fbAsyncInit = function fbAsyncInit() {
-      window.FB.init({
-        appId,
-        cookie: true,
-        xfbml: false,
-        version: "v25.0",
-      });
-      resolve(window.FB);
-    };
-    const existing = document.getElementById("facebook-jssdk");
-    if (existing) {
-      existing.addEventListener("load", () => resolve(window.FB));
-      existing.addEventListener("error", () => reject(new Error("Failed to load Facebook SDK")));
-      return;
-    }
-    const script = document.createElement("script");
-    script.id = "facebook-jssdk";
-    script.src = FB_SDK_URL;
-    script.async = true;
-    script.defer = true;
-    script.onerror = () => reject(new Error("Failed to load Facebook SDK"));
-    document.body.appendChild(script);
-  });
-}
+import { loadFacebookSdk } from "@/lib/meta/facebook-sdk";
 
 export function WhatsAppConnect({ tenantSlug, onConnected }) {
   const [status, setStatus] = useState("Loading Meta…");
@@ -150,8 +114,9 @@ export function WhatsAppConnect({ tenantSlug, onConnected }) {
     <div className="space-y-4">
       <p className="text-sm leading-6 text-ink-2">
         AgentZero sits on the same business number that is already on your phone.
-        Leads keep texting you. We can see inbound messages and your replies. We
-        never message a lead unless you confirm it.
+        Leads keep texting you. After this connects, you text AgentZero from
+        this phone only — not someone else&apos;s line. Nobody else who messages
+        AgentZero can see your chats.
       </p>
       <p className="text-sm leading-6 text-ink-2">
         AgentZero is an official Meta tech provider. Connecting uses Meta

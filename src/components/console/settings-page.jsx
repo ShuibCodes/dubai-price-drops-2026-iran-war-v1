@@ -53,6 +53,7 @@ export function SettingsPage({ tenant }) {
       const res = await fetch("/api/console/settings/disconnect", { method: "POST" });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || "Disconnect failed.");
+      setConfirmDisconnect(false);
       await load();
     } catch (err) {
       setError(err.message);
@@ -77,7 +78,7 @@ export function SettingsPage({ tenant }) {
         {data?.whatsapp_healthy ? " · live" : ""}
       </p>
 
-      {!data?.whatsapp_healthy ? (
+      {data && !data.whatsapp_healthy ? (
         <div className="mb-8">
           <WhatsAppConnect onConnected={() => load()} tenantSlug={tenant} />
         </div>

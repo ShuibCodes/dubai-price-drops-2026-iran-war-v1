@@ -21,7 +21,7 @@ export function ScriptsList({ tenant }) {
   async function load() {
     const res = await fetch("/api/scripts");
     if (res.status === 401) {
-      window.location.href = `/copilot/login?next=/copilot/${encodeURIComponent(tenant)}/scripts`;
+      window.location.href = `/copilot?next=/copilot/${encodeURIComponent(tenant)}/scripts`;
       return;
     }
     const body = await res.json().catch(() => ({}));

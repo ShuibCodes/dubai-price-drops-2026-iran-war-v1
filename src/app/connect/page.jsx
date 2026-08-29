@@ -1,47 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-
-const FB_SDK_URL = "https://connect.facebook.net/en_US/sdk.js";
-
-function loadFacebookSdk(appId) {
-  return new Promise((resolve, reject) => {
-    if (typeof window === "undefined") {
-      reject(new Error("Facebook SDK can only load in the browser"));
-      return;
-    }
-
-    if (window.FB) {
-      resolve(window.FB);
-      return;
-    }
-
-    window.fbAsyncInit = function fbAsyncInit() {
-      window.FB.init({
-        appId,
-        cookie: true,
-        xfbml: false,
-        version: "v25.0",
-      });
-      resolve(window.FB);
-    };
-
-    const existing = document.getElementById("facebook-jssdk");
-    if (existing) {
-      existing.addEventListener("load", () => resolve(window.FB));
-      existing.addEventListener("error", () => reject(new Error("Failed to load Facebook SDK")));
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.id = "facebook-jssdk";
-    script.src = FB_SDK_URL;
-    script.async = true;
-    script.defer = true;
-    script.onerror = () => reject(new Error("Failed to load Facebook SDK"));
-    document.body.appendChild(script);
-  });
-}
+import { loadFacebookSdk } from "@/lib/meta/facebook-sdk";
 
 export default function ConnectPage() {
   const [status, setStatus] = useState("Loading Meta SDK...");
