@@ -8,6 +8,12 @@ const COOKIE_DEFAULTS = {
   path: "/",
 };
 
+// Next.js patches global fetch and stores responses in its Data Cache — which
+// must never hold auth tokens or PostgREST results. Opt out on every request.
+const NO_STORE = {
+  fetch: (input, init) => fetch(input, { ...init, cache: "no-store" }),
+};
+
 /**
  * @supabase/ssr passes httpOnly: false with every write because its *browser*
  * client reads document.cookie. This app has no browser Supabase client, so the
@@ -49,6 +55,7 @@ export function createRouteAuthClient(request) {
   const pending = [];
 
   const supabase = createServerClient(url, key, {
+    global: NO_STORE,
     cookies: {
       getAll: () => store?.getAll() ?? [],
       setAll: (list) => pending.push(...list),
@@ -75,6 +82,7 @@ export function createReadOnlyAuthClient(source) {
   const store = readableCookies(source);
 
   return createServerClient(url, key, {
+    global: NO_STORE,
     cookies: {
       getAll: () => store?.getAll() ?? [],
       setAll: () => {},
@@ -92,6 +100,7 @@ export function createMiddlewareAuthClient(request, NextResponse) {
   const holder = { response: NextResponse.next({ request }) };
 
   const supabase = createServerClient(url, key, {
+    global: NO_STORE,
     cookies: {
       getAll: () => request.cookies.getAll(),
       setAll: (list) => {

@@ -90,8 +90,10 @@ export async function GET(request) {
     }
 
     if (!agent.auth_user_id) {
-      const linked = await linkAgentToAuthUser(admin, agent.id, user.id);
-      if (!linked) agent = await findAgentByEmail(admin, user.email);
+      // Re-read regardless of race outcome: a successful update must not leave
+      // the in-memory row stale, or the guard below reads it as a conflict.
+      await linkAgentToAuthUser(admin, agent.id, user.id);
+      agent = await findAgentByEmail(admin, user.email);
     }
     if (agent?.auth_user_id !== user.id) {
       console.warn("[copilot/auth/callback] agent already linked to another auth user", {

@@ -20,6 +20,12 @@ export function getSupabaseServerClient() {
         persistSession: false,
         autoRefreshToken: false,
       },
+      global: {
+        // Next.js patches global fetch inside route handlers and stores GET
+        // responses in its Data Cache (.next/cache/fetch-cache) — database
+        // reads must never be served from a cache, so opt out per request.
+        fetch: (input, init) => fetch(input, { ...init, cache: "no-store" }),
+      },
     });
   }
 
