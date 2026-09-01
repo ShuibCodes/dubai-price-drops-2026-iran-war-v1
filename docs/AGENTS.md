@@ -187,3 +187,16 @@ Secondary buttons are dotted-border; primary is filled.
   version row and never silently edits the draft.
 - Scripts are tenant-shared. Editing is never private. That is why versioning
   with authorship exists.
+
+## Development & test identity
+
+- **`test-auth` on tenant `az-test` is the permanent development agent — not
+  ephemeral test data.** Do not delete it, and never confuse it with the
+  production client agents or tenants. Its email is `ejlalshah312@gmail.com`,
+  and the Google/Supabase Auth user behind that address is the account used
+  for development sign-in testing (`agents.auth_user_id` links the two).
+- `az-test` stays disconnected from WhatsApp and Vapi, and never holds
+  production data, seeds, or leads.
+- Future auth testing uses this account by default. Create a fresh test user
+  only when a task specifically requires one (e.g. first-time link flows),
+  via `scripts/create-test-agent.mjs` — never by editing production rows.

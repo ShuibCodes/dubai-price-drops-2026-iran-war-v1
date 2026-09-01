@@ -1,22 +1,21 @@
 export function Toggle({ checked, onChange, disabled, label, className = "" }) {
+  const on = Boolean(checked);
   return (
     <button
-      aria-checked={Boolean(checked)}
+      aria-checked={on}
       aria-label={label}
-      className={`relative h-6 w-10 rounded-full border transition ${
-        checked ? "border-live bg-live/20" : "border-rule-2 bg-surface"
+      className={`flex h-[30px] w-[52px] flex-none rounded-full p-[3px] transition-colors ${
+        on ? "justify-end bg-az" : "justify-start bg-[#242927]"
       } ${disabled ? "cursor-not-allowed opacity-50" : ""} ${className}`}
       disabled={disabled}
       onClick={() => {
-        if (!disabled && onChange) onChange(!checked);
+        if (!disabled && onChange) onChange(!on);
       }}
       role="switch"
       type="button"
     >
       <span
-        className={`absolute top-0.5 h-4 w-4 rounded-full transition ${
-          checked ? "right-0.5 bg-live" : "left-0.5 bg-ink-3"
-        }`}
+        className={`block h-6 w-6 rounded-full ${on ? "bg-az-ink" : "bg-[#4b524f]"}`}
       />
     </button>
   );
