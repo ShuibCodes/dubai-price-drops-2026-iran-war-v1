@@ -188,6 +188,94 @@ Secondary buttons are dotted-border; primary is filled.
 - Scripts are tenant-shared. Editing is never private. That is why versioning
   with authorship exists.
 
+## WhatsApp live-ingestion recovery — 2026-09-04 incident
+
+Keep the three independent connections straight:
+
+- **Agent → AgentZero chat:** Twilio `/api/whatsapp`.
+- **Reasoning and calls:** Anthropic + Vapi.
+- **Business inbox memory:** Meta Coexistence → `/api/meta/webhook` → Supabase.
+
+Calls working does not prove inbox ingestion is working. Stored history can also
+make recall appear healthy after the live feed has stopped.
+
+### Symptoms and diagnosis
+
+The Sterling inbox stopped ingesting after 2026-08-29 while AgentZero could
+still reply and place calls. The connection popup then showed:
+
+> Facebook Login is currently unavailable for this app, since we are updating
+> additional details for this app.
+
+The frontend popup was not broken. It loaded the Meta SDK and called Embedded
+Signup with public App ID `1570152774498547` and configuration ID
+`876480732206183`. Meta rejected the app before returning an authorization code.
+
+In Meta's **Connect with customers through WhatsApp** use-case testing,
+`whatsapp_business_management` and `whatsapp_business_messaging` were complete,
+but `business_management` showed `0 of 1 API call(s) required`.
+
+### Exact Meta test that unblocked signup
+
+1. Open **Tools → Graph API Explorer** and select the **AgentZero** app.
+2. Under permissions, add **`business_management`**. This is not
+   `whatsapp_business_management` or `whatsapp_business_messaging`.
+3. Generate a new **User Access Token** and approve AgentZero's access to the
+   relevant current and future Businesses and WhatsApp accounts.
+4. In the request field enter exactly `me/businesses`. The method dropdown
+   already says `GET`; entering `GET /me/businesses` produces OAuth error 2500.
+5. Submit the request. A successful response containing a `data` array counts,
+   including an empty array. During this incident it returned the accessible
+   business portfolios and satisfied the missing test.
+6. Return to the WhatsApp use-case testing page and refresh. Meta says test
+   completion can take up to 24 hours to register.
+7. Retry **Connect WhatsApp** in AgentZero and complete Embedded Signup. Success
+   must end with **“WhatsApp connected and webhooks subscribed.”**
+
+An access token is a secret. Never paste it into chat, screenshots, logs, docs,
+or commits. If exposed, revoke it and generate a replacement.
+
+### Safe production verification
+
+Check that onboarding stored all three Meta values without selecting the values:
+
+```sql
+select
+  (waba_id is not null) as waba_stored,
+  (phone_number_id is not null) as phone_id_stored,
+  (business_token is not null) as token_stored
+from tenants
+where slug = 'sterling';
+```
+
+All three must be true. Then send one message in each direction and verify fresh
+rows arrive:
+
+```sql
+select
+  max(timestamp) as latest_message_at,
+  max(created_at) as latest_ingested_at,
+  count(*) filter (
+    where created_at >= now() - interval '1 hour'
+  ) as ingested_1h
+from "whatsapp-messages"
+where tenant_id = (select id from tenants where slug = 'sterling');
+```
+
+After the fix, an inbound and outbound message sent at about 09:15 Dubai time
+were stored within roughly three seconds. That proved live ingestion was back.
+
+### Do not confuse recall windows with connection health
+
+At verification time Sterling had 4,941 searchable messages across 183 inbox
+threads, dating back to 2026-07-09. A claim that AgentZero only knows the last
+“4–5 days” was therefore not a connection failure. Recent-activity tools are
+bounded: `get_inbox_activity` defaults to 72 hours and inbox-window queries clamp
+to 14 days, while person/story and text searches can read older stored history.
+
+Use database ingestion timestamps—not an LLM statement about its context
+window—to decide whether Meta is connected.
+
 ## Development & test identity
 
 - **`test-auth` on tenant `az-test` is the permanent development agent — not
