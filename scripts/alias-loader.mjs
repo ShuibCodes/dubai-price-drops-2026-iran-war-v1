@@ -26,3 +26,14 @@ export async function resolve(specifier, context, nextResolve) {
   }
   return nextResolve(specifier, context);
 }
+
+const SRC_URL = new URL("../src/", import.meta.url).href;
+
+// Application source is ESM, but package.json has no "type" field, so Node
+// reparses each .js file and warns. Declaring the format keeps runs quiet.
+export async function load(url, context, nextLoad) {
+  if (url.startsWith(SRC_URL) && url.endsWith(".js")) {
+    return nextLoad(url, { ...context, format: "module" });
+  }
+  return nextLoad(url, context);
+}

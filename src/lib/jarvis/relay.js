@@ -471,6 +471,7 @@ export async function handleRelayConfirmationMessage({
         name: customerName,
         phoneE164,
         waId: phoneToWaId(phoneE164),
+        senderPhone,
       });
       leadId = saved.id;
       customerName = saved.name;

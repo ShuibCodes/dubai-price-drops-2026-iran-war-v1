@@ -36,10 +36,78 @@ Rules:
 - If unsure, match=false.
 - Include every threadId exactly once.`;
 
-function db() {
-  const supabase = getSupabaseServerClient();
-  if (!supabase) throw new Error("Supabase is not configured");
-  return supabase;
+function db(supabase) {
+  if (supabase) return supabase;
+  const client = getSupabaseServerClient();
+  if (!client) throw new Error("Supabase is not configured");
+  return client;
+}
+
+export function requireCallbackScope({ tenantId, agentId }) {
+  if (!tenantId) throw new Error("tenantId is required");
+  if (!agentId) throw new Error("agentId is required");
+}
+
+const OWNED_LEAD_COLS =
+  "id, wa_id, push_name, inferred_name, inferred_name_confidence, inferred_name_at, assigned_agent_id, tenant_id";
+
+export async function listOwnedJarvisLeadIds({
+  supabase,
+  tenantId,
+  agentId,
+} = {}) {
+  requireCallbackScope({ tenantId, agentId });
+  const client = db(supabase);
+  const { data, error } = await client
+    .from(JARVIS_LEADS_TABLE)
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("assigned_agent_id", agentId);
+  if (error) {
+    throw new Error(`Owned Jarvis leads lookup failed: ${error.message}`);
+  }
+  return new Set((data || []).map((row) => row.id));
+}
+
+export async function loadOwnedLeadsById({
+  supabase,
+  tenantId,
+  agentId,
+  leadIds,
+} = {}) {
+  requireCallbackScope({ tenantId, agentId });
+  const ids = [...new Set((leadIds || []).filter(Boolean))];
+  if (!ids.length) return new Map();
+  const client = db(supabase);
+  const { data, error } = await client
+    .from(JARVIS_LEADS_TABLE)
+    .select(OWNED_LEAD_COLS)
+    .eq("tenant_id", tenantId)
+    .eq("assigned_agent_id", agentId)
+    .in("id", ids);
+  if (error) throw new Error(`Jarvis leads lookup failed: ${error.message}`);
+  return new Map((data || []).map((row) => [row.id, row]));
+}
+
+export async function getOwnedCallbackLead({
+  supabase,
+  tenantId,
+  agentId,
+  leadId,
+} = {}) {
+  requireCallbackScope({ tenantId, agentId });
+  const id = String(leadId || "").trim();
+  if (!id) return null;
+  const client = db(supabase);
+  const { data, error } = await client
+    .from(JARVIS_LEADS_TABLE)
+    .select(OWNED_LEAD_COLS)
+    .eq("id", id)
+    .eq("tenant_id", tenantId)
+    .eq("assigned_agent_id", agentId)
+    .maybeSingle();
+  if (error) throw new Error(`Jarvis lead lookup failed: ${error.message}`);
+  return data || null;
 }
 
 function fullPhone(waId) {
@@ -147,18 +215,29 @@ export function parseBatchCallbackCommand(text) {
 }
 
 async function loadActiveThreads({
+  supabase,
   tenantId,
+  agentId,
   windowDays,
   maxThreads,
   messagesPerThread,
 }) {
-  const supabase = db();
+  const client = db(supabase);
+  const ownedIds = await listOwnedJarvisLeadIds({
+    supabase: client,
+    tenantId,
+    agentId,
+  });
   const since = new Date(
     Date.now() - windowDays * 24 * 60 * 60 * 1000
   ).toISOString();
 
+  if (!ownedIds.size) {
+    return { since, threads: [], scannedMessageRows: 0 };
+  }
+
   // One bounded pull, group in memory — ~2k rows for a typical 21d Sterling window.
-  const { data, error } = await supabase
+  const { data, error } = await client
     .from(MESSAGES_TABLE)
     .select("id, jarvis_lead_id, direction, body, msg_type, timestamp")
     .eq("tenant_id", tenantId)
@@ -173,7 +252,7 @@ async function loadActiveThreads({
   const byLead = new Map();
   for (const row of data || []) {
     const leadId = row.jarvis_lead_id;
-    if (!leadId) continue;
+    if (!leadId || !ownedIds.has(leadId)) continue;
     let bucket = byLead.get(leadId);
     if (!bucket) {
       bucket = {
@@ -202,20 +281,6 @@ async function loadActiveThreads({
     }));
 
   return { since, threads, scannedMessageRows: (data || []).length };
-}
-
-async function loadLeadsById(tenantId, leadIds) {
-  if (!leadIds.length) return new Map();
-  const supabase = db();
-  const { data, error } = await supabase
-    .from(JARVIS_LEADS_TABLE)
-    .select(
-      "id, wa_id, push_name, inferred_name, inferred_name_confidence, inferred_name_at"
-    )
-    .eq("tenant_id", tenantId)
-    .in("id", leadIds);
-  if (error) throw new Error(`Jarvis leads lookup failed: ${error.message}`);
-  return new Map((data || []).map((row) => [row.id, row]));
 }
 
 function parseMatchArray(text) {
@@ -300,24 +365,28 @@ async function mapPool(items, concurrency, worker) {
  *
  * @param {{
  *   tenantId: string,
+ *   agentId: string,
  *   intent: string,
  *   windowDays?: number,
  *   limit?: number,
  *   maxThreadsEvaluated?: number,
+ *   supabase?: object,
  *   onProgress?: (info: object) => void,
  * }} args
  */
 export async function searchBatchCallbackCandidates({
   tenantId,
+  agentId,
   intent,
   windowDays = BATCH_CALLBACK_DEFAULT_WINDOW_DAYS,
   limit = BATCH_CALLBACK_MATCH_LIMIT,
   maxThreadsEvaluated = BATCH_CALLBACK_MAX_THREADS_EVALUATED,
+  supabase,
   onProgress,
 } = {}) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("Missing ANTHROPIC_API_KEY");
-  if (!tenantId) throw new Error("tenantId is required");
+  requireCallbackScope({ tenantId, agentId });
 
   const cleanedIntent = String(intent || "").trim();
   if (!cleanedIntent) throw new Error("intent is required");
@@ -339,7 +408,9 @@ export async function searchBatchCallbackCandidates({
   });
 
   const { since, threads, scannedMessageRows } = await loadActiveThreads({
+    supabase,
     tenantId,
+    agentId,
     windowDays: days,
     maxThreads: threadCap,
     messagesPerThread: BATCH_CALLBACK_MESSAGES_PER_THREAD,
@@ -420,27 +491,31 @@ export async function searchBatchCallbackCandidates({
     });
   }
 
-  const leadMap = await loadLeadsById(
+  const leadMap = await loadOwnedLeadsById({
+    supabase,
     tenantId,
-    matches.map((m) => m.jarvisLeadId)
-  );
+    agentId,
+    leadIds: matches.map((m) => m.jarvisLeadId),
+  });
 
-  const enriched = matches.map((m) => {
+  const enriched = [];
+  for (const m of matches) {
     const lead = leadMap.get(m.jarvisLeadId);
+    if (!lead) continue;
     const { displayName, nameSource, nameConfidence } = formatJarvisLeadName(
-      lead || {}
+      lead
     );
-    return {
+    enriched.push({
       jarvis_lead_id: m.jarvisLeadId,
       display_name: displayName,
       name_source: nameSource,
       name_confidence: nameConfidence,
-      phone_e164: fullPhone(lead?.wa_id),
-      wa_id: lead?.wa_id || null,
+      phone_e164: fullPhone(lead.wa_id),
+      wa_id: lead.wa_id || null,
       last_message_at: m.lastMessageAt,
       match_reason: m.reason,
-    };
-  });
+    });
+  }
 
   return {
     intent: cleanedIntent,

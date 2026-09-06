@@ -54,6 +54,7 @@ export async function POST(request) {
       const saved = await upsertListContacts(supabase, session.tenantId, {
         name: body.list_name,
         contacts: Array.isArray(body.contacts) ? body.contacts : [],
+        agentId: session.agentId,
       });
       leadIds = saved.leadIds;
     } else {

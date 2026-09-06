@@ -7,6 +7,10 @@ import {
   queueLeadCalls,
 } from "@/lib/calls/outbound";
 import {
+  findTenantAgentIdByPhone,
+  nextAssignedAgentId,
+} from "@/lib/leads/assigned-agent";
+import {
   buildPropertyInterest,
   normalizePhone,
   phoneToWaId,
@@ -39,8 +43,8 @@ export async function getTenantBySlug(slug) {
   return data;
 }
 
-export async function upsertInboundLead(tenantId, fields) {
-  const supabase = getSupabaseServerClient();
+export async function upsertInboundLead(tenantId, fields, supabaseClient) {
+  const supabase = supabaseClient || getSupabaseServerClient();
   if (!supabase) throw new Error("Supabase not configured");
 
   const phone = normalizePhone(fields.phone);
@@ -52,6 +56,11 @@ export async function upsertInboundLead(tenantId, fields) {
   const leadSource = buildLeadSourceWithMeta(fields, baseSource);
   const ownsProperty = normalizeOwnsProperty(fields.owns_property) || null;
   const now = new Date().toISOString();
+  const matchedAgentId = await findTenantAgentIdByPhone(
+    supabase,
+    tenantId,
+    fields.agent_phone
+  );
 
   const row = {
     tenant_id: tenantId,
@@ -68,51 +77,62 @@ export async function upsertInboundLead(tenantId, fields) {
     first_seen: now,
   };
 
-  if (pixxiLeadId) {
-    const { data: existing } = await supabase
-      .from("leads")
-      .select("id, first_seen")
-      .eq("tenant_id", tenantId)
-      .eq("pixxi_lead_id", pixxiLeadId)
-      .maybeSingle();
+  async function persist(existing) {
+    const assigned = nextAssignedAgentId(
+      existing?.assigned_agent_id,
+      matchedAgentId
+    );
+    const payload = { ...row };
+    if (existing) {
+      payload.first_seen = existing.first_seen;
+      if (existing.pixxi_lead_id && !pixxiLeadId) {
+        payload.pixxi_lead_id = existing.pixxi_lead_id;
+      }
+    }
+    if (assigned) payload.assigned_agent_id = assigned;
+    else delete payload.assigned_agent_id;
 
     if (existing) {
       const { data, error } = await supabase
         .from("leads")
-        .update({ ...row, first_seen: existing.first_seen })
+        .update(payload)
         .eq("id", existing.id)
         .select("*")
         .single();
       if (error) throw new Error(`Lead update failed: ${error.message}`);
       return data;
     }
+
+    const { data, error } = await supabase
+      .from("leads")
+      .insert(payload)
+      .select("*")
+      .single();
+    if (error) throw new Error(`Lead insert failed: ${error.message}`);
+    return data;
+  }
+
+  if (pixxiLeadId) {
+    const { data: existing } = await supabase
+      .from("leads")
+      .select("id, first_seen, pixxi_lead_id, assigned_agent_id")
+      .eq("tenant_id", tenantId)
+      .eq("pixxi_lead_id", pixxiLeadId)
+      .maybeSingle();
+
+    if (existing) return persist(existing);
   }
 
   const { data: byPhone } = await supabase
     .from("leads")
-    .select("id, first_seen, pixxi_lead_id")
+    .select("id, first_seen, pixxi_lead_id, assigned_agent_id")
     .eq("tenant_id", tenantId)
     .eq("wa_id", waId)
     .maybeSingle();
 
-  if (byPhone) {
-    const { data, error } = await supabase
-      .from("leads")
-      .update({
-        ...row,
-        first_seen: byPhone.first_seen,
-        pixxi_lead_id: pixxiLeadId || byPhone.pixxi_lead_id,
-      })
-      .eq("id", byPhone.id)
-      .select("*")
-      .single();
-    if (error) throw new Error(`Lead update failed: ${error.message}`);
-    return data;
-  }
+  if (byPhone) return persist(byPhone);
 
-  const { data, error } = await supabase.from("leads").insert(row).select("*").single();
-  if (error) throw new Error(`Lead insert failed: ${error.message}`);
-  return data;
+  return persist(null);
 }
 
 export function buildCallVariables(lead, fields = {}) {

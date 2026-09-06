@@ -1,4 +1,5 @@
 import { upsertJarvisLead } from "@/lib/ingest/jarvis-ingest";
+import { findTenantAgentIdByWaId } from "@/lib/leads/assigned-agent";
 import {
   isJarvisAffirmative,
   isJarvisNegative,
@@ -105,12 +106,25 @@ export async function upsertCallableJarvisContact({
   name,
   phoneE164,
   waId,
+  senderPhone,
+  assignedAgentId = null,
+  supabase: supabaseArg = null,
 }) {
-  const supabase = getSupabaseServerClient();
+  const supabase = supabaseArg || getSupabaseServerClient();
   if (!supabase) throw new Error("Supabase is not configured");
 
   const digits = String(waId || phoneToWaId(phoneE164) || "").replace(/\D/g, "");
   if (!digits) throw new Error("wa_id is required");
+
+  let ownerId = assignedAgentId || null;
+  if (!ownerId && senderPhone) {
+    ownerId = await findTenantAgentIdByWaId(supabase, tenantId, senderPhone);
+  }
+  if (!ownerId) {
+    throw new Error(
+      "assignedAgentId is required: could not match the saving agent in this tenant."
+    );
+  }
 
   const contactName = cleanContactName(name) || "Contact";
   const lead = await upsertJarvisLead({
@@ -119,6 +133,7 @@ export async function upsertCallableJarvisContact({
     waId: digits,
     pushName: contactName,
     messageAt: new Date().toISOString(),
+    assignedAgentId: ownerId,
   });
 
   return {
@@ -173,6 +188,7 @@ export async function handleContactConfirmationMessage({
       name: pending.name,
       phoneE164: pending.phone_e164,
       waId: pending.wa_id,
+      senderPhone,
     });
     await clearPendingContact(senderPhone);
     return {
