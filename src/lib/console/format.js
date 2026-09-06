@@ -21,3 +21,23 @@ export function waDeepLink(waIdOrE164) {
   if (!digits) return "https://wa.me/";
   return `https://wa.me/${digits}`;
 }
+
+/** First slot is always stored, even on "start now". Only treat as scheduled if it is truly later. */
+const SCHEDULE_GRACE_MS = 2 * 60 * 1000;
+
+export function runWindowStart(run) {
+  if (!run?.window_start) return null;
+  const at = new Date(run.window_start);
+  if (Number.isNaN(at.getTime())) return null;
+  return at;
+}
+
+export function runIsScheduled(run) {
+  const at = runWindowStart(run);
+  return Boolean(at && at.getTime() > Date.now() + SCHEDULE_GRACE_MS);
+}
+
+export function runIsInFlight(run) {
+  const status = String(run?.status || "");
+  return status === "queued" || status === "running";
+}

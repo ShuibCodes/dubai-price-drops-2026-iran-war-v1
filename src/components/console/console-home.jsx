@@ -6,7 +6,7 @@ import { Strip } from "@/components/ui/strip";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { Tooltip } from "@/components/console/tooltip";
 import { consoleBase, consoleJson } from "@/lib/console/client";
-import { waDeepLink } from "@/lib/console/format";
+import { runIsInFlight, runIsScheduled, waDeepLink } from "@/lib/console/format";
 
 function greeting(tz) {
   let hour = new Date().getHours();
@@ -35,8 +35,15 @@ function runMeta(run, tz) {
       minute: "2-digit",
     })
     .toUpperCase();
-  const dialed = run.counts?.dialed ?? 0;
-  return `${when} · ${run.script_name.toUpperCase()} · ${dialed} DIALLED`;
+  const script = String(run.script_name || "").toUpperCase();
+  const dialed = Number(run.counts?.dialed || 0);
+  if (runIsScheduled(run) && dialed < 1) {
+    return `${when} · ${script} · SCHEDULED`;
+  }
+  if (runIsInFlight(run) && dialed < 1) {
+    return `${when} · ${script} · DIALLING…`;
+  }
+  return `${when} · ${script} · ${dialed} DIALLED`;
 }
 
 function Chip({ tone, children }) {
