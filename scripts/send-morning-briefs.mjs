@@ -1,6 +1,9 @@
 import { applyEnv, loadEnvFile } from "./load-env.mjs";
 import { createClient } from "@supabase/supabase-js";
-import { briefDueToday, sendMorningBrief } from "../src/lib/brief/send.js";
+import {
+  briefDueToday,
+  sendMorningBriefNotification,
+} from "../src/lib/brief/send.js";
 
 applyEnv(loadEnvFile());
 
@@ -24,10 +27,11 @@ async function main() {
   let sent = 0;
   for (const agent of agents || []) {
     if (!briefDueToday(agent, now)) continue;
-    const result = await sendMorningBrief({
+    const result = await sendMorningBriefNotification({
       supabase,
       tenant: agent.tenants,
       agent,
+      now,
     });
     console.log(`brief agent=${agent.id} sent=${result.sent} via=${result.via || result.reason}`);
     if (result.sent) sent += 1;
