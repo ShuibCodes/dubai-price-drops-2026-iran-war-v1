@@ -4,44 +4,11 @@ import {
   resolvePhoneNumberIdFromWaba,
   resolveWabaIdFromToken,
 } from "@/lib/meta/assets";
+import { resolveMetaExchangeTarget } from "@/lib/meta/exchange-tenant";
 import { getSession } from "@/lib/copilot/session";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-
-// Picks the tenant row that should own these Meta credentials. An explicit slug
-// wins; otherwise we match a tenant already holding this WABA, and finally fall
-// back to the oldest tenant (single-tenant installs).
-async function resolveTargetTenantId(supabase, { tenantSlug, wabaId }) {
-  if (tenantSlug) {
-    const { data } = await supabase
-      .from("tenants")
-      .select("id")
-      .eq("slug", tenantSlug)
-      .maybeSingle();
-
-    return { id: data?.id || null, missingSlug: !data?.id };
-  }
-
-  if (wabaId) {
-    const { data } = await supabase
-      .from("tenants")
-      .select("id")
-      .eq("waba_id", wabaId)
-      .maybeSingle();
-
-    if (data?.id) return { id: data.id, missingSlug: false };
-  }
-
-  const { data: firstTenant } = await supabase
-    .from("tenants")
-    .select("id")
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-
-  return { id: firstTenant?.id || null, missingSlug: false };
-}
 
 async function resolveDisplayPhone(phoneNumberId, businessToken) {
   if (!phoneNumberId || !businessToken) return null;
@@ -63,8 +30,17 @@ export async function POST(request) {
     let session = null;
     try {
       session = await getSession(request);
-    } catch {
-      session = null;
+    } catch (error) {
+      const forbidden = error.status === 403;
+      return Response.json(
+        {
+          ok: false,
+          error: forbidden
+            ? "Forbidden for this tenant."
+            : "Session lookup failed",
+        },
+        { status: forbidden ? 403 : 500 }
+      );
     }
 
     const body = await request.json();
@@ -100,21 +76,19 @@ export async function POST(request) {
       );
     }
 
-    // Resolve the destination before burning the single-use code, so a bad slug
-    // does not cost the caller a fresh trip through embedded signup.
-    const { id: targetTenantId, missingSlug } = session?.tenantId
-      ? { id: session.tenantId, missingSlug: false }
-      : await resolveTargetTenantId(supabase, {
-          tenantSlug,
-          wabaId,
-        });
-
-    if (missingSlug) {
+    // Resolve the destination before burning the single-use code.
+    const target = await resolveMetaExchangeTarget({
+      session,
+      tenantSlug,
+      supabase,
+    });
+    if (target.error) {
       return Response.json(
-        { ok: false, error: `No tenant with slug "${tenantSlug}"` },
-        { status: 400 }
+        { ok: false, error: target.error },
+        { status: target.status || 400 }
       );
     }
+    const targetTenantId = target.tenantId;
 
     const tokenUrl = new URL(`https://graph.facebook.com/${graphVersion}/oauth/access_token`);
     tokenUrl.searchParams.set("client_id", appId);
@@ -142,48 +116,29 @@ export async function POST(request) {
     if (resolvedPhoneNumberId) credentials.phone_number_id = resolvedPhoneNumberId;
     const displayPhone = await resolveDisplayPhone(resolvedPhoneNumberId, businessToken);
 
-    let storedTenantId = targetTenantId;
+    const { data: updated, error } = await supabase
+      .from("tenants")
+      .update(credentials)
+      .eq("id", targetTenantId)
+      .select("id");
 
-    if (targetTenantId) {
-      const { data: updated, error } = await supabase
+    if (error) {
+      console.error("Meta token exchange tenant update failed:", error.message);
+      return Response.json({ ok: false, error: "Failed to store token" }, { status: 500 });
+    }
+
+    if (!updated?.length) {
+      console.error("Meta token exchange matched no tenant row:", targetTenantId);
+      return Response.json(
+        { ok: false, error: "Token not stored: no matching tenant" },
+        { status: 500 }
+      );
+    }
+    if (displayPhone) {
+      await supabase
         .from("tenants")
-        .update(credentials)
-        .eq("id", targetTenantId)
-        .select("id");
-
-      if (error) {
-        console.error("Meta token exchange tenant update failed:", error.message);
-        return Response.json({ ok: false, error: "Failed to store token" }, { status: 500 });
-      }
-
-      // A zero-row update is silent in Postgres — treat it as a hard failure so
-      // the UI never reports success on a token that went nowhere.
-      if (!updated?.length) {
-        console.error("Meta token exchange matched no tenant row:", targetTenantId);
-        return Response.json(
-          { ok: false, error: "Token not stored: no matching tenant" },
-          { status: 500 }
-        );
-      }
-      if (displayPhone) {
-        await supabase
-          .from("tenants")
-          .update({ display_phone: displayPhone })
-          .eq("id", targetTenantId);
-      }
-    } else {
-      const { data: inserted, error: insertError } = await supabase
-        .from("tenants")
-        .insert({ name: "Default Tenant", ...credentials })
-        .select("id")
-        .single();
-
-      if (insertError) {
-        console.error("Meta token exchange tenant insert failed:", insertError.message);
-        return Response.json({ ok: false, error: "Failed to store token" }, { status: 500 });
-      }
-
-      storedTenantId = inserted.id;
+        .update({ display_phone: displayPhone })
+        .eq("id", targetTenantId);
     }
 
     const subscription = await subscribeAppToWaba({
@@ -193,7 +148,7 @@ export async function POST(request) {
 
     return Response.json({
       ok: true,
-      tenant_id: storedTenantId,
+      tenant_id: targetTenantId,
       waba_id: resolvedWabaId,
       phone_number_id: resolvedPhoneNumberId,
       subscribed: subscription.subscribed,
