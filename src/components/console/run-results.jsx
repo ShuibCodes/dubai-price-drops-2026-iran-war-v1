@@ -14,6 +14,7 @@ import {
   runWindowStart,
   tenantWhatsAppLink,
 } from "@/lib/console/format";
+import { recordingPlayback } from "@/lib/console/recording-playback";
 
 function metaLine(run) {
   if (!run) return "";
@@ -57,6 +58,7 @@ function restLabel(rest, queuedCount) {
 }
 
 function CallBody({ call }) {
+  const playback = recordingPlayback(call);
   return (
     <div className="border-b border-hairline px-1 pb-6 pt-5">
       {call.quote ? (
@@ -74,15 +76,12 @@ function CallBody({ call }) {
         <div className="mt-4 font-mono text-[13px] text-faint">{call.phone}</div>
       ) : null}
       <div className="mt-4.5 flex flex-wrap gap-2.5">
-        {call.recording_url ? (
-          <a
-            className="az-btn-ghost"
-            href={call.recording_url}
-            rel="noreferrer"
-            target="_blank"
-          >
+        {playback.kind === "play" ? (
+          <a className="az-btn-ghost" href={playback.href} rel="noreferrer" target="_blank">
             ▶ Play recording
           </a>
+        ) : playback.kind === "missing" ? (
+          <span className="text-[13px] text-faint">No recording</span>
         ) : null}
       </div>
       {call.transcript ? (
