@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { consoleBase } from "@/lib/console/client";
-import { waDeepLink } from "@/lib/console/format";
+import { tenantWhatsAppLink } from "@/lib/console/format";
 
 // `match` widens the active check when the tab links at one child route but
 // owns a whole section — Runs points at /runs/new yet also covers /runs/<id>.
@@ -17,8 +17,6 @@ const NAV = [
   { href: "/kb", label: "Knowledge" },
   { href: "/settings", label: "Settings" },
 ];
-
-const GENERIC_WA = "https://wa.me/";
 
 const WIDTH = {
   620: "max-w-[620px]",
@@ -48,17 +46,21 @@ async function logout() {
 const waLinkCache = new Map();
 
 function useWaLink(base, provided) {
-  const [resolved, setResolved] = useState(
-    () => provided || waLinkCache.get(base) || ""
-  );
+  const [resolved, setResolved] = useState(() => {
+    if (provided !== undefined) return provided;
+    return waLinkCache.has(base) ? waLinkCache.get(base) : undefined;
+  });
 
   useEffect(() => {
-    if (provided || waLinkCache.has(base)) return undefined;
+    if (provided !== undefined || waLinkCache.has(base)) return undefined;
     let live = true;
     fetch("/api/console/settings")
       .then((res) => (res.ok ? res.json() : null))
       .then((body) => {
-        const link = waDeepLink(body?.number);
+        const link = tenantWhatsAppLink({
+          connected: Boolean(body?.whatsapp_healthy),
+          displayPhone: body?.number,
+        });
         waLinkCache.set(base, link);
         if (live) setResolved(link);
       })
@@ -68,7 +70,8 @@ function useWaLink(base, provided) {
     };
   }, [base, provided]);
 
-  return provided || resolved || GENERIC_WA;
+  if (provided !== undefined) return provided;
+  return resolved ?? null;
 }
 
 function TopNav({ base, waLink }) {
@@ -104,15 +107,25 @@ function TopNav({ base, waLink }) {
           ))}
         </div>
 
-        <a
-          className="flex items-center gap-2 rounded-full border border-az-edge bg-[#0d1a13] px-3.5 py-2 text-[13px] font-medium text-az hover:border-az"
-          href={waLink}
-          rel="noreferrer"
-          target="_blank"
-        >
-          <span className="inline-block h-[7px] w-[7px] rounded-full bg-az" />
-          Open WhatsApp
-        </a>
+        {waLink ? (
+          <a
+            className="flex items-center gap-2 rounded-full border border-az-edge bg-[#0d1a13] px-3.5 py-2 text-[13px] font-medium text-az hover:border-az"
+            href={waLink}
+            rel="noreferrer"
+            target="_blank"
+          >
+            <span className="inline-block h-[7px] w-[7px] rounded-full bg-az" />
+            Open WhatsApp
+          </a>
+        ) : (
+          <Link
+            className="flex items-center gap-2 rounded-full border border-line-2 bg-[#101413] px-3.5 py-2 text-[13px] font-medium text-dim hover:border-line-3 hover:text-fg"
+            href={`${base}/settings`}
+          >
+            <span className="inline-block h-[7px] w-[7px] rounded-full bg-warn" />
+            WhatsApp not connected
+          </Link>
+        )}
 
         <button className={LOGOUT} onClick={logout} type="button">
           LOG OUT
@@ -139,7 +152,9 @@ function BareBar() {
   );
 }
 
-export function WaFooter({ waLink = GENERIC_WA }) {
+export function WaFooter({ waLink = null, settingsHref }) {
+  const href = waLink || settingsHref;
+  const external = Boolean(waLink);
   return (
     <div className="mt-14 flex flex-wrap items-center justify-between gap-5 rounded-[14px] border border-line-2 bg-panel px-7 py-6">
       <div>
@@ -151,14 +166,16 @@ export function WaFooter({ waLink = GENERIC_WA }) {
           your pipeline stands.
         </div>
       </div>
-      <a
-        className="rounded-[10px] bg-az px-6 py-3.5 text-base font-semibold text-az-ink hover:bg-az-hover"
-        href={waLink}
-        rel="noreferrer"
-        target="_blank"
-      >
-        Go back to WhatsApp →
-      </a>
+      {href ? (
+        <a
+          className="rounded-[10px] bg-az px-6 py-3.5 text-base font-semibold text-az-ink hover:bg-az-hover"
+          href={href}
+          rel={external ? "noreferrer" : undefined}
+          target={external ? "_blank" : undefined}
+        >
+          {external ? "Go back to WhatsApp →" : "Connect WhatsApp →"}
+        </a>
+      ) : null}
     </div>
   );
 }
@@ -172,14 +189,16 @@ export function ConsoleShell({
   waLink,
 }) {
   const base = consoleBase(tenant);
-  const link = useWaLink(base, bare ? GENERIC_WA : waLink);
+  const link = useWaLink(base, bare ? null : waLink);
 
   return (
     <main className="az-shell min-h-screen font-sans">
       {bare ? <BareBar /> : <TopNav base={base} waLink={link} />}
       <div className={`mx-auto ${WIDTH[width] || WIDTH[1040]} px-6 pb-28 pt-12`}>
         {children}
-        {footer ? <WaFooter waLink={link} /> : null}
+        {footer ? (
+          <WaFooter settingsHref={`${base}/settings`} waLink={link} />
+        ) : null}
       </div>
     </main>
   );

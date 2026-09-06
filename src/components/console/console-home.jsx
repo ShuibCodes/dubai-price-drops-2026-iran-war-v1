@@ -6,7 +6,7 @@ import { Strip } from "@/components/ui/strip";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { Tooltip } from "@/components/console/tooltip";
 import { consoleBase, consoleJson } from "@/lib/console/client";
-import { waDeepLink } from "@/lib/console/format";
+import { tenantWhatsAppLink } from "@/lib/console/format";
 
 function greeting(tz) {
   let hour = new Date().getHours();
@@ -140,7 +140,10 @@ export function ConsoleHome({ tenant }) {
   const healthy = Boolean(data?.tenant?.whatsapp_healthy);
   const briefOn = data?.agent?.brief_enabled !== false;
   const briefTime = String(data?.agent?.brief_time || "07:30").slice(0, 5);
-  const waLink = waDeepLink(data?.tenant?.display_phone || data?.agent?.wa_id);
+  const waLink = tenantWhatsAppLink({
+    connected: healthy,
+    displayPhone: data?.tenant?.display_phone,
+  });
   const liveScripts = (scripts || []).filter((row) => row.status === "live");
   const firstName = String(data?.agent?.name || "").trim().split(/\s+/)[0];
 

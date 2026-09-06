@@ -16,6 +16,20 @@ export function whatsappHealthy(tenant) {
   );
 }
 
+/**
+ * Console chrome for the tenant WhatsApp line.
+ * Connected only when the Meta flag is true, and the link only uses the
+ * tenant display number — never agents.wa_id.
+ *
+ * @param {{ connected?: boolean, displayPhone?: string | null }} [args]
+ * @returns {string | null}
+ */
+export function tenantWhatsAppLink({ connected, displayPhone } = {}) {
+  if (!connected) return null;
+  const digits = String(displayPhone || "").replace(/\D/g, "");
+  return digits ? `https://wa.me/${digits}` : null;
+}
+
 export function waDeepLink(waIdOrE164) {
   const digits = String(waIdOrE164 || "").replace(/\D/g, "");
   if (!digits) return "https://wa.me/";
