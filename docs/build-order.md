@@ -155,6 +155,10 @@ Two prompts, never one.
 > land outside WhatsApp's 24-hour service window and need approved templates —
 > implement the template path, don't assume free-form will work.
 
+V1 (see `docs/AGENTS.md`): cron/send-now send the notification template only;
+the full brief is WhatsApp text after `send_brief`. Pipeline rows are scoped
+to `tenant_id` + `assigned_agent_id`. Template is not Meta-approved yet.
+
 ---
 
 ## When Cursor goes off the rails
