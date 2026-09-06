@@ -25,6 +25,7 @@ import {
   scriptRequiredPayload,
 } from "@/lib/scripts/resolve";
 import { HELP_TEXT, isHelpMessage } from "@/lib/console/help";
+import { getRunStatus } from "@/lib/console/run-status";
 
 const MODEL = "claude-sonnet-4-6";
 const MAX_TOOL_ROUNDS = 5;
@@ -45,6 +46,18 @@ export const copilotToolDefinitions = [
     description:
       "Get today's Dubai-time calling totals and up to five notable engaged calls.",
     input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "get_run_status",
+    description:
+      "Status of a console / WhatsApp call run (call_batches). Use for 'how's the run', 'how many dialled', 'who is worth my time'. Defaults to the latest run. Returns dialled/total, qualified, and up to 5 worth-your-time people with name, phone, tone, and a one-line quote.",
+    input_schema: {
+      type: "object",
+      properties: {
+        script: { type: "string" },
+        list: { type: "string" },
+      },
+    },
   },
   {
     name: "query_leads",
@@ -264,7 +277,8 @@ Rules:
 
 ROSTER vs CALL ACTIVITY — hard routing rules:
 - "leads", "my list", "how many leads", "uncalled", or any campaign/source question ("downtown leads", "burj lake owners") → ROSTER tools only: query_leads and list_lead_sources. Pass the campaign word as the source filter to query_leads.
-- "calls", "today's activity", "outcomes", "callbacks", "engaged", "qualified", "what did they say" → CALL tools only: todays_digest, count_calls_since, list_call_activity, get_pending_callbacks, get_call_detail.
+- "how's the run", "how many dialled", "who is worth my time", named list/script run → get_run_status. Follow its instruction. Always include "{dialed}/{total} dialled" and "Ask me again later please." when ask_again_later is true. List worth as name, phone, tone, quote.
+- "calls", "today's activity", "outcomes", "callbacks", "engaged", "qualified", "what did they say" (not about a specific run) → CALL tools: todays_digest, count_calls_since, list_call_activity, get_pending_callbacks, get_call_detail.
 - NEVER use call tools to answer how many leads exist or to list the roster; call counts are not the lead list.
 - After start_cold_batch or schedule_batch, the result includes queuedLeads with the exact people queued — list them from there instead of running another lookup.
 
@@ -330,6 +344,8 @@ async function executeTool({ name, input, tenantId, agentName, messages }) {
       return countCallsSince(tenantId, input.sinceIso);
     case "todays_digest":
       return todaysDigest(tenantId);
+    case "get_run_status":
+      return getRunStatus(tenantId, input);
     case "list_call_activity":
       return listLeads(tenantId, input);
     case "query_leads":

@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { listLeadSources, listScripts, startColdBatch } from "@/lib/copilot/tools";
+import { getRunStatus } from "@/lib/console/run-status";
 import {
   formatSavedListsPrompt,
   listSavedLists,
@@ -106,6 +107,24 @@ export const jarvisToolDefinitions = [
     name: "get_pending_callbacks",
     description: "List leads whose latest call outcome is a callback with a callback time.",
     input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "get_run_status",
+    description:
+      "Status of a console / WhatsApp call run (call_batches). Use for 'how's the run', 'how many dialled', 'who is worth my time', 'qualified from the marina list', 'status of the cold list'. Defaults to the latest run. Returns dialled/total, qualified, and up to 5 worth-your-time people (name, phone, HOT/WARM, one-line quote). Do not use inbox tools for this.",
+    input_schema: {
+      type: "object",
+      properties: {
+        script: {
+          type: "string",
+          description: "Optional live script name, e.g. 'cold list'.",
+        },
+        list: {
+          type: "string",
+          description: "Optional saved list name from the console run.",
+        },
+      },
+    },
   },
   {
     name: "get_unreplied_conversations",
@@ -329,8 +348,10 @@ LOOKUPS:
 - Saved list / "call my X list" / a name that appears in SAVED LISTS → list_lead_sources or start_cold_batch. Never search_lead_by_name for a list.
 - Person name questions → search_lead_by_name, then get_lead_story.
 - "What did anyone say about X" → search_conversations, then get_lead_story / get_call_detail.
-- Call recaps → get_call_detail; summarize 1-5 lines; never paste transcripts.
-- Callbacks → get_pending_callbacks.
+- Call recaps for one named person → get_call_detail; summarize 1-5 lines; never paste transcripts.
+- Console / batch run status ("how's the run", "how many dialled", "who is worth my time", "qualified from this afternoon", named list or script) → get_run_status FIRST. Do not use inbox tools or get_pending_callbacks for this.
+- Follow get_run_status.instruction. Always say "{dialed}/{total} dialled". If ask_again_later is true, include exactly: "Ask me again later please." Then list `worth` as name, full phone, tone, and the quote in quotes — same shape as the console card. Never paste a full transcript. If worth is empty, still report the counts.
+- Callbacks (inbox, not a console run) → get_pending_callbacks.
 - Saving/confirming a contact name on an EXISTING lead → set_lead_name (user-supplied only; never invent).
 - Adding a NEW contact (name + phone) → save_jarvis_contact. Show the confirmationPrompt (name + number) and wait for yes — do not claim they are saved until the yes handler completes.
 - If place_relay_call returns not_found, ask for the phone. Once they give it, call place_relay_call again WITH phone (that path saves + dials on yes), or save_jarvis_contact then place_relay_call.
@@ -441,6 +462,8 @@ async function executeTool({
       return getJarvisCallDetail(tenantId, input);
     case "get_pending_callbacks":
       return getJarvisPendingCallbacks(tenantId);
+    case "get_run_status":
+      return getRunStatus(tenantId, input);
     case "get_unreplied_conversations":
       return getJarvisUnrepliedConversations(tenantId, input);
     case "get_inbox_activity":
