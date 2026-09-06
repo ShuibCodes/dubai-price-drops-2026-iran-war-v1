@@ -25,7 +25,11 @@ import {
   scriptRequiredPayload,
 } from "@/lib/scripts/resolve";
 import { HELP_TEXT, isHelpMessage } from "@/lib/console/help";
-import { getRunStatus } from "@/lib/console/run-status";
+import {
+  formatRunStatusBlock,
+  getRunStatus,
+  shouldPrefetchRunStatus,
+} from "@/lib/console/run-status";
 
 const MODEL = "claude-sonnet-4-6";
 const MAX_TOOL_ROUNDS = 5;
@@ -257,7 +261,7 @@ export const copilotToolDefinitions = [
   },
 ];
 
-function systemPrompt(tenantName, agentName) {
+function systemPrompt(tenantName, agentName, runStatusBlock) {
   return `You are the operations Copilot for ${tenantName}.
 You are assisting ${agentName || "a team member"}. Be concise, warm, and numbers-first.
 
@@ -277,7 +281,8 @@ Rules:
 
 ROSTER vs CALL ACTIVITY — hard routing rules:
 - "leads", "my list", "how many leads", "uncalled", or any campaign/source question ("downtown leads", "burj lake owners") → ROSTER tools only: query_leads and list_lead_sources. Pass the campaign word as the source filter to query_leads.
-- "how's the run", "how many dialled", "who is worth my time", named list/script run → get_run_status. Follow its instruction. Always include "{dialed}/{total} dialled" and "Ask me again later please." when ask_again_later is true. List worth as name, phone, tone, quote.
+- Console call runs ARE available via get_run_status and THIS TURN — CONSOLE RUN. Never say dial counts are unavailable.
+- "how's the run", "how many dialled", "who is worth my time", named list/script run → use THIS TURN — CONSOLE RUN if present, otherwise get_run_status. Follow its instruction. Always include dialed/total dialled and "Ask me again later please." when ask_again_later is true. List worth as name, phone, tone, quote.
 - "calls", "today's activity", "outcomes", "callbacks", "engaged", "qualified", "what did they say" (not about a specific run) → CALL tools: todays_digest, count_calls_since, list_call_activity, get_pending_callbacks, get_call_detail.
 - NEVER use call tools to answer how many leads exist or to list the roster; call counts are not the lead list.
 - After start_cold_batch or schedule_batch, the result includes queuedLeads with the exact people queued — list them from there instead of running another lookup.
@@ -295,7 +300,8 @@ ANSWERING ABOUT LEADS AND CALLS:
 - If the request is specifically about one latest or identified call, the 1-5 line rule OVERRIDES the broader person-history guidance. The ENTIRE reply must be 1-5 lines about that call only.
 - In a specific-call summary, mention only facts directly supported by non-empty tool fields or dialogue. It is forbidden to mention absent/uncaptured fields, infer why the call ended from missing data or a transcript stopping, discuss other calls, append an assessment or recommendation, or add the group-list CRM boilerplate.
 - Never invent or embellish fields a tool did not return. Skip empty fields silently instead of saying they are unknown.
-- For broader "what did anyone say about X?" searches, use search_conversations and then get_lead_story or get_call_detail for the identified lead. Do not claim access to any disk knowledge base.`;
+- For broader "what did anyone say about X?" searches, use search_conversations and then get_lead_story or get_call_detail for the identified lead. Do not claim access to any disk knowledge base.` +
+    (runStatusBlock || "");
 }
 
 function normalizeMessages(messages) {
@@ -446,11 +452,20 @@ export async function runCopilotTurn({
     return { text: HELP_TEXT, toolRounds: 0 };
   }
 
+  let runStatusBlock = "";
+  if (shouldPrefetchRunStatus(lastText, null)) {
+    try {
+      runStatusBlock = formatRunStatusBlock(await getRunStatus(tenantId, {}));
+    } catch (error) {
+      console.error("[copilot] run status prefetch failed:", error.message);
+    }
+  }
+
   for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
     const response = await client.messages.create({
       model: MODEL,
       max_tokens: 1200,
-      system: systemPrompt(tenantName, agentName),
+      system: systemPrompt(tenantName, agentName, runStatusBlock),
       tools: copilotToolDefinitions,
       messages: conversation,
     });

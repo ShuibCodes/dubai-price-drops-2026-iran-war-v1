@@ -3,6 +3,54 @@ import { mergeCounts } from "./batches";
 
 const WORTH_LIMIT = 5;
 
+export function isRunStatusAsk(text) {
+  const t = String(text || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!t) return false;
+  return (
+    /\bhow'?s the run\b/i.test(t) ||
+    /\bhow is the run\b/i.test(t) ||
+    /\brun status\b/i.test(t) ||
+    /\bstatus of (the )?(run|batch|list|cold)\b/i.test(t) ||
+    /\bhow many (were |have been |have we )?(diall?ed|called)\b/i.test(t) ||
+    /\b(how many|who).{0,24}\b(diall?ed|qualified)\b/i.test(t) ||
+    /\bworth my time\b/i.test(t) ||
+    /\bwho (is|are) (worth|qualified)\b/i.test(t) ||
+    /\bqualified from\b/i.test(t) ||
+    /\bcold call run\b/i.test(t) ||
+    /\b(the |this )(run|batch)\b/i.test(t) ||
+    /\bfrom the (run|batch)\b/i.test(t) ||
+    /\b(diall?ed|dialling|dialing)\b/i.test(t)
+  );
+}
+
+/** Prefetch when they name a list and also ask how it is going. */
+export function shouldPrefetchRunStatus(text, namedList) {
+  if (isRunStatusAsk(text)) return true;
+  if (!namedList) return false;
+  const t = String(text || "");
+  const startingBatch =
+    /\b(call|dial|queue|start|ring)\b/i.test(t) &&
+    !/\b(how|status|snapshot|diall?ed|qualified|worth)\b/i.test(t);
+  if (startingBatch) return false;
+  return /\b(how'?s|how is|status|snapshot|update|going|diall?ed|dialling|qualified|worth|the run|batch)\b/i.test(
+    t
+  );
+}
+
+export function formatRunStatusBlock(runStatus) {
+  if (!runStatus) return "";
+  return (
+    "\n\nTHIS TURN — CONSOLE RUN (already loaded). " +
+    "Never say Vapi, console, or dial counts are unavailable on WhatsApp. " +
+    "Never send the agent to the Vapi dashboard for this. " +
+    "Do not use inbox tools to answer the run. " +
+    "Lead with dialed/total from this JSON, then the exact sentence Ask me again later please. if ask_again_later is true, then list worth as name, full phone, tone, and quote in quotes. " +
+    JSON.stringify(runStatus)
+  );
+}
+
 /** Same scoring as the run results page. */
 export function worthScore(call) {
   const q =

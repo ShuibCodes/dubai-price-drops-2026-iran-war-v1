@@ -1,6 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { listLeadSources, listScripts, startColdBatch } from "@/lib/copilot/tools";
-import { getRunStatus } from "@/lib/console/run-status";
+import {
+  formatRunStatusBlock,
+  getRunStatus,
+  shouldPrefetchRunStatus,
+} from "@/lib/console/run-status";
 import {
   formatSavedListsPrompt,
   listSavedLists,
@@ -315,7 +319,7 @@ export const jarvisToolDefinitions = [
   },
 ];
 
-function systemPrompt({ liveContext, savedListsPrompt, agentName }) {
+function systemPrompt({ liveContext, savedListsPrompt, agentName, runStatusBlock }) {
   const who = String(agentName || "").trim() || "the agent";
   return `You are Jarvis — a live WhatsApp knowledge base and action desk.
 
@@ -326,6 +330,7 @@ DATA SOURCE (CRITICAL):
 - Your primary knowledge is the owner's connected WhatsApp Business inbox, continuously ingested via Whautomate coexistence into Supabase. These are the owner's own business conversations.
 - Every new inbound or outbound WhatsApp on the connected business number lands in near real time. Treat the tool results as current, not a static dump.
 - You also have call history from Vapi outbound calls (same assistant used for cold calling).
+- Console call runs (call_batches) ARE available here via get_run_status and THIS TURN — CONSOLE RUN. Never say dial counts do not come through WhatsApp. Never send the agent to the Vapi dashboard for a run question.
 - Saved dial lists from the console are listed under SAVED LISTS below. They are a different table from WhatsApp contacts. Never invent chats, phones, emails, budgets, or outcomes. If tools return nothing, say so.
 
 RESPONSE STYLE:
@@ -349,8 +354,8 @@ LOOKUPS:
 - Person name questions → search_lead_by_name, then get_lead_story.
 - "What did anyone say about X" → search_conversations, then get_lead_story / get_call_detail.
 - Call recaps for one named person → get_call_detail; summarize 1-5 lines; never paste transcripts.
-- Console / batch run status ("how's the run", "how many dialled", "who is worth my time", "qualified from this afternoon", named list or script) → get_run_status FIRST. Do not use inbox tools or get_pending_callbacks for this.
-- Follow get_run_status.instruction. Always say "{dialed}/{total} dialled". If ask_again_later is true, include exactly: "Ask me again later please." Then list `worth` as name, full phone, tone, and the quote in quotes — same shape as the console card. Never paste a full transcript. If worth is empty, still report the counts.
+- Console / batch run status ("how's the run", "how many dialled", "who is worth my time", "qualified from this afternoon", named list or script) → use THIS TURN — CONSOLE RUN if present, otherwise get_run_status FIRST. Do not use inbox tools or get_pending_callbacks for this.
+- Follow the run instruction. Always say dialed/total dialled. If ask_again_later is true, include exactly: "Ask me again later please." Then list worth as name, full phone, tone, and the quote in quotes — same shape as the console card. Never paste a full transcript. If worth is empty, still report the counts.
 - Callbacks (inbox, not a console run) → get_pending_callbacks.
 - Saving/confirming a contact name on an EXISTING lead → set_lead_name (user-supplied only; never invent).
 - Adding a NEW contact (name + phone) → save_jarvis_contact. Show the confirmationPrompt (name + number) and wait for yes — do not claim they are saved until the yes handler completes.
@@ -384,7 +389,7 @@ SAFETY:
 ${savedListsPrompt || "SAVED LISTS: (unavailable this turn)"}
 
 LIVE SNAPSHOT (recent WhatsApp threads — may be incomplete; use tools for deep lookup):
-${liveContext || "(no recent conversations loaded)"}`;
+${liveContext || "(no recent conversations loaded)"}` + (runStatusBlock || "");
 }
 
 function normalizeMessages(messages) {
@@ -625,6 +630,25 @@ export async function runJarvisTurn({ tenantId, messages, agentName, senderPhone
   }
 
   const listMatch = matchSavedListFromMessages(savedLists, conversation);
+  const namedList = matchSavedList(savedLists, lastText);
+  let runStatusBlock = "";
+  if (shouldPrefetchRunStatus(lastText, namedList)) {
+    try {
+      const runStatus = await getRunStatus(
+        tenantId,
+        namedList ? { list: namedList.name } : {}
+      );
+      runStatusBlock = formatRunStatusBlock(runStatus);
+    } catch (error) {
+      console.error("[jarvis] run status prefetch failed:", error.message);
+      runStatusBlock = formatRunStatusBlock({
+        found: false,
+        instruction:
+          "Run status lookup failed. Say you could not load the run. Do not invent numbers or send them to the Vapi dashboard.",
+      });
+    }
+  }
+
   const savedListsPrompt = [
     formatSavedListsPrompt(savedLists, listMatch),
     formatScriptsPrompt(listedScripts),
@@ -636,7 +660,12 @@ export async function runJarvisTurn({ tenantId, messages, agentName, senderPhone
     const response = await client.messages.create({
       model: MODEL,
       max_tokens: 1400,
-      system: systemPrompt({ liveContext, savedListsPrompt, agentName }),
+      system: systemPrompt({
+        liveContext,
+        savedListsPrompt,
+        agentName,
+        runStatusBlock,
+      }),
       tools: jarvisToolDefinitions,
       messages: conversation,
     });
