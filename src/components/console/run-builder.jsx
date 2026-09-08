@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Strip } from "@/components/ui/strip";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { consoleBase, consoleJson } from "@/lib/console/client";
-import { estCostAed, waDeepLink } from "@/lib/console/format";
+import { waDeepLink } from "@/lib/console/format";
 import {
   contactsFromCsvText,
   isSpreadsheetFile,
@@ -40,6 +40,16 @@ function tomorrowMorning() {
   date.setDate(date.getDate() + 1);
   date.setHours(9, 0, 0, 0);
   return localValue(date);
+}
+
+function listNameFromFile(file) {
+  const name = String(file?.name || "")
+    .replace(/\.[^.]+$/, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
+  return name.length >= 2 ? name : "";
 }
 
 function StepHead({ n, children }) {
@@ -185,6 +195,10 @@ export function RunBuilder({ tenant }) {
       const text = await readFileText(file);
       const { contacts: rows, parseError } = contactsFromCsvText(text);
       setContacts(rows);
+      const guessed = listNameFromFile(file);
+      if (guessed) {
+        setListName((current) => (current.trim().length >= 2 ? current : guessed));
+      }
       if (!rows.length) {
         setError(
           parseError
@@ -251,17 +265,35 @@ export function RunBuilder({ tenant }) {
   }
 
   const needsList = source === "segment" && listName.trim().length < 2;
+  const needsUploadName = source === "upload" && listName.trim().length < 2;
   const counting = preview == null && !needsList;
   const matched = preview?.matched || 0;
-  const exclusions = preview?.exclusions || [];
-  const skipped = exclusions.reduce((total, item) => total + (Number(item.n) || 0), 0);
-  const selected = scripts.find((row) => row.id === scriptId);
   const canSave = source === "upload" && contacts.length > 0 && listName.trim().length >= 2;
   const canStart =
     Boolean(scriptId) &&
     matched > 0 &&
-    (source !== "upload" || listName.trim().length >= 2) &&
+    !needsUploadName &&
     (source !== "segment" || listName.trim().length >= 2);
+  const startLabel = saving
+    ? "Queueing…"
+    : !scriptId
+      ? scripts.length
+        ? "Pick a script first"
+        : "Publish a script first"
+      : needsList
+        ? "Pick a list first"
+        : needsUploadName
+          ? "Name the list first"
+          : counting
+            ? "Counting…"
+            : windowStart
+              ? `Schedule ${matched} calls`
+              : `Start calling ${matched} people`;
+  const saveLabel = savingList
+    ? "Saving…"
+    : contacts.length && needsUploadName
+      ? "Name the list first"
+      : "Save the list, don’t call yet";
 
   return (
     <ConsoleShell
@@ -273,8 +305,7 @@ export function RunBuilder({ tenant }) {
     >
       <h1 className="az-h1 mb-3 text-fg">New call run</h1>
       <p className="mb-3 text-lg leading-snug text-fg-2">
-        Nothing dials until the last button. You will see exactly how many people
-        and what it costs first.
+        Nothing dials until the last button.
       </p>
       <Link className="mb-11 inline-block text-base text-az" href={base}>
         See past runs →
@@ -380,7 +411,7 @@ export function RunBuilder({ tenant }) {
               onClick={saveList}
               variant="secondary"
             >
-              {savingList ? "Saving…" : "Save the list, don’t call yet"}
+              {saveLabel}
             </Button>
           </>
         ) : null}
@@ -508,56 +539,9 @@ export function RunBuilder({ tenant }) {
         <div className="mb-5 font-mono text-[11px] tracking-[.16em] text-az">
           BEFORE YOU START
         </div>
-        <div className="mb-5.5 flex flex-wrap gap-9">
-          <div>
-            <div className="text-[40px] font-semibold leading-none tracking-[-.03em] text-fg">
-              {matched}
-            </div>
-            <div className="mt-1.5 text-sm text-dim">will be called</div>
-          </div>
-          <div>
-            <div className="text-[40px] font-semibold leading-none tracking-[-.03em] text-dim">
-              {skipped}
-            </div>
-            <div className="mt-1.5 text-sm text-dim">skipped</div>
-          </div>
-          <div>
-            <div className="text-[40px] font-semibold leading-none tracking-[-.03em] text-fg">
-              AED {estCostAed(matched)}
-            </div>
-            <div className="mt-1.5 text-sm text-dim">estimated</div>
-          </div>
-        </div>
-        <div className="grid gap-1.5 border-b border-[#1d3327] pb-5.5 text-sm text-dim">
-          {needsList ? (
-            <div>Pick a saved list to see who is in it.</div>
-          ) : counting ? (
-            <div>Counting who is in this list…</div>
-          ) : exclusions.length ? (
-            <div>
-              {exclusions
-                .map((item) => `${item.n} ${item.reason}`)
-                .join(" · ")}
-            </div>
-          ) : (
-            <div>Nobody excluded from this list.</div>
-          )}
-          <div>
-            Caller ID: {home?.tenant?.display_phone || "your AgentZero line"}.
-            Every call states it is an AI.
-          </div>
-        </div>
-        <div className="mt-5.5 flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-3">
           <Button disabled={saving || !canStart} onClick={commit}>
-            {saving
-              ? "Queueing…"
-              : needsList
-                ? "Pick a list first"
-                : counting
-                  ? "Counting…"
-                  : windowStart
-                    ? `Schedule ${matched} calls`
-                    : `Start calling ${matched} people`}
+            {startLabel}
           </Button>
           {scriptId ? (
             <Button
@@ -569,8 +553,8 @@ export function RunBuilder({ tenant }) {
           ) : null}
         </div>
         <div className="mt-4.5 text-sm text-dim">
-          Results land in your WhatsApp as they come in. You don’t need to sit
-          here.
+          Every call states it is an AI. Results land in your WhatsApp as they
+          come in. You don’t need to sit here.
         </div>
       </div>
     </ConsoleShell>
