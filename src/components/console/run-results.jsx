@@ -8,7 +8,7 @@ import { Strip } from "@/components/ui/strip";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { Expandable } from "@/components/console/expandable";
 import { consoleBase, consoleJson } from "@/lib/console/client";
-import { runIsInFlight, runIsScheduled, runWindowStart } from "@/lib/console/format";
+import { runIsInFlight, runIsScheduled, runWindowStart, waDeepLink } from "@/lib/console/format";
 
 function metaLine(run) {
   if (!run) return "";
@@ -34,6 +34,11 @@ function toneFor(call) {
   if (call.status === "queued") return { label: "QUEUED", className: "text-warn" };
   if (call.status === "failed") return { label: "FAILED", className: "text-markup" };
   return { label: String(call.status || "DONE").toUpperCase(), className: "text-faint" };
+}
+
+function azRunAsk(run) {
+  const list = String(run?.list_name || "").trim();
+  return list ? `how's my ${list}` : "how's the run";
 }
 
 function restLabel(rest, queuedCount) {
@@ -87,8 +92,7 @@ function CallBody({ call }) {
 export function RunResults({ tenant, runId }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
-  const [sending, setSending] = useState(false);
-  const [sent, setSent] = useState(false);
+  const [home, setHome] = useState(null);
   const [showRest, setShowRest] = useState(false);
   const base = consoleBase(tenant);
 
@@ -100,21 +104,11 @@ export function RunResults({ tenant, runId }) {
       .catch((err) => setError(err.message));
   }, [base, runId]);
 
-  async function sendWhatsApp() {
-    setSending(true);
-    setError("");
-    try {
-      await consoleJson(base, `/api/console/runs/${runId}/whatsapp`, {
-        method: "POST",
-        fallback: "Send failed.",
-      });
-      setSent(true);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSending(false);
-    }
-  }
+  useEffect(() => {
+    consoleJson(base, "/api/console/home", { fallback: "Could not load home." })
+      .then(setHome)
+      .catch(() => {});
+  }, [base]);
 
   const stats = data?.stats || {};
   const run = data?.run;
@@ -127,6 +121,7 @@ export function RunResults({ tenant, runId }) {
   const scheduled = runIsScheduled(run);
   const stillGoing = queuedCount > 0 || runIsInFlight(run);
   const notYetDialled = stillGoing && dialed < 1;
+  const ask = azRunAsk(run);
 
   return (
     <ConsoleShell tenant={tenant} width={880}>
@@ -148,11 +143,6 @@ export function RunResults({ tenant, runId }) {
           <span>{error}</span>
         </Strip>
       ) : null}
-      {sent ? (
-        <Strip className="mb-8" tone="live">
-          <span>Sent. Open WhatsApp to read the shortlist.</span>
-        </Strip>
-      ) : null}
       {notYetDialled ? (
         <Strip className="mb-8" tone="warn">
           <span>
@@ -165,8 +155,8 @@ export function RunResults({ tenant, runId }) {
                   weekday: "short",
                   hour: "2-digit",
                   minute: "2-digit",
-                })} Dubai time. Come back after that, or check WhatsApp.`
-              : "— calls are going out now. This page fills in as people answer. Come back later, or check WhatsApp for status."}
+                })} Dubai time. You don’t need to sit here. In WhatsApp, text AgentZero: ${ask}.`
+              : `— calls are going out now. You don’t need to sit here. In WhatsApp, text AgentZero: ${ask}.`}
           </span>
         </Strip>
       ) : queuedCount ? (
@@ -175,8 +165,7 @@ export function RunResults({ tenant, runId }) {
             <strong className="font-mono text-[13px] tracking-[.1em]">
               {queuedCount} STILL GOING OUT
             </strong>{" "}
-            — come back later, or check WhatsApp for status. You don’t need to
-            sit here.
+            — you don’t need to sit here. In WhatsApp, text AgentZero: {ask}.
           </span>
         </Strip>
       ) : null}
@@ -185,7 +174,7 @@ export function RunResults({ tenant, runId }) {
         <Stat
           label="worth your time"
           n={hot.length}
-          sub={hot.length ? "ask AgentZero for the shortlist" : "none yet"}
+          sub={hot.length ? `text AgentZero: ${ask}` : "none yet"}
           tone="live"
         />
         <Stat label="qualified" n={stats.qualified ?? "—"} tone="ink" />
@@ -193,7 +182,7 @@ export function RunResults({ tenant, runId }) {
           <Stat
             label={scheduled ? "scheduled" : "in progress"}
             n={scheduled ? "Later" : "Dialling…"}
-            sub="Come back later, or check WhatsApp"
+            sub={`In WhatsApp: ${ask}`}
             tone="warn"
           />
         ) : (
@@ -224,7 +213,7 @@ export function RunResults({ tenant, runId }) {
             {calls.length === 0
               ? "Nobody is on this run yet. If you just queued a list, go back and check the match count before Start."
               : notYetDialled || queuedCount
-                ? "Nothing to review yet. Come back later, or check WhatsApp — you don’t need to watch this page."
+                ? `Nothing to review yet. In WhatsApp, text AgentZero: ${ask}.`
                 : "No callbacks yet. The calls below have the detail."}
           </p>
         ) : (
@@ -303,18 +292,28 @@ export function RunResults({ tenant, runId }) {
         )
       ) : null}
 
-      <div className="mt-11 flex flex-wrap gap-3">
-        <Button
-          onClick={() => {
-            window.location.href = `/api/console/runs/${runId}/export`;
-          }}
-          variant="secondary"
-        >
-          Export CSV
-        </Button>
-        <Button disabled={sending || !hot.length} onClick={sendWhatsApp} variant="quiet">
-          {sending ? "Sending…" : `Send the ${hot.length} to my WhatsApp`}
-        </Button>
+      <div className="mt-11 rounded-2xl border border-az-edge bg-az-wash p-7">
+        <div className="mb-3 font-mono text-[11px] tracking-[.16em] text-az">
+          BEFORE YOU LEAVE
+        </div>
+        <p className="text-[17px] leading-snug text-fg">
+          In WhatsApp, text AgentZero:{" "}
+          <span className="font-semibold">{ask}</span>
+        </p>
+        <p className="mt-2 text-sm text-dim">
+          You’ll get dialled/total and who is worth a callback. You don’t need
+          to watch this page.
+        </p>
+        <div className="mt-5">
+          <a
+            className="az-btn az-btn-primary inline-flex"
+            href={waDeepLink(home?.tenant?.display_phone || home?.agent?.wa_id)}
+            rel="noreferrer"
+            target="_blank"
+          >
+            Go back to WhatsApp
+          </a>
+        </div>
       </div>
     </ConsoleShell>
   );

@@ -45,7 +45,7 @@ export async function GET(request, { params }) {
     const { data: batch, error } = await supabase
       .from("call_batches")
       .select(
-        "id, tenant_id, status, source_type, created_at, counts, est_cost_aed, window_start, window_end, script_id, script_version_id, scripts(display_name), script_versions(config_json)"
+        "id, tenant_id, status, source_type, created_at, counts, est_cost_aed, window_start, window_end, script_id, script_version_id, filter, scripts(display_name), script_versions(config_json)"
       )
       .eq("id", id)
       .maybeSingle();
@@ -136,6 +136,7 @@ export async function GET(request, { params }) {
         created_at: batch.created_at,
         script_id: batch.script_id,
         script_name: batch.scripts?.display_name || "Untitled script",
+        list_name: String(batch.filter?.list_name || "").trim(),
         counts,
         est_cost_aed: batch.est_cost_aed,
         window_start: batch.window_start,

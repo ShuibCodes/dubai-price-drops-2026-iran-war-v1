@@ -147,8 +147,7 @@ export function WaFooter({ waLink = GENERIC_WA }) {
           The work happens in WhatsApp.
         </div>
         <div className="mt-1.5 text-[15px] text-dim">
-          Text <span className="font-mono text-az">summary</span> to see where
-          your pipeline stands.
+          Ask AgentZero about any run while you’re there.
         </div>
       </div>
       <a
