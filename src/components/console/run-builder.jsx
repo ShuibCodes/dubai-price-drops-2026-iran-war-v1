@@ -307,7 +307,7 @@ export function RunBuilder({ tenant }) {
       <p className="mb-3 text-lg leading-snug text-fg-2">
         Nothing dials until the last button.
       </p>
-      <Link className="mb-11 inline-block text-base text-az" href={base}>
+      <Link className="mb-11 inline-block text-base text-az" href={`${base}/runs`}>
         See past runs →
       </Link>
 
