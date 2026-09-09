@@ -7,13 +7,12 @@ import { useEffect, useState } from "react";
 import { consoleBase } from "@/lib/console/client";
 import { waDeepLink } from "@/lib/console/format";
 
-// `match` widens the active check when the tab links at one child route but
-// owns a whole section — Runs points at /runs/new yet also covers /runs/<id>.
+// `match` widens the active check when a tab owns a whole section.
 const NAV = [
   { href: "", label: "Home" },
   { href: "/how-it-works", label: "Journey" },
   { href: "/scripts", label: "Scripts" },
-  { href: "/runs/new", label: "Runs", match: "/runs" },
+  { href: "/runs", label: "Runs", match: "/runs" },
   { href: "/kb", label: "Knowledge" },
   { href: "/settings", label: "Settings" },
 ];
