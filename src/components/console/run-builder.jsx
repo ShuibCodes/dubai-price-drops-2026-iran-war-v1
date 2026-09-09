@@ -555,7 +555,7 @@ export function RunBuilder({ tenant }) {
         <div className="mt-4.5 text-sm text-dim">
           Every call states it is an AI. You don’t need to sit here. In
           WhatsApp, text AgentZero:{" "}
-          <span className="text-fg">how's the run</span>.
+          <span className="text-fg">how&apos;s the run</span>.
         </div>
       </div>
     </ConsoleShell>
