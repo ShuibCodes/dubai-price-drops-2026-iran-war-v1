@@ -114,10 +114,29 @@ function getVapiPublicKey() {
   return key;
 }
 
+function originFromHost(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) return raw.replace(/\/$/, "");
+  return `https://${raw.replace(/\/$/, "")}`;
+}
+
+/** Stable public origin. Skip VERCEL_URL — preview hosts are SSO-gated. */
+function platformAppOrigin() {
+  const vercelProd = originFromHost(process.env.VERCEL_PROJECT_PRODUCTION_URL);
+  if (vercelProd) return vercelProd;
+  return originFromHost(
+    process.env.RAILWAY_PUBLIC_DOMAIN || process.env.RAILWAY_STATIC_URL
+  );
+}
+
 function getAssistantServerUrl() {
   const explicit = String(process.env.VAPI_SERVER_URL || "").trim();
   const origin = String(
-    process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || ""
+    process.env.APP_URL ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      platformAppOrigin() ||
+      ""
   ).trim();
   const raw = explicit || origin;
   if (!raw) {

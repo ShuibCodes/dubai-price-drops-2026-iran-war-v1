@@ -3,6 +3,7 @@
  *
  *   node --experimental-loader ./scripts/alias-loader.mjs scripts/qa-console-whatsapp-display.mjs
  */
+import { readFile } from "node:fs/promises";
 import {
   tenantWhatsAppLink,
   whatsappHealthy,
@@ -94,6 +95,22 @@ console.log("\nCONNECTED FLAG TRUE BUT display_phone MISSING");
   check(
     "missing display_phone does not fall back to agent.wa_id",
     link !== `https://wa.me/${AGENT_WA}`
+  );
+}
+
+console.log("\nCONSOLE RUN PAGES");
+for (const relativePath of [
+  "../src/components/console/console-runs.jsx",
+  "../src/components/console/run-results.jsx",
+]) {
+  const source = await readFile(new URL(relativePath, import.meta.url), "utf8");
+  check(
+    `${relativePath} uses tenantWhatsAppLink`,
+    source.includes("tenantWhatsAppLink")
+  );
+  check(
+    `${relativePath} does not fall back to agent.wa_id`,
+    !/display_phone\s*\|\|[\s\S]{0,40}agent\?\.wa_id/.test(source)
   );
 }
 

@@ -29,7 +29,7 @@ export async function GET(request) {
         supabase
           .from("call_batches")
           .select(
-            "id, status, source_type, created_at, counts, est_cost_aed, script_id, scripts(display_name)"
+            "id, status, source_type, created_at, counts, est_cost_aed, window_start, script_id, scripts(display_name)"
           )
           .eq("tenant_id", session.tenantId)
           .order("created_at", { ascending: false })
@@ -60,6 +60,7 @@ export async function GET(request) {
         source_type: row.source_type,
         created_at: row.created_at,
         counts: row.counts || {},
+        window_start: row.window_start,
         est_cost_aed: row.est_cost_aed,
         script_id: row.script_id,
         script_name: row.scripts?.display_name || "Untitled script",

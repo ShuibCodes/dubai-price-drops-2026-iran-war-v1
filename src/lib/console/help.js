@@ -2,6 +2,7 @@ export const HELP_COMMANDS = [
   "ask about a lead",
   "call <name>",
   "summary",
+  "how's the run",
   "call my <list>",
   "call my <list> with the <script> script",
 ];
@@ -11,6 +12,7 @@ export const HELP_TEXT = `From WhatsApp you can:
 · ask about a lead
 · call <name>
 · summary
+· how's the run
 · call my <list>
 · call my <list> with the <script> script
 

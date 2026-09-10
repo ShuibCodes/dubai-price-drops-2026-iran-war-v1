@@ -8,6 +8,12 @@ import { Strip } from "@/components/ui/strip";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { Expandable } from "@/components/console/expandable";
 import { consoleBase, consoleJson } from "@/lib/console/client";
+import {
+  runIsInFlight,
+  runIsScheduled,
+  runWindowStart,
+  tenantWhatsAppLink,
+} from "@/lib/console/format";
 
 function metaLine(run) {
   if (!run) return "";
@@ -19,7 +25,12 @@ function metaLine(run) {
       minute: "2-digit",
     })
     .toUpperCase();
-  return `${when} · ${run.script_name.toUpperCase()} · ${String(run.status || "").toUpperCase()}`;
+  const script = String(run.script_name || "").toUpperCase();
+  const dialed = Number(run.counts?.dialed || 0);
+  let state = String(run.status || "").toUpperCase();
+  if (dialed < 1 && runIsScheduled(run)) state = "SCHEDULED";
+  else if (dialed < 1 && runIsInFlight(run)) state = "DIALLING";
+  return `${when} · ${script} · ${state}`;
 }
 
 function toneFor(call) {
@@ -30,6 +41,21 @@ function toneFor(call) {
   return { label: String(call.status || "DONE").toUpperCase(), className: "text-faint" };
 }
 
+function azRunAsk(run) {
+  const list = String(run?.list_name || "").trim();
+  return list ? `how's my ${list}` : "how's the run";
+}
+
+function restLabel(rest, queuedCount) {
+  if (queuedCount >= rest.length) {
+    return `Show the ${rest.length} still queued`;
+  }
+  const tail = queuedCount
+    ? `${rest.length - queuedCount} done, ${queuedCount} still queued`
+    : "no interest, voicemail";
+  return `Show the other ${rest.length} call${rest.length === 1 ? "" : "s"} (${tail})`;
+}
+
 function CallBody({ call }) {
   return (
     <div className="border-b border-hairline px-1 pb-6 pt-5">
@@ -38,7 +64,11 @@ function CallBody({ call }) {
           “{call.quote}”
         </div>
       ) : (
-        <p className="text-[15px] text-dim">Nothing came back on this call yet.</p>
+        <p className="text-[15px] text-dim">
+          {call.status === "queued"
+            ? "Not dialled yet — this one is still in the queue."
+            : "Nothing came back on this call yet."}
+        </p>
       )}
       {call.phone ? (
         <div className="mt-4 font-mono text-[13px] text-faint">{call.phone}</div>
@@ -67,8 +97,7 @@ function CallBody({ call }) {
 export function RunResults({ tenant, runId }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
-  const [sending, setSending] = useState(false);
-  const [sent, setSent] = useState(false);
+  const [home, setHome] = useState(null);
   const [showRest, setShowRest] = useState(false);
   const base = consoleBase(tenant);
 
@@ -80,26 +109,28 @@ export function RunResults({ tenant, runId }) {
       .catch((err) => setError(err.message));
   }, [base, runId]);
 
-  async function sendWhatsApp() {
-    setSending(true);
-    setError("");
-    try {
-      await consoleJson(base, `/api/console/runs/${runId}/whatsapp`, {
-        method: "POST",
-        fallback: "Send failed.",
-      });
-      setSent(true);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSending(false);
-    }
-  }
+  useEffect(() => {
+    consoleJson(base, "/api/console/home", { fallback: "Could not load home." })
+      .then(setHome)
+      .catch(() => {});
+  }, [base]);
 
   const stats = data?.stats || {};
+  const run = data?.run;
   const calls = data?.calls || [];
   const hot = calls.filter((row) => row.worth >= 30);
   const rest = calls.filter((row) => row.worth < 30);
+  const queuedCount = calls.filter((row) => row.status === "queued").length;
+  const dialed = Number(stats.dialed || 0);
+  const windowStart = runWindowStart(run);
+  const scheduled = runIsScheduled(run);
+  const stillGoing = queuedCount > 0 || runIsInFlight(run);
+  const notYetDialled = stillGoing && dialed < 1;
+  const ask = azRunAsk(run);
+  const waLink = tenantWhatsAppLink({
+    connected: Boolean(home?.tenant?.whatsapp_healthy),
+    displayPhone: home?.tenant?.display_phone,
+  });
 
   return (
     <ConsoleShell tenant={tenant} width={880}>
@@ -121,9 +152,30 @@ export function RunResults({ tenant, runId }) {
           <span>{error}</span>
         </Strip>
       ) : null}
-      {sent ? (
-        <Strip className="mb-8" tone="live">
-          <span>Sent. Open WhatsApp to read the shortlist.</span>
+      {notYetDialled ? (
+        <Strip className="mb-8" tone="warn">
+          <span>
+            <strong className="font-mono text-[13px] tracking-[.1em]">
+              {scheduled ? "SCHEDULED" : "DIALLING…"}
+            </strong>{" "}
+            {scheduled
+              ? `— first calls go out ${windowStart.toLocaleString("en-GB", {
+                  timeZone: "Asia/Dubai",
+                  weekday: "short",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })} Dubai time. You don’t need to sit here. In WhatsApp, text AgentZero: ${ask}.`
+              : `— calls are going out now. You don’t need to sit here. In WhatsApp, text AgentZero: ${ask}.`}
+          </span>
+        </Strip>
+      ) : queuedCount ? (
+        <Strip className="mb-8" tone="warn">
+          <span>
+            <strong className="font-mono text-[13px] tracking-[.1em]">
+              {queuedCount} STILL GOING OUT
+            </strong>{" "}
+            — you don’t need to sit here. In WhatsApp, text AgentZero: {ask}.
+          </span>
         </Strip>
       ) : null}
 
@@ -131,15 +183,33 @@ export function RunResults({ tenant, runId }) {
         <Stat
           label="worth your time"
           n={hot.length}
-          sub="already in your WhatsApp"
+          sub={hot.length ? `text AgentZero: ${ask}` : "none yet"}
           tone="live"
         />
         <Stat label="qualified" n={stats.qualified ?? "—"} tone="ink" />
-        <Stat label="dialled" n={stats.dialed ?? "—"} tone="dim" />
+        {notYetDialled ? (
+          <Stat
+            label={scheduled ? "scheduled" : "in progress"}
+            n={scheduled ? "Later" : "Dialling…"}
+            sub={`In WhatsApp: ${ask}`}
+            tone="warn"
+          />
+        ) : (
+          <Stat
+            label="dialled"
+            n={dialed}
+            sub={queuedCount ? `${queuedCount} still going out` : undefined}
+            tone="dim"
+          />
+        )}
       </div>
 
       <div className="az-eyebrow mb-3.5 block">
-        {hot.length ? `CALL THESE ${hot.length} BACK` : "NOBODY WORTH A CALLBACK YET"}
+        {hot.length
+          ? `CALL THESE ${hot.length} BACK`
+          : notYetDialled || queuedCount
+            ? "WAITING ON THE FIRST ANSWERS"
+            : "NOBODY WORTH A CALLBACK YET"}
       </div>
       <div className="border-t border-line">
         {data == null ? (
@@ -151,7 +221,9 @@ export function RunResults({ tenant, runId }) {
           <p className="py-8 text-[15px] text-dim">
             {calls.length === 0
               ? "Nobody is on this run yet. If you just queued a list, go back and check the match count before Start."
-              : "No callbacks yet. The calls below have the detail."}
+              : notYetDialled || queuedCount
+                ? `Nothing to review yet. In WhatsApp, text AgentZero: ${ask}.`
+                : "No callbacks yet. The calls below have the detail."}
           </p>
         ) : (
           hot.map((call, index) => {
@@ -224,24 +296,39 @@ export function RunResults({ tenant, runId }) {
             onClick={() => setShowRest(true)}
             type="button"
           >
-            Show the other {rest.length} call{rest.length === 1 ? "" : "s"} (no
-            interest, voicemail, queued)
+            {restLabel(rest, queuedCount)}
           </button>
         )
       ) : null}
 
-      <div className="mt-11 flex flex-wrap gap-3">
-        <Button
-          onClick={() => {
-            window.location.href = `/api/console/runs/${runId}/export`;
-          }}
-          variant="secondary"
-        >
-          Export CSV
-        </Button>
-        <Button disabled={sending || !hot.length} onClick={sendWhatsApp} variant="quiet">
-          {sending ? "Sending…" : `Send the ${hot.length} to my WhatsApp`}
-        </Button>
+      <div className="mt-11 rounded-2xl border border-az-edge bg-az-wash p-7">
+        <div className="mb-3 font-mono text-[11px] tracking-[.16em] text-az">
+          BEFORE YOU LEAVE
+        </div>
+        <p className="text-[17px] leading-snug text-fg">
+          In WhatsApp, text AgentZero:{" "}
+          <span className="font-semibold">{ask}</span>
+        </p>
+        <p className="mt-2 text-sm text-dim">
+          You’ll get dialled/total and who is worth a callback. You don’t need
+          to watch this page.
+        </p>
+        <div className="mt-5">
+          {waLink ? (
+            <a
+              className="az-btn az-btn-primary inline-flex"
+              href={waLink}
+              rel="noreferrer"
+              target="_blank"
+            >
+              Go back to WhatsApp
+            </a>
+          ) : (
+            <Link className="az-btn az-btn-primary inline-flex" href={`${base}/settings`}>
+              Check WhatsApp connection
+            </Link>
+          )}
+        </div>
       </div>
     </ConsoleShell>
   );

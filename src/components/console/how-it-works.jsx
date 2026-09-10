@@ -13,10 +13,10 @@ const TRANSCRIPT = [
     who: "az",
     text: "Calling Ahmed now on the live re-engage script. I’ll text you when it lands.",
   },
-  { who: "you", text: "summary" },
+  { who: "you", text: "how's the run" },
   {
     who: "az",
-    text: "Overnight: 4 new inbound, 2 worth a call this morning. Fatima (Downtown) and Omar (JVC) first.",
+    text: "Cold list — 12/40 dialled. Ask me again later please.\n\nXenios +9715… · WARM\n“Not right now. Thank you, though.”",
   },
   { who: "you", text: "call my marina list with the cold list script" },
   {

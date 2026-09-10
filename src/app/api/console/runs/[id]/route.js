@@ -1,27 +1,9 @@
 import { consoleContext, jsonError } from "@/lib/console/http";
+import { quotedSentence, worthScore } from "@/lib/console/run-status";
 import { routeId } from "@/lib/scripts/http";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-function worthScore(call) {
-  const q = call.qualification && typeof call.qualification === "object" ? call.qualification : {};
-  if (q.outcome === "qualified") return 50;
-  if (q.outcome === "callback") return 40;
-  if (q.lead_engaged) return 30;
-  if (q.outcome === "not_interested") return 10;
-  return 0;
-}
-
-function quotedSentence(call) {
-  const transcript = String(call.transcript || "");
-  const lines = transcript
-    .split("\n")
-    .map((line) => line.replace(/^(User|Lead|Customer)\s*:\s*/i, "").trim())
-    .filter((line) => line && !/^(AI|Assistant|Agent)\s*:/i.test(line));
-  const sentence = lines.find((line) => line.length > 12) || call.summary || "";
-  return sentence.slice(0, 240);
-}
 
 function extractedSub(call, findOut) {
   const q = call.qualification && typeof call.qualification === "object" ? call.qualification : {};
@@ -63,7 +45,7 @@ export async function GET(request, { params }) {
     const { data: batch, error } = await supabase
       .from("call_batches")
       .select(
-        "id, tenant_id, status, source_type, created_at, counts, est_cost_aed, window_start, window_end, script_id, script_version_id, scripts(display_name), script_versions(config_json)"
+        "id, tenant_id, status, source_type, created_at, counts, est_cost_aed, window_start, window_end, script_id, script_version_id, filter, scripts(display_name), script_versions(config_json)"
       )
       .eq("id", id)
       .maybeSingle();
@@ -154,6 +136,7 @@ export async function GET(request, { params }) {
         created_at: batch.created_at,
         script_id: batch.script_id,
         script_name: batch.scripts?.display_name || "Untitled script",
+        list_name: String(batch.filter?.list_name || "").trim(),
         counts,
         est_cost_aed: batch.est_cost_aed,
         window_start: batch.window_start,

@@ -18,7 +18,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.86.1",
     "@daily-co/daily-js": "^0.92.2",
-    "@supabase/ssr": "^0.12.5",
+    "@supabase/ssr": "^0.12.6",
     "@supabase/supabase-js": "^2.110.0",
     "@vercel/functions": "^3.7.6",
     "cheerio": "^1.2.0",

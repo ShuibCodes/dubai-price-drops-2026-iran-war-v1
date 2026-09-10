@@ -235,6 +235,30 @@ check(
     )
 );
 
+const jarvisEngine = await readFile(
+  new URL("../src/lib/jarvis/engine.js", import.meta.url),
+  "utf8"
+);
+const runStatus = await readFile(
+  new URL("../src/lib/console/run-status.js", import.meta.url),
+  "utf8"
+);
+check(
+  "Jarvis run status passes the current agent",
+  /case "get_run_status"[\s\S]*?agentId[\s\S]*?getRunStatus/.test(
+    jarvisEngine
+  ) ||
+    /case "get_run_status"[\s\S]*?getRunStatus[\s\S]*?agentId/.test(
+      jarvisEngine
+    )
+);
+check(
+  "run status filters call batches by agent when supplied",
+  /if \(agentId\) batchQuery = batchQuery\.eq\("agent_id", agentId\)/.test(
+    runStatus
+  )
+);
+
 console.log(
   `\n${failures === 0 ? "ALL CHECKS PASSED" : `${failures} CHECK(S) FAILED`}`
 );
