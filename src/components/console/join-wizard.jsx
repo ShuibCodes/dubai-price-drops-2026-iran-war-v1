@@ -13,7 +13,7 @@ import { ConsoleShell } from "@/components/console/console-shell";
 import { WhatsAppConnect } from "@/components/console/whatsapp-connect";
 import { Tooltip } from "@/components/console/tooltip";
 import { consoleBase, consoleJson } from "@/lib/console/client";
-import { waDeepLink } from "@/lib/console/format";
+import { tenantWhatsAppLink } from "@/lib/console/format";
 
 export function JoinWizard({ tenant }) {
   const [profile, setProfile] = useState(null);
@@ -126,7 +126,10 @@ export function JoinWizard({ tenant }) {
     }
   }
 
-  const waLink = waDeepLink(profile?.tenant?.display_phone || profile?.agent?.wa_id);
+  const waLink = tenantWhatsAppLink({
+    connected: connected,
+    displayPhone: profile?.tenant?.display_phone,
+  });
 
   return (
     <ConsoleShell bare footer={false} tenant={tenant} width={620}>
@@ -336,7 +339,7 @@ export function JoinWizard({ tenant }) {
             </div>
             {sent ? (
               <Strip className="mt-5" tone="live">
-                <span>Brief sent. Open WhatsApp to read it.</span>
+                <span>Notification sent. Open WhatsApp and tap Send brief.</span>
               </Strip>
             ) : (
               <Button
@@ -361,14 +364,16 @@ export function JoinWizard({ tenant }) {
               setting.
             </p>
             <div className="flex flex-wrap gap-3">
-              <a
-                className="rounded-[10px] bg-az px-6 py-3.5 text-base font-semibold text-az-ink hover:bg-az-hover"
-                href={waLink}
-                rel="noreferrer"
-                target="_blank"
-              >
-                Open WhatsApp and say hi
-              </a>
+              {waLink ? (
+                <a
+                  className="rounded-[10px] bg-az px-6 py-3.5 text-base font-semibold text-az-ink hover:bg-az-hover"
+                  href={waLink}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  Open WhatsApp and say hi
+                </a>
+              ) : null}
               <Link
                 className="rounded-[10px] border border-line-2 px-5 py-3.5 text-base font-medium text-dim hover:text-fg"
                 href={base}

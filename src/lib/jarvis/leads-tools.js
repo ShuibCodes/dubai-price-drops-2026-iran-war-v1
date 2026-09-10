@@ -18,6 +18,12 @@ import {
   cleanJarvisSearchName,
   jarvisNameSearchTerms,
 } from "@/lib/jarvis/name-search";
+import {
+  applyVisibleInboxLeadScope,
+  assertJarvisActor,
+  getVisibleInboxLead,
+  listVisibleInboxLeadIds,
+} from "@/lib/jarvis/visibility";
 
 const JARVIS_LEAD_NAME_SELECT =
   "push_name, wa_id, inferred_name, inferred_name_confidence, inferred_name_at";
@@ -91,8 +97,13 @@ async function enrichConversationSlice(tenantId, conversations) {
   });
 }
 
-export async function getJarvisLatestMessages(tenantId, limit = 10) {
+export async function getJarvisLatestMessages(tenantId, agentId, limit = 10) {
   const supabase = db();
+  const visibleIds = await listVisibleInboxLeadIds(supabase, {
+    tenantId,
+    agentId,
+  });
+  if (!visibleIds.size) return [];
   const capped = Math.min(Math.max(Number(limit) || 10, 1), 50);
   const { data, error } = await supabase
     .from(MESSAGES_TABLE)
@@ -100,7 +111,7 @@ export async function getJarvisLatestMessages(tenantId, limit = 10) {
       `id, jarvis_lead_id, direction, body, msg_type, timestamp, created_at, jarvis_leads(${JARVIS_LEAD_NAME_SELECT})`
     )
     .eq("tenant_id", tenantId)
-    .not("jarvis_lead_id", "is", null)
+    .in("jarvis_lead_id", [...visibleIds])
     .order("timestamp", { ascending: false })
     .limit(capped);
   if (error) throw new Error(`Latest messages query failed: ${error.message}`);
@@ -170,10 +181,26 @@ function bodySnippet(message) {
  * Load recent jarvis WhatsApp rows and reduce to latest-per-thread + counts.
  * Bounded query — no migration/RPC required.
  */
-async function loadJarvisInboxWindow(tenantId, hours = 72) {
+async function loadJarvisInboxWindow(tenantId, agentId, hours = 72) {
   const supabase = db();
+  const visibleIds = await listVisibleInboxLeadIds(supabase, {
+    tenantId,
+    agentId,
+  });
   const windowHours = clampHours(hours);
   const since = new Date(Date.now() - windowHours * 60 * 60 * 1000).toISOString();
+  if (!visibleIds.size) {
+    return {
+      hours: windowHours,
+      since,
+      messageCount: 0,
+      inbound: 0,
+      outbound: 0,
+      threads: [],
+      unreplied: [],
+      staleOutbound: [],
+    };
+  }
 
   const { data, error } = await supabase
     .from(MESSAGES_TABLE)
@@ -181,7 +208,7 @@ async function loadJarvisInboxWindow(tenantId, hours = 72) {
       `id, jarvis_lead_id, direction, body, msg_type, timestamp, created_at, jarvis_leads(${JARVIS_LEAD_NAME_SELECT})`
     )
     .eq("tenant_id", tenantId)
-    .not("jarvis_lead_id", "is", null)
+    .in("jarvis_lead_id", [...visibleIds])
     .gte("timestamp", since)
     .order("timestamp", { ascending: false })
     .limit(2000);
@@ -229,9 +256,10 @@ async function loadJarvisInboxWindow(tenantId, hours = 72) {
 /** Threads whose latest message in the window is inbound (needs a reply). */
 export async function getJarvisUnrepliedConversations(
   tenantId,
+  agentId,
   { hours = 72, limit = 15 } = {}
 ) {
-  const window = await loadJarvisInboxWindow(tenantId, hours);
+  const window = await loadJarvisInboxWindow(tenantId, agentId, hours);
   const capped = clampLimit(limit);
   const slice = window.unreplied.slice(0, capped);
   const conversations = await enrichConversationSlice(tenantId, slice);
@@ -245,9 +273,10 @@ export async function getJarvisUnrepliedConversations(
 /** Distinct threads active in the window, newest first. */
 export async function getJarvisInboxActivity(
   tenantId,
+  agentId,
   { hours = 72, limit = 15, inboundOnly = false } = {}
 ) {
-  const window = await loadJarvisInboxWindow(tenantId, hours);
+  const window = await loadJarvisInboxWindow(tenantId, agentId, hours);
   const capped = clampLimit(limit);
   const list = inboundOnly
     ? window.threads.filter((t) => t.direction === "inbound")
@@ -269,11 +298,12 @@ export async function getJarvisInboxActivity(
  */
 export async function getJarvisStaleConversations(
   tenantId,
+  agentId,
   { hours = 72, limit = 15 } = {}
 ) {
   const staleHours = clampHours(hours);
   const lookbackHours = 24 * 14;
-  const window = await loadJarvisInboxWindow(tenantId, lookbackHours);
+  const window = await loadJarvisInboxWindow(tenantId, agentId, lookbackHours);
   const cutoff = Date.now() - staleHours * 60 * 60 * 1000;
   const capped = clampLimit(limit);
   const stale = window.staleOutbound.filter((t) => {
@@ -293,8 +323,12 @@ export async function getJarvisStaleConversations(
 }
 
 /** Aggregate inbox counts for a time window. */
-export async function getJarvisInboxStats(tenantId, { hours = 72 } = {}) {
-  const window = await loadJarvisInboxWindow(tenantId, hours);
+export async function getJarvisInboxStats(
+  tenantId,
+  agentId,
+  { hours = 72 } = {}
+) {
+  const window = await loadJarvisInboxWindow(tenantId, agentId, hours);
   return {
     hours: window.hours,
     since: window.since,
@@ -307,8 +341,14 @@ export async function getJarvisInboxStats(tenantId, { hours = 72 } = {}) {
   };
 }
 
-export async function searchJarvisLeadByName(tenantId, name) {
+export async function searchJarvisLeadByName(tenantId, agentId, name) {
   const supabase = db();
+  assertJarvisActor({ tenantId, agentId });
+  const visibleIds = await listVisibleInboxLeadIds(supabase, {
+    tenantId,
+    agentId,
+  });
+  if (!visibleIds.size) return [];
   const query = cleanJarvisSearchName(name);
   if (!query) return [];
 
@@ -326,6 +366,7 @@ export async function searchJarvisLeadByName(tenantId, name) {
         "id, push_name, wa_id, source, owns_property, last_message_at, inferred_name, inferred_name_confidence, inferred_name_at"
       )
       .eq("tenant_id", tenantId)
+      .in("id", [...visibleIds])
       .or(`wa_id.eq.${digits},wa_id.like.%${digits.slice(-9)}`)
       .limit(10);
     if (phoneError) throw new Error(`Lead phone search failed: ${phoneError.message}`);
@@ -338,6 +379,7 @@ export async function searchJarvisLeadByName(tenantId, name) {
       "id, push_name, wa_id, source, owns_property, last_message_at, inferred_name, inferred_name_confidence, inferred_name_at"
     )
     .eq("tenant_id", tenantId)
+    .in("id", [...visibleIds])
     .or(orFilter)
     .order("last_message_at", { ascending: false })
     .limit(30);
@@ -425,17 +467,15 @@ export async function searchJarvisLeadByName(tenantId, name) {
     .slice(0, 10);
 }
 
-export async function getJarvisLeadStory(tenantId, leadId) {
+export async function getJarvisLeadStory(tenantId, agentId, leadId) {
   const supabase = db();
-  const { data: lead, error: leadError } = await supabase
-    .from(JARVIS_LEADS_TABLE)
-    .select(
+  const lead = await getVisibleInboxLead(supabase, {
+    tenantId,
+    agentId,
+    leadId,
+    select:
       "id, push_name, wa_id, source, owns_property, inferred_name, inferred_name_confidence, inferred_name_at"
-    )
-    .eq("tenant_id", tenantId)
-    .eq("id", leadId)
-    .maybeSingle();
-  if (leadError) throw new Error(`Lead lookup failed: ${leadError.message}`);
+  });
   if (!lead) return null;
 
   const [callsResult, messagesResult, enrichedLead] = await Promise.all([
@@ -493,10 +533,15 @@ export async function getJarvisLeadStory(tenantId, leadId) {
   };
 }
 
-export async function searchJarvisConversations(tenantId, query) {
+export async function searchJarvisConversations(tenantId, agentId, query) {
   const supabase = db();
   const term = String(query || "").trim();
   if (!term) return [];
+  const visibleIds = await listVisibleInboxLeadIds(supabase, {
+    tenantId,
+    agentId,
+  });
+  if (!visibleIds.size) return [];
 
   const { data: messages, error } = await supabase
     .from(MESSAGES_TABLE)
@@ -504,7 +549,7 @@ export async function searchJarvisConversations(tenantId, query) {
       `id, jarvis_lead_id, direction, body, timestamp, created_at, jarvis_leads(${JARVIS_LEAD_NAME_SELECT})`
     )
     .eq("tenant_id", tenantId)
-    .not("jarvis_lead_id", "is", null)
+    .in("jarvis_lead_id", [...visibleIds])
     .ilike("body", `%${term}%`)
     .order("timestamp", { ascending: false })
     .limit(20);
@@ -543,15 +588,24 @@ export async function searchJarvisConversations(tenantId, query) {
   });
 }
 
-export async function getJarvisCallDetail(tenantId, { leadId, callId } = {}) {
+export async function getJarvisCallDetail(
+  tenantId,
+  agentId,
+  { leadId, callId } = {}
+) {
   const supabase = db();
+  const visibleIds = await listVisibleInboxLeadIds(supabase, {
+    tenantId,
+    agentId,
+  });
+  if (!visibleIds.size) return null;
   let query = supabase
     .from("calls")
     .select(
       `id, jarvis_lead_id, started_at, ended_at, created_at, duration_seconds, transcript, recording_url, qualification, summary, jarvis_leads(${JARVIS_LEAD_NAME_SELECT})`
     )
     .eq("tenant_id", tenantId)
-    .not("jarvis_lead_id", "is", null);
+    .in("jarvis_lead_id", [...visibleIds]);
 
   if (callId) query = query.eq("id", callId);
   if (leadId) query = query.eq("jarvis_lead_id", leadId);
@@ -588,15 +642,20 @@ export async function getJarvisCallDetail(tenantId, { leadId, callId } = {}) {
   };
 }
 
-export async function getJarvisPendingCallbacks(tenantId) {
+export async function getJarvisPendingCallbacks(tenantId, agentId) {
   const supabase = db();
+  const visibleIds = await listVisibleInboxLeadIds(supabase, {
+    tenantId,
+    agentId,
+  });
+  if (!visibleIds.size) return [];
   const { data, error } = await supabase
     .from("calls")
     .select(
       `id, jarvis_lead_id, created_at, qualification, jarvis_leads(${JARVIS_LEAD_NAME_SELECT})`
     )
     .eq("tenant_id", tenantId)
-    .not("jarvis_lead_id", "is", null)
+    .in("jarvis_lead_id", [...visibleIds])
     .eq("qualification->>outcome", "callback")
     .order("created_at", { ascending: false })
     .limit(30);
@@ -649,8 +708,13 @@ export async function getJarvisPendingCallbacks(tenantId) {
  * Persist an authoritative contact name (user-confirmed).
  * Writes push_name only — never invents; Vapi dials use this field.
  */
-export async function setJarvisLeadName(tenantId, { leadId, phone, name } = {}) {
+export async function setJarvisLeadName(
+  tenantId,
+  agentId,
+  { leadId, phone, name } = {}
+) {
   const supabase = db();
+  assertJarvisActor({ tenantId, agentId });
   const cleanedName = String(name || "")
     .trim()
     .split(/\s+/)[0];
@@ -663,12 +727,14 @@ export async function setJarvisLeadName(tenantId, { leadId, phone, name } = {}) 
   const normalized =
     cleanedName.charAt(0).toUpperCase() + cleanedName.slice(1);
 
-  let query = supabase
+  let query = applyVisibleInboxLeadScope(
+    supabase
     .from(JARVIS_LEADS_TABLE)
     .select(
       "id, push_name, wa_id, inferred_name, inferred_name_confidence, inferred_name_at"
-    )
-    .eq("tenant_id", tenantId);
+    ),
+    { tenantId, agentId }
+  );
 
   if (leadId) {
     query = query.eq("id", leadId);
@@ -682,15 +748,19 @@ export async function setJarvisLeadName(tenantId, { leadId, phone, name } = {}) 
   if (lookupError) throw new Error(`Lead lookup failed: ${lookupError.message}`);
   if (!lead) throw new Error("Lead not found");
 
-  const { data: updated, error } = await supabase
-    .from(JARVIS_LEADS_TABLE)
-    .update({ push_name: normalized })
-    .eq("id", lead.id)
+  const { data: updated, error } = await applyVisibleInboxLeadScope(
+    supabase
+      .from(JARVIS_LEADS_TABLE)
+      .update({ push_name: normalized })
+      .eq("id", lead.id),
+    { tenantId, agentId }
+  )
     .select(
       "id, push_name, wa_id, inferred_name, inferred_name_confidence, inferred_name_at"
     )
-    .single();
+    .maybeSingle();
   if (error) throw new Error(`Failed to set lead name: ${error.message}`);
+  if (!updated) throw new Error("Lead not found");
 
   const formatted = formatJarvisLeadName(updated);
   return {
@@ -714,18 +784,22 @@ async function dialJarvisLeadNow({ supabase, tenant, lead, source }) {
   });
 }
 
-export async function startJarvisTargetCall(tenantId, leadId, requestedBy) {
+export async function startJarvisTargetCall(
+  tenantId,
+  agentId,
+  leadId,
+  requestedBy
+) {
   const supabase = db();
   const tenant = await getOutboundTenant(supabase, tenantId);
   assertOutboundActive(tenant);
 
-  const { data: lead, error } = await supabase
-    .from(JARVIS_LEADS_TABLE)
-    .select("id, push_name, wa_id, source, owns_property, pixxi_lead_id")
-    .eq("tenant_id", tenantId)
-    .eq("id", leadId)
-    .maybeSingle();
-  if (error) throw new Error(`Lead lookup failed: ${error.message}`);
+  const lead = await getVisibleInboxLead(supabase, {
+    tenantId,
+    agentId,
+    leadId,
+    select: "id, push_name, wa_id, source, owns_property, pixxi_lead_id",
+  });
   if (!lead) throw new Error("Lead not found");
 
   const leadPhone = lead.wa_id ? `+${lead.wa_id}` : null;

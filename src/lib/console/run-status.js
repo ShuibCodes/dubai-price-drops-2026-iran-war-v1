@@ -1,5 +1,5 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { mergeCounts } from "./batches";
+import { mergeCounts } from "./batches.js";
 
 const WORTH_LIMIT = 5;
 
@@ -127,16 +127,21 @@ function pickBatch(batches, { script, list } = {}) {
  * One round-trip payload for WhatsApp: dialled/total, qualified, top worth-your-time
  * people with the same name / number / quote as the console.
  */
-export async function getRunStatus(tenantId, { script, list } = {}) {
+export async function getRunStatus(
+  tenantId,
+  { script, list, agentId = null } = {}
+) {
   const supabase = getSupabaseServerClient();
   if (!supabase) throw new Error("Supabase not configured");
 
-  const { data: batches, error: batchError } = await supabase
+  let batchQuery = supabase
     .from("call_batches")
     .select(
       "id, status, source_type, created_at, counts, filter, scripts(display_name)"
     )
-    .eq("tenant_id", tenantId)
+    .eq("tenant_id", tenantId);
+  if (agentId) batchQuery = batchQuery.eq("agent_id", agentId);
+  const { data: batches, error: batchError } = await batchQuery
     .order("created_at", { ascending: false })
     .limit(20);
   if (batchError) throw new Error(`Run lookup failed: ${batchError.message}`);

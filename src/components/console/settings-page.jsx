@@ -12,7 +12,7 @@ import { ConsoleShell } from "@/components/console/console-shell";
 import { WhatsAppConnect } from "@/components/console/whatsapp-connect";
 import { Tooltip } from "@/components/console/tooltip";
 import { consoleBase, consoleJson } from "@/lib/console/client";
-import { waDeepLink } from "@/lib/console/format";
+import { tenantWhatsAppLink } from "@/lib/console/format";
 
 const LEAD_SOURCES = [
   { name: "Property Finder", sub: "Portal hand-off is not wired up yet" },
@@ -110,7 +110,10 @@ export function SettingsPage({ tenant }) {
 
   const agent = data?.agent || {};
   const healthy = Boolean(data?.whatsapp_healthy);
-  const waLink = waDeepLink(data?.number || agent.wa_id);
+  const waLink = tenantWhatsAppLink({
+    connected: healthy,
+    displayPhone: data?.number,
+  });
 
   return (
     <ConsoleShell tenant={tenant} waLink={waLink} width={820}>
@@ -218,14 +221,23 @@ export function SettingsPage({ tenant }) {
             with you on a call. No developer needed on your side.
           </div>
         </div>
-        <a
-          className="rounded-[10px] border border-az px-5.5 py-3.5 text-base font-semibold text-fg hover:bg-az-wash"
-          href={waLink}
-          rel="noreferrer"
-          target="_blank"
-        >
-          Talk to support
-        </a>
+        {waLink ? (
+          <a
+            className="rounded-[10px] border border-az px-5.5 py-3.5 text-base font-semibold text-fg hover:bg-az-wash"
+            href={waLink}
+            rel="noreferrer"
+            target="_blank"
+          >
+            Talk to support
+          </a>
+        ) : (
+          <Link
+            className="rounded-[10px] border border-az px-5.5 py-3.5 text-base font-semibold text-fg hover:bg-az-wash"
+            href={`${base}/join`}
+          >
+            Talk to support
+          </Link>
+        )}
       </div>
 
       <div className="az-eyebrow mb-4 block">YOUR MORNING</div>
@@ -276,7 +288,7 @@ export function SettingsPage({ tenant }) {
         </div>
         {briefSent ? (
           <Strip className="mt-5" tone="live">
-            <span>Brief sent. Open WhatsApp to read it.</span>
+            <span>Notification sent. Open WhatsApp and tap Send brief.</span>
           </Strip>
         ) : (
           <Button

@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Strip } from "@/components/ui/strip";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { consoleBase, consoleJson } from "@/lib/console/client";
-import { waDeepLink } from "@/lib/console/format";
+import { tenantWhatsAppLink } from "@/lib/console/format";
 import {
   contactsFromCsvText,
   isSpreadsheetFile,
@@ -299,7 +299,12 @@ export function RunBuilder({ tenant }) {
     <ConsoleShell
       tenant={tenant}
       waLink={
-        home ? waDeepLink(home.tenant?.display_phone || home.agent?.wa_id) : undefined
+        home
+          ? tenantWhatsAppLink({
+              connected: Boolean(home.tenant?.whatsapp_healthy),
+              displayPhone: home.tenant?.display_phone,
+            })
+          : undefined
       }
       width={760}
     >

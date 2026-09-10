@@ -158,7 +158,9 @@ Secondary buttons are dotted-border; primary is filled.
   are identified by who is texting the tenant number. **Join starts with
   Connect WhatsApp** (Meta Embedded Signup) when the tenant is not yet
   connected, with copy that we are a Meta tech provider and traffic goes
-  through Meta. Already-connected tenants skip that step. No per-agent
+  through Meta. `POST /api/meta/exchange` requires a signed-in session and
+  writes only to that session's tenant (client `tenant_slug` cannot retarget).
+  Already-connected tenants skip that step. No per-agent
   sync screen. Do not put `waba_id` on agents.
 - **The web chat at `/copilot/[tenant]` is being removed.** A web chat duplicates
   WhatsApp and violates the governing rule. The console home takes that route.
@@ -288,3 +290,74 @@ window—to decide whether Meta is connected.
 - Future auth testing uses this account by default. Create a fresh test user
   only when a task specifically requires one (e.g. first-time link flows),
   via `scripts/create-test-agent.mjs` — never by editing production rows.
+
+## Auth merge and tenant WhatsApp display (2026-09-02)
+
+Timeline (do not treat the Shuayb WhatsApp report as an auth regression):
+
+- `feature/supabase-auth-login` was completed, merged into `main`, and `main`
+  was pushed to origin.
+- Further work continued from that state on `feature/proactive-intelligence`.
+- After that push, Shuayb logged into AgentZero and reported that his WhatsApp
+  appeared connected.
+
+What we found (live DB + console code, investigation only):
+
+- **Not caused by Supabase Auth.** Shuayb has no `email` / `auth_user_id`; he
+  used the legacy username/password path.
+- Login resolves to agent `shuayb` (`role=admin`) on tenant **`sterling`**.
+- His personal number is `agents.wa_id` (`971585690693`). **Do not clear or
+  migrate that column** — it is the Jarvis/AgentZero sender identity.
+- Sterling has **no** Meta Cloud WhatsApp connection: `waba_id`,
+  `phone_number_id`, and `business_token` are all null (`display_phone` too).
+- Console chrome was falling back to `agent.wa_id` for `wa.me` links and
+  looking connected. That UI fallback is **fixed**: tenant WhatsApp status and
+  links use only `whatsappHealthy(tenant)` plus tenant `display_phone`
+  (`src/lib/console/format.js` `tenantWhatsAppLink`). Tests:
+  `scripts/qa-console-whatsapp-display.mjs`.
+
+Identified **and intentionally not fixed yet** (do not mix into an unrelated
+PR):
+
+- Several production tenants share the same `vapi_phone_number_id`; `az-test`
+  does not and must stay disconnected.
+
+## Morning Brief V1 (proactive intelligence)
+
+Scheduled or console send-now does **not** push the full brief. Flow:
+
+1. Cron (`POST /api/cron/morning-brief`) or send-now (`POST /api/console/brief/send-now`) sends the WhatsApp **notification template** only (`sendCloudTemplate`, name from `WA_TEMPLATE_BRIEF`).
+2. The agent taps the template quick reply whose button id is exactly `send_brief`.
+3. Live Meta webhook (`src/lib/meta/webhook-handler.js`) resolves tenant from `metadata.phone_number_id`, intercepts that button **before** `upsertJarvisLead`, and looks up the agent with `tenant_id` + `agents.wa_id`.
+4. AgentZero builds the brief from `leads` filtered by **both** `tenant_id` and `assigned_agent_id = agent.id` (unassigned / other-agent / other-tenant rows cannot match) and sends it as **WhatsApp text**.
+
+Unknown senders are handled and dropped (no other agent's brief, no Jarvis lead created). Other interactive buttons and normal inbound messages continue through the existing ingest path.
+
+**Ownership.** Brief content is campaign `leads` only, never `jarvis_leads`. `assigned_agent_id` is required; null unassigned leads are excluded. The ownership column was added in `025_lead_assigned_agent.sql` (applied manually in Supabase).
+
+**Notification claim.** One notification per agent per UTC date via atomic `agents.last_brief_sent_on`. Failed Graph sends restore the previous date so the next attempt is not blocked. The `send_brief` path does **not** stamp that date (the agent can request the full text again; duplicate *webhooks* for the same tap are a different lock).
+
+**Button idempotency.** `whatsapp-messages` row keyed by unique `wa_message_id`, with `lead_id` and `jarvis_lead_id` null, so it is not a Jarvis conversation. `raw.brief_delivered === true` after a successful text send. Duplicate delivered events no-op. An undelivered lock (crash after insert, before send) may retry then mark delivered.
+
+**Send-now.** Same notification function as cron. `already_sent_today` returns HTTP 200 `{ already: true }`, not 502. It does not bypass the button to dump the full brief.
+
+**Template.** Defined in `src/lib/whatsapp/cloud.js` as `process.env.WA_TEMPLATE_BRIEF || "agentzero_morning_brief"`. The fallback is a **placeholder**, not an approved Meta name. Do not guess a production id. When Shuayb provides the approved **template name**, set `WA_TEMPLATE_BRIEF` on the web/cron env — no code change unless the approved template has body variables. Current Graph payload is **zero body parameters** (static copy: “Your AgentZero morning brief is ready”, quick reply **Send brief**, no URL). If the approved template uses `{{1}}` placeholders, update `sendMorningBriefNotification` to match that exact shape. Quick-reply payload should be `send_brief`; the handler also accepts title/id `Send brief`. Until the real name is set, Graph fails and the daily claim is released.
+
+**Scheduler (not wired yet — do not activate without approval).** Call-queue/batch-callback already use **separate Railway cron services that run a Node script**. Morning Brief should follow that pattern:
+
+- New Railway cron service from this repo
+- Start command: `node scripts/send-morning-briefs.mjs` (`npm run brief:send`)
+- Suggested schedule: `*/15 * * * *` UTC (per-agent `brief_time` + `tz` are gated in `briefDueToday`; do not assume one 07:30 UTC tick)
+- Env: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `WA_TEMPLATE_BRIEF`. Graph credentials come from `tenants.phone_number_id` / `business_token`.
+
+HTTP alternative (exists, unused in prod): `GET`/`POST /api/cron/morning-brief` on the Next.js service with `Authorization: Bearer $CRON_SECRET` (or `x-cron-secret`; falls back to `CALL_QUEUE_CRON_SECRET`). There is **no** `vercel.json` cron in this repo. Live WhatsApp is already the Railway Meta webhook (`README-COEXISTENCE.md`).
+
+**This is not Smart Callback Lists.** Morning Brief is overnight pipeline on campaign `leads` + WhatsApp notify/button. Do not mix in batch-callback search, preview formatters, Vapi, or callback workers.
+
+**Files.** `src/lib/brief/send.js`, `src/lib/brief/button.js`, `src/app/api/cron/morning-brief/route.js`, `src/app/api/console/brief/send-now/route.js`, `scripts/send-morning-briefs.mjs`, webhook intercept in `src/lib/meta/webhook-handler.js`. Console: join wizard and settings → `/api/console/brief/send-now`. QA: `scripts/qa-morning-brief.mjs`.
+
+**Button-half demo (manual).** `scripts/simulate-send-brief.mjs` POSTs a signed `send_brief` payload to `/api/meta/webhook`. It does not send the notification template and has no default tenant/agent. Default URL is localhost; remote URLs require `--allow-remote`. Always signs with `META_APP_SECRET` — do not turn on `SKIP_META_SIG` in production. Use only with an approved connected tenant + test `agents.wa_id` after the agent has messaged the business number (24h window).
+
+**Not activated yet.** Production Railway cron, approved template name on env. `/api/agent-brief` is the unrelated DXB Dip landing search.
+
+**Deferred.** UTC `last_brief_sent_on` vs local `tz` (send-now between local midnight and 04:00 UTC can see yesterday’s claim). Concurrent Meta retries of the same undelivered `wa_message_id` while the first send is in flight. Richer brief copy (quiet-days / why / nudges) beyond the current ranked name · area · budget list.

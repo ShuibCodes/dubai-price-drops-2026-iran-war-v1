@@ -45,6 +45,7 @@ import {
   scriptRequiredPayload,
 } from "@/lib/scripts/resolve";
 import { HELP_TEXT, isHelpMessage } from "@/lib/console/help";
+import { assertJarvisActor } from "@/lib/jarvis/visibility";
 
 const MODEL = "claude-sonnet-4-6";
 const MAX_TOOL_ROUNDS = 5;
@@ -463,43 +464,50 @@ async function executeTool({
   name,
   input,
   tenantId,
+  agentId,
   agentName,
   messages,
   senderPhone,
   listMatch,
 }) {
+  assertJarvisActor({ tenantId, agentId });
   switch (name) {
     case "get_latest_messages":
-      return getJarvisLatestMessages(tenantId, input.limit);
+      return getJarvisLatestMessages(tenantId, agentId, input.limit);
     case "search_lead_by_name":
-      return searchJarvisLeadByName(tenantId, input.name);
+      return searchJarvisLeadByName(tenantId, agentId, input.name);
     case "get_lead_story":
-      return getJarvisLeadStory(tenantId, input.leadId);
+      return getJarvisLeadStory(tenantId, agentId, input.leadId);
     case "search_conversations":
-      return searchJarvisConversations(tenantId, input.query);
+      return searchJarvisConversations(tenantId, agentId, input.query);
     case "get_call_detail":
-      return getJarvisCallDetail(tenantId, input);
+      return getJarvisCallDetail(tenantId, agentId, input);
     case "get_pending_callbacks":
-      return getJarvisPendingCallbacks(tenantId);
+      return getJarvisPendingCallbacks(tenantId, agentId);
     case "get_run_status":
-      return getRunStatus(tenantId, input);
+      return getRunStatus(tenantId, {
+        script: input.script,
+        list: input.list,
+        agentId,
+      });
     case "get_unreplied_conversations":
-      return getJarvisUnrepliedConversations(tenantId, input);
+      return getJarvisUnrepliedConversations(tenantId, agentId, input);
     case "get_inbox_activity":
-      return getJarvisInboxActivity(tenantId, input);
+      return getJarvisInboxActivity(tenantId, agentId, input);
     case "get_stale_conversations":
-      return getJarvisStaleConversations(tenantId, input);
+      return getJarvisStaleConversations(tenantId, agentId, input);
     case "get_inbox_stats":
-      return getJarvisInboxStats(tenantId, input);
+      return getJarvisInboxStats(tenantId, agentId, input);
     case "list_scripts":
       return listScripts(tenantId);
     case "list_lead_sources":
-      return listLeadSources(tenantId);
+      return listLeadSources(tenantId, { agentId });
     case "set_lead_name":
-      return setJarvisLeadName(tenantId, input);
+      return setJarvisLeadName(tenantId, agentId, input);
     case "save_jarvis_contact":
       return saveJarvisContact({
         tenantId,
+        agentId,
         senderPhone,
         name: input.name,
         phone: input.phone,
@@ -507,6 +515,7 @@ async function executeTool({
     case "place_relay_call": {
       const result = await placeRelayCall({
         tenantId,
+        agentId,
         senderPhone,
         name: input.name,
         task: input.task,
@@ -535,7 +544,12 @@ async function executeTool({
             "Ask the user to confirm the call (name + phone). Do not call the tool again this turn.",
         };
       }
-      return startJarvisTargetCall(tenantId, input.leadId, agentName || "Jarvis");
+      return startJarvisTargetCall(
+        tenantId,
+        agentId,
+        input.leadId,
+        agentName || "Jarvis"
+      );
     }
     case "start_cold_batch": {
       const source = String(input.source || "").trim() || listMatch?.name || "";
@@ -579,11 +593,12 @@ async function executeTool({
         agentName || "Jarvis",
         input.country,
         source,
-        phrase
+        phrase,
+        agentId
       );
     }
     case "draft_email":
-      return draftLeadEmail(tenantId, input);
+      return draftLeadEmail(tenantId, agentId, input);
     case "send_email": {
       if (
         !latestUserAffirmed(messages) ||
@@ -603,8 +618,14 @@ async function executeTool({
   }
 }
 
-export async function runJarvisTurn({ tenantId, messages, agentName, senderPhone }) {
-  if (!tenantId) throw new Error("Resolved tenant ID is required");
+export async function runJarvisTurn({
+  tenantId,
+  agentId,
+  messages,
+  agentName,
+  senderPhone,
+}) {
+  assertJarvisActor({ tenantId, agentId });
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not configured");
 
@@ -612,7 +633,7 @@ export async function runJarvisTurn({ tenantId, messages, agentName, senderPhone
   let savedLists = [];
   let listedScripts = null;
   try {
-    const conversations = await getJarvisRecentConversations(tenantId, {
+    const conversations = await getJarvisRecentConversations(tenantId, agentId, {
       limit: 5,
       messageLimit: 8,
     });
@@ -622,7 +643,7 @@ export async function runJarvisTurn({ tenantId, messages, agentName, senderPhone
   }
   try {
     const supabase = getSupabaseServerClient();
-    if (supabase) savedLists = await listSavedLists(supabase, tenantId);
+    if (supabase) savedLists = await listSavedLists(supabase, tenantId, agentId);
   } catch (error) {
     console.error("[jarvis] saved lists unavailable:", error.message);
   }
@@ -650,7 +671,9 @@ export async function runJarvisTurn({ tenantId, messages, agentName, senderPhone
     try {
       const runStatus = await getRunStatus(
         tenantId,
-        namedList ? { list: namedList.name } : {}
+        namedList
+          ? { list: namedList.name, agentId }
+          : { agentId }
       );
       runStatusBlock = formatRunStatusBlock(runStatus);
     } catch (error) {
@@ -703,6 +726,7 @@ export async function runJarvisTurn({ tenantId, messages, agentName, senderPhone
           name: toolUse.name,
           input: toolUse.input || {},
           tenantId,
+          agentId,
           agentName,
           messages,
           senderPhone,

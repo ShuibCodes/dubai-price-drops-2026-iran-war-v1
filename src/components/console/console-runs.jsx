@@ -5,7 +5,11 @@ import { useEffect, useState } from "react";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { Strip } from "@/components/ui/strip";
 import { consoleBase, consoleJson } from "@/lib/console/client";
-import { runIsInFlight, runIsScheduled, waDeepLink } from "@/lib/console/format";
+import {
+  runIsInFlight,
+  runIsScheduled,
+  tenantWhatsAppLink,
+} from "@/lib/console/format";
 
 function runMeta(run, tz) {
   const when = new Date(run.created_at)
@@ -39,7 +43,10 @@ export function ConsoleRuns({ tenant }) {
   }, [base]);
 
   const tz = data?.agent?.tz || "Asia/Dubai";
-  const waLink = waDeepLink(data?.tenant?.display_phone || data?.agent?.wa_id);
+  const waLink = tenantWhatsAppLink({
+    connected: Boolean(data?.tenant?.whatsapp_healthy),
+    displayPhone: data?.tenant?.display_phone,
+  });
   const runs = data?.runs || [];
 
   return (

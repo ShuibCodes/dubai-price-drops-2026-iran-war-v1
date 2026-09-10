@@ -8,7 +8,12 @@ import { Strip } from "@/components/ui/strip";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { Expandable } from "@/components/console/expandable";
 import { consoleBase, consoleJson } from "@/lib/console/client";
-import { runIsInFlight, runIsScheduled, runWindowStart, waDeepLink } from "@/lib/console/format";
+import {
+  runIsInFlight,
+  runIsScheduled,
+  runWindowStart,
+  tenantWhatsAppLink,
+} from "@/lib/console/format";
 
 function metaLine(run) {
   if (!run) return "";
@@ -122,6 +127,10 @@ export function RunResults({ tenant, runId }) {
   const stillGoing = queuedCount > 0 || runIsInFlight(run);
   const notYetDialled = stillGoing && dialed < 1;
   const ask = azRunAsk(run);
+  const waLink = tenantWhatsAppLink({
+    connected: Boolean(home?.tenant?.whatsapp_healthy),
+    displayPhone: home?.tenant?.display_phone,
+  });
 
   return (
     <ConsoleShell tenant={tenant} width={880}>
@@ -305,14 +314,20 @@ export function RunResults({ tenant, runId }) {
           to watch this page.
         </p>
         <div className="mt-5">
-          <a
-            className="az-btn az-btn-primary inline-flex"
-            href={waDeepLink(home?.tenant?.display_phone || home?.agent?.wa_id)}
-            rel="noreferrer"
-            target="_blank"
-          >
-            Go back to WhatsApp
-          </a>
+          {waLink ? (
+            <a
+              className="az-btn az-btn-primary inline-flex"
+              href={waLink}
+              rel="noreferrer"
+              target="_blank"
+            >
+              Go back to WhatsApp
+            </a>
+          ) : (
+            <Link className="az-btn az-btn-primary inline-flex" href={`${base}/settings`}>
+              Check WhatsApp connection
+            </Link>
+          )}
         </div>
       </div>
     </ConsoleShell>
