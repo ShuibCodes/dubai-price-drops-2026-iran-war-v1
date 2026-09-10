@@ -56,6 +56,7 @@ async function runJarvisAndReply({
 
     const contactConfirm = await handleContactConfirmationMessage({
       tenantId: sender.tenantId,
+      agentId: sender.agentId,
       senderPhone,
       message: userText,
     });
@@ -75,6 +76,7 @@ async function runJarvisAndReply({
 
     const relayConfirm = await handleRelayConfirmationMessage({
       tenantId: sender.tenantId,
+      agentId: sender.agentId,
       senderPhone,
       message: userText,
     });
@@ -94,6 +96,7 @@ async function runJarvisAndReply({
 
     const result = await runJarvisTurn({
       tenantId: sender.tenantId,
+      agentId: sender.agentId,
       messages: nextMessages,
       agentName: sender.agentName,
       senderPhone,
@@ -204,6 +207,7 @@ export async function POST(request) {
     if (useJarvis) {
       const contactConfirm = await handleContactConfirmationMessage({
         tenantId: sender.tenantId,
+        agentId: sender.agentId,
         senderPhone: sender.waId,
         message: body,
       });
@@ -212,6 +216,7 @@ export async function POST(request) {
       } else {
         const relayConfirm = await handleRelayConfirmationMessage({
           tenantId: sender.tenantId,
+          agentId: sender.agentId,
           senderPhone: sender.waId,
           message: body,
         });
@@ -220,6 +225,7 @@ export async function POST(request) {
         } else {
           const result = await runJarvisTurn({
             tenantId: sender.tenantId,
+            agentId: sender.agentId,
             messages: nextMessages,
             agentName: sender.agentName,
             senderPhone: sender.waId,

@@ -1,4 +1,4 @@
-import { upsertJarvisLead } from "@/lib/ingest/jarvis-ingest";
+import { JARVIS_LEADS_TABLE } from "@/lib/ingest/jarvis-ingest";
 import { findTenantAgentIdByWaId } from "@/lib/leads/assigned-agent";
 import {
   isJarvisAffirmative,
@@ -14,6 +14,11 @@ import {
   normalizeSenderPhone,
 } from "@/lib/jarvis/pending-relay";
 import { isJarvisSenderAllowed } from "@/lib/jarvis/sender-allowlist";
+import {
+  applyVisibleInboxLeadScope,
+  assertJarvisActor,
+  inboxLeadVisible,
+} from "@/lib/jarvis/visibility";
 import { normalizePhone, phoneToWaId } from "@/lib/leads/normalize";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -43,11 +48,15 @@ function cleanContactName(name) {
  */
 export async function saveJarvisContact({
   tenantId,
+  agentId,
   senderPhone,
   name,
   phone,
 }) {
-  if (!(await isJarvisSenderAllowed(senderPhone))) {
+  assertJarvisActor({ tenantId, agentId });
+  if (
+    !(await isJarvisSenderAllowed(senderPhone, { tenantId, agentId }))
+  ) {
     return {
       status: "forbidden",
       error: "Saving contacts is only available for AgentZero agents on this number.",
@@ -117,9 +126,13 @@ export async function upsertCallableJarvisContact({
   if (!digits) throw new Error("wa_id is required");
 
   let ownerId = assignedAgentId || null;
-  if (!ownerId && senderPhone) {
-    ownerId = await findTenantAgentIdByWaId(supabase, tenantId, senderPhone);
+  const senderAgentId = senderPhone
+    ? await findTenantAgentIdByWaId(supabase, tenantId, senderPhone)
+    : null;
+  if (ownerId && ownerId !== senderAgentId) {
+    throw new Error("Agent identity does not match senderPhone");
   }
+  if (!ownerId) ownerId = senderAgentId;
   if (!ownerId) {
     throw new Error(
       "assignedAgentId is required: could not match the saving agent in this tenant."
@@ -127,14 +140,51 @@ export async function upsertCallableJarvisContact({
   }
 
   const contactName = cleanContactName(name) || "Contact";
-  const lead = await upsertJarvisLead({
-    supabase,
-    tenantId,
-    waId: digits,
-    pushName: contactName,
-    messageAt: new Date().toISOString(),
-    assignedAgentId: ownerId,
-  });
+  const { data: existing, error: lookupError } = await supabase
+    .from(JARVIS_LEADS_TABLE)
+    .select("id, assigned_agent_id")
+    .eq("tenant_id", tenantId)
+    .eq("wa_id", digits)
+    .maybeSingle();
+  if (lookupError) throw new Error(`Contact lookup failed: ${lookupError.message}`);
+  if (existing && !inboxLeadVisible(existing, ownerId)) {
+    throw new Error("Contact belongs to another agent");
+  }
+
+  let lead;
+  if (existing) {
+    const { data, error } = await applyVisibleInboxLeadScope(
+      supabase
+        .from(JARVIS_LEADS_TABLE)
+        .update({
+          push_name: contactName,
+          last_message_at: new Date().toISOString(),
+          assigned_agent_id: existing.assigned_agent_id || ownerId,
+        })
+        .eq("id", existing.id),
+      { tenantId, agentId: ownerId }
+    )
+      .select("id, push_name, wa_id, assigned_agent_id")
+      .maybeSingle();
+    if (error) throw new Error(`Contact update failed: ${error.message}`);
+    if (!data) throw new Error("Contact belongs to another agent");
+    lead = data;
+  } else {
+    const { data, error } = await supabase
+      .from(JARVIS_LEADS_TABLE)
+      .insert({
+        tenant_id: tenantId,
+        wa_id: digits,
+        push_name: contactName,
+        first_seen: new Date().toISOString(),
+        last_message_at: new Date().toISOString(),
+        assigned_agent_id: ownerId,
+      })
+      .select("id, push_name, wa_id, assigned_agent_id")
+      .single();
+    if (error) throw new Error(`Contact insert failed: ${error.message}`);
+    lead = data;
+  }
 
   return {
     id: lead.id,
@@ -152,9 +202,11 @@ export async function upsertCallableJarvisContact({
  */
 export async function handleContactConfirmationMessage({
   tenantId,
+  agentId,
   senderPhone,
   message,
 }) {
+  assertJarvisActor({ tenantId, agentId });
   const pending = await getPendingContact(senderPhone);
   if (!pending) return null;
   if (pending.tenant_id && tenantId && pending.tenant_id !== tenantId) {
@@ -174,7 +226,9 @@ export async function handleContactConfirmationMessage({
     return null;
   }
 
-  if (!(await isJarvisSenderAllowed(senderPhone))) {
+  if (
+    !(await isJarvisSenderAllowed(senderPhone, { tenantId, agentId }))
+  ) {
     await clearPendingContact(senderPhone);
     return {
       handled: true,
@@ -189,6 +243,7 @@ export async function handleContactConfirmationMessage({
       phoneE164: pending.phone_e164,
       waId: pending.wa_id,
       senderPhone,
+      assignedAgentId: agentId,
     });
     await clearPendingContact(senderPhone);
     return {

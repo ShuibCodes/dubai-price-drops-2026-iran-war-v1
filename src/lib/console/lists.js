@@ -1,5 +1,6 @@
 import { nextAssignedAgentId } from "@/lib/leads/assigned-agent";
 import { normalizePhone, phoneToWaId } from "@/lib/leads/normalize";
+import { applyCampaignAgentScope } from "@/lib/jarvis/visibility";
 
 export function foldListKey(value) {
   return String(value || "")
@@ -147,14 +148,17 @@ export async function upsertListContacts(
   return { name: listName, saved: ids.length, skipped, leadIds: ids };
 }
 
-export async function listSavedLists(supabase, tenantId) {
-  const { data, error } = await supabase
+export async function listSavedLists(supabase, tenantId, agentId = null) {
+  let query = supabase
     .from("leads")
     .select("source")
-    .eq("tenant_id", tenantId)
     .eq("opted_out", false)
     .not("source", "is", null)
     .limit(8000);
+  query = agentId
+    ? applyCampaignAgentScope(query, { tenantId, agentId })
+    : query.eq("tenant_id", tenantId);
+  const { data, error } = await query;
   if (error) throw new Error(`List lookup failed: ${error.message}`);
 
   const counts = new Map();

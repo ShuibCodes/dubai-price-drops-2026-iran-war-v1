@@ -16,6 +16,7 @@ import {
   resolveScript,
   scriptRequiredPayload,
 } from "../scripts/resolve.js";
+import { applyCampaignAgentScope } from "../jarvis/visibility.js";
 
 export { listScripts };
 
@@ -338,16 +339,19 @@ export async function queryLeads(
 // knows which list names exist before filtering or batching by source.
 // Discovers distinct names by scanning ordered pages, then runs an exact
 // count per source, so counts stay right even for large rosters.
-export async function listLeadSources(tenantId) {
+export async function listLeadSources(tenantId, { agentId = null } = {}) {
   const supabase = db();
   const names = new Set();
   const MAX_SOURCES = 100;
 
-  const { count: nullCount, error: nullError } = await supabase
+  let nullQuery = supabase
     .from("leads")
     .select("id", { count: "exact", head: true })
-    .eq("tenant_id", tenantId)
     .is("source", null);
+  nullQuery = agentId
+    ? applyCampaignAgentScope(nullQuery, { tenantId, agentId })
+    : nullQuery.eq("tenant_id", tenantId);
+  const { count: nullCount, error: nullError } = await nullQuery;
   if (nullError) throw new Error(`Lead sources query failed: ${nullError.message}`);
   if (nullCount > 0) names.add(null);
 
@@ -357,10 +361,12 @@ export async function listLeadSources(tenantId) {
     let query = supabase
       .from("leads")
       .select("source")
-      .eq("tenant_id", tenantId)
       .not("source", "is", null)
       .order("source", { ascending: true })
       .limit(1);
+    query = agentId
+      ? applyCampaignAgentScope(query, { tenantId, agentId })
+      : query.eq("tenant_id", tenantId);
     if (lastSeen !== null) query = query.gt("source", lastSeen);
     const { data, error } = await query;
     if (error) throw new Error(`Lead sources query failed: ${error.message}`);
@@ -374,8 +380,10 @@ export async function listLeadSources(tenantId) {
   for (const name of names) {
     let query = supabase
       .from("leads")
-      .select("id", { count: "exact", head: true })
-      .eq("tenant_id", tenantId);
+      .select("id", { count: "exact", head: true });
+    query = agentId
+      ? applyCampaignAgentScope(query, { tenantId, agentId })
+      : query.eq("tenant_id", tenantId);
     query = name === null ? query.is("source", null) : query.eq("source", name);
     const { count, error } = await query;
     if (error) throw new Error(`Source count failed: ${error.message}`);
@@ -741,12 +749,15 @@ async function queryColdCandidatesPage(
   countryCode,
   applySource,
   offset,
-  pageSize
+  pageSize,
+  agentId = null
 ) {
   let candidateQuery = supabase
     .from("leads")
-    .select("id, push_name, wa_id, source, owns_property, pixxi_lead_id, first_seen")
-    .eq("tenant_id", tenantId);
+    .select("id, push_name, wa_id, source, owns_property, pixxi_lead_id, first_seen");
+  candidateQuery = agentId
+    ? applyCampaignAgentScope(candidateQuery, { tenantId, agentId })
+    : candidateQuery.eq("tenant_id", tenantId);
   candidateQuery = candidateQuery.eq("opted_out", false);
   candidateQuery = applySource(candidateQuery);
   if (countryCode) candidateQuery = candidateQuery.eq("country_code", countryCode);
@@ -791,7 +802,8 @@ async function selectUncalledPurchasedLeads(
   tenantId,
   count,
   countryCode,
-  sourceFilter
+  sourceFilter,
+  agentId = null
 ) {
   const requested = validateCount(count);
   const sourceModes = String(sourceFilter || "").trim()
@@ -819,7 +831,8 @@ async function selectUncalledPurchasedLeads(
         countryCode,
         applySource,
         offset,
-        COLD_SCAN_PAGE
+        COLD_SCAN_PAGE,
+        agentId
       );
       if (error) throw new Error(`Cold lead query failed: ${error.message}`);
       if (!candidates?.length) break;
@@ -890,7 +903,8 @@ export async function startColdBatch(
   requestedBy,
   country,
   sourceFilter,
-  scriptPhrase
+  scriptPhrase,
+  agentId = null
 ) {
   const phrase = String(scriptPhrase || "").trim();
   if (!phrase) {
@@ -948,7 +962,8 @@ export async function startColdBatch(
         tenantId,
         cappedTo,
         countryCode,
-        sourceFilter
+        sourceFilter,
+        agentId
       );
       const queued = await queueLeadCalls({
         supabase,
@@ -957,6 +972,7 @@ export async function startColdBatch(
         scheduledTimes: times,
         source: "copilot-cold-batch",
         requestedBy,
+        agentId,
         scriptId: resolved.match.id,
       });
       const byTimezone = {};

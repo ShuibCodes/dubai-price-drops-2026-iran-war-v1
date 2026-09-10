@@ -265,6 +265,35 @@ console.log("\nJARVIS SAVE vs SHARED INBOX");
     savedRow?.assigned_agent_id === AGENT_A,
     savedRow?.assigned_agent_id
   );
+
+  db.store.jarvis_leads.push({
+    id: "private-contact-b",
+    tenant_id: TENANT_A,
+    wa_id: "971504000022",
+    push_name: "Agent B contact",
+    assigned_agent_id: AGENT_B,
+  });
+  let blockedWrite = false;
+  try {
+    await upsertCallableJarvisContact({
+      tenantId: TENANT_A,
+      name: "Renamed by A",
+      phoneE164: "+971504000022",
+      waId: "971504000022",
+      senderPhone: "+971501111111",
+      assignedAgentId: AGENT_A,
+      supabase: db,
+    });
+  } catch (error) {
+    blockedWrite = error.message === "Contact belongs to another agent";
+  }
+  const privateContact = db.store.jarvis_leads.find(
+    (lead) => lead.id === "private-contact-b"
+  );
+  check(
+    "explicit save cannot mutate another agent's contact",
+    blockedWrite && privateContact.push_name === "Agent B contact"
+  );
 }
 
 console.log("\nSMART CALLBACK SCOPE");
