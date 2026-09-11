@@ -2,6 +2,7 @@
 
 import { animate, useInView } from "framer-motion";
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import logo1416 from "@/app/images/1416-logo.png";
 import logoCondCity from "@/app/images/cond-city-logo.png";
@@ -276,14 +277,22 @@ export default function AgentZeroLandingPage() {
               AgentZero
             </div>
           </div>
-          <a
-            href={WHATSAPP_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-full border border-white/10 px-4 py-2 text-sm text-white transition hover:text-white"
-          >
-            Book a call
-          </a>
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+            <a
+              href={WHATSAPP_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-full border border-white/10 px-3 py-2 text-sm text-white transition hover:text-white sm:px-4"
+            >
+              Book a call
+            </a>
+            <Link
+              href="/copilot"
+              className="rounded-full border border-white/10 px-3 py-2 text-sm text-white transition hover:text-white sm:px-4"
+            >
+              Log in
+            </Link>
+          </div>
         </div>
       </section>
 
