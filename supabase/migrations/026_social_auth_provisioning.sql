@@ -28,6 +28,7 @@ declare
   resolved agents%rowtype;
   workspace tenants%rowtype;
   candidate_slug text;
+  slug_attempts int := 0;
 begin
   if p_auth_user_id is null then
     raise exception 'AZ_INVALID_IDENTITY: auth user id is required';
@@ -89,6 +90,10 @@ begin
     -- Slugs are generated from cryptographic randomness rather than names,
     -- emails, URLs, or client input. Retry the vanishingly unlikely collision.
     loop
+      slug_attempts := slug_attempts + 1;
+      if slug_attempts > 8 then
+        raise exception 'AZ_IDENTITY_CONFLICT: could not allocate a unique tenant slug';
+      end if;
       candidate_slug := 'workspace-' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 16);
       begin
         insert into tenants (name, slug)

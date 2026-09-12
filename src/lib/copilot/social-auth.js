@@ -42,8 +42,12 @@ export function verifiedSocialIdentity(user, expectedProvider) {
   const identities = Array.isArray(user?.identities) ? user.identities : [];
   const candidates = identities.filter((item) => {
     const provider = String(item?.provider || "").toLowerCase();
+    if (!PROVIDERS.has(provider)) return false;
     const identityEmail = String(item?.identity_data?.email || "").trim().toLowerCase();
-    return PROVIDERS.has(provider) && identityEmail === email;
+    // Facebook often confirms user.email without copying it onto identity_data.
+    // Accept a blank identity email only for this same Auth user; a different
+    // address on the identity is still a mismatch.
+    return !identityEmail || identityEmail === email;
   });
   const selectedProvider = PROVIDERS.has(expected) ? expected : declared;
   const identity = PROVIDERS.has(selectedProvider)

@@ -79,9 +79,11 @@ route uses it. 403 on tenant mismatch, no exceptions.
    (`COPILOT_LOGIN_PATH`). A path tenant slug that does not match the session
    tenant is 403 (API) or a redirect to `/copilot/<session-tenant>`. Query
    `?next=` is intended to stay under `/copilot/<session-tenant>`:
-   middleware uses `safeCopilotNextPath`; the Google callback uses
+   middleware uses `safeCopilotNextPath`; the social callback uses
    `src/lib/copilot/next-path.js` `safeNextPath` (URL-normalized). They are
-   not the same helper.
+   not the same helper. New social workspaces always redirect to
+   `/copilot/<slug>/join`; `next=` is ignored until the identity already
+   maps to an AgentZero agent.
 4. **Landing Log in.** The marketing header button
    (`src/components/landing/agentzero-landing-page.jsx`) is a Next.js `Link` to
    `/copilot`. It does not authenticate.
@@ -95,12 +97,23 @@ enabled in Supabase Auth and the Meta provider console. Both
 providers must return a confirmed email that matches the provider identity.
 The Facebook app must grant the `email` permission; missing or unconfirmed
 Facebook email fails before any tenant is created.
-The application callback is
-`https://www.agentzero.ae/api/copilot/auth/callback`; the provider-specific
-OAuth callback configured in Google/Meta is Supabase's callback URL. Keep
-Vercel `APP_URL=https://www.agentzero.ae` and add the application callback to
-Supabase's redirect allowlist. These dashboard settings are external
-requirements and are not established by repository code.
+The application callback path is
+`/api/copilot/auth/callback`. Production must set
+`APP_URL=https://www.agentzero.ae` so authorize/callback share the canonical
+www host (apex currently 308s to www). Allowlist that application callback on
+the Supabase Auth redirect list. Google and Facebook provider consoles must
+use the Supabase project callback
+(`https://<project-ref>.supabase.co/auth/v1/callback`), not the AgentZero
+URL. Facebook Login is a separate Meta app permission from WhatsApp Embedded
+Signup.
+
+Migration `026_social_auth_provisioning.sql` is required before new-user
+provisioning can succeed. Apply it with the existing operator workflow
+(`SUPABASE_DB_URL` or `SUPABASE_DB_PASSWORD` +
+`node scripts/apply-migration.mjs supabase/migrations/026_social_auth_provisioning.sql`)
+or the Supabase SQL editor. It has not been executed against production from
+this repository checkout. Google/Facebook browser E2E is still an external
+requirement after deploy.
 
 Do not force remaining username/password agents onto Google as a side effect of
 other work.

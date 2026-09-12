@@ -62,6 +62,24 @@ check(
   ) === null
 );
 check(
+  "Facebook identity without identity_data.email still uses confirmed user.email",
+  verifiedSocialIdentity(
+    socialUser("facebook", {
+      identities: [{ provider: "facebook", identity_data: { name: "FB User" } }],
+    })
+  )?.email === "facebook@example.test"
+);
+check(
+  "Facebook identity with a different identity email is rejected",
+  verifiedSocialIdentity(
+    socialUser("facebook", {
+      identities: [
+        { provider: "facebook", identity_data: { email: "other@example.test" } },
+      ],
+    })
+  ) === null
+);
+check(
   "expected Facebook identity wins for a multi-provider Auth user",
   verifiedSocialIdentity(
     {
@@ -209,6 +227,7 @@ for (const [name, fragment] of [
   ["new onboarding remains incomplete", "onboarded_at"],
   ["RPC denied to browser roles", "from public, anon, authenticated"],
   ["RPC granted only to service role", "to service_role"],
+  ["slug allocation is bounded", "slug_attempts > 8"],
 ]) {
   check(name, migration.includes(fragment));
 }
