@@ -34,7 +34,8 @@ It belongs in the chat.
 - **Vapi** for outbound voice. Not Bland. If you find a reference to Bland,
   `bland_persona_id`, or `/api/bland/*` in any doc, it is stale — flag it.
 - Meta WhatsApp Cloud API with Coexistence (already onboarded)
-- zod for payload validation — **not currently a dependency, `npm i zod` first**
+- zod for payload validation — already in `package.json`; script configs use
+  `src/lib/scripts/schema.js`
 
 ## Multi-tenancy
 
@@ -46,16 +47,38 @@ Roles exist: `agents.role` is `'agent' | 'admin'`. Publishing a script requires
 `'admin'`. The Publish control is hidden entirely for `'agent'`. Do not build
 a broader permissions system than this — two roles, one gated action.
 
-Auth today is an HMAC cookie carrying `{ username, tenantSlug }` from
-`COPILOT_USERS_JSON`. Phase 1 replaces the identity, not the login habit:
-**authenticate by `username`**, which is what live users already have, and add
-`email` as an optional column for later. Do not force existing users onto email
-logins as a side effect of this work. `COPILOT_USERS_JSON` survives behind a
-flag during migration and logs whenever it is hit.
+**Authentication (current).** Console identity is `getSession()` in
+`src/lib/copilot/session.js`. Role and tenant always come from the `agents`
+row, never from a client claim. Return shape:
+`{ agentId, tenantId, tenantSlug, role, waPhone }`. **Every** new console API
+route uses it. 403 on tenant mismatch, no exceptions.
 
-`getSession()` from `src/lib/copilot/session.js` returns
-`{ agentId, tenantId, tenantSlug, role, waPhone }`. **Every** new API route uses
-it. 403 on tenant mismatch, no exceptions.
+1. **Supabase Auth (preferred).** Middleware and `getSession()` call
+   `supabase.auth.getUser()`. A signed-in user loads
+   `agents.auth_user_id`. Google: `/api/copilot/auth/google` and
+   `/api/copilot/auth/callback`. Uses server-only `SUPABASE_ANON_KEY` (not
+   `NEXT_PUBLIC_`). There is no browser Supabase client.
+2. **Legacy HMAC cookie.** If there is no Auth user, cookie `copilot_session`
+   (`SESSION_VERSION` 3: `agentId`, `tenantId`, `tenantSlug`) is verified, then
+   the agent row is loaded by those ids. Username/password still authenticates
+   against `agents.username` + `password_hash` (scrypt) in
+   `POST /api/copilot/auth`. `COPILOT_USERS_JSON` survives behind
+   `COPILOT_AUTH_JSON_FALLBACK` (unset or anything other than `0`/`false`/`off`
+   = on) and logs whenever it is hit.
+3. **Middleware** (`src/middleware.js`) protects `/copilot`, `/api/copilot`,
+   `/api/scripts`, `/api/console`. Unauthenticated browsers go to `/copilot`
+   (`COPILOT_LOGIN_PATH`). A path tenant slug that does not match the session
+   tenant is 403 (API) or a redirect to `/copilot/<session-tenant>`. Query
+   `?next=` is intended to stay under `/copilot/<session-tenant>`:
+   middleware uses `safeCopilotNextPath`; the Google callback uses
+   `src/lib/copilot/next-path.js` `safeNextPath` (URL-normalized). They are
+   not the same helper.
+4. **Landing Log in.** The marketing header button
+   (`src/components/landing/agentzero-landing-page.jsx`) is a Next.js `Link` to
+   `/copilot`. It does not authenticate.
+
+Do not force remaining username/password agents onto Google as a side effect of
+other work.
 
 ## File layout
 
@@ -162,9 +185,11 @@ Secondary buttons are dotted-border; primary is filled.
   writes only to that session's tenant (client `tenant_slug` cannot retarget).
   Already-connected tenants skip that step. No per-agent
   sync screen. Do not put `waba_id` on agents.
-- **The web chat at `/copilot/[tenant]` is being removed.** A web chat duplicates
-  WhatsApp and violates the governing rule. The console home takes that route.
-  Confirm nobody is actively using it before deleting.
+- **`/copilot/[tenant]` is the console home, not a web chat.**
+  `src/app/copilot/[tenant]/page.js` renders `ConsoleHome`. Agent chat stays on
+  WhatsApp (Twilio `/api/whatsapp`). `POST /api/copilot/[tenant]/chat` is a
+  tenant-scoped ops Copilot API (`runCopilotTurn`); it is not a public chat
+  page and the console UI does not currently call it.
 - **Keep the two lead universes separate.** `leads` is campaign/cold; `jarvis_leads`
   is the agent's personal WhatsApp inbox. Migration 010 split them deliberately.
   Never merge them or write Coexistence contacts into `leads`.
@@ -278,6 +303,61 @@ to 14 days, while person/story and text searches can read older stored history.
 Use database ingestion timestamps—not an LLM statement about its context
 window—to decide whether Meta is connected.
 
+## Jarvis identity and agent ownership
+
+Merged and deployed (`c640153` → production `main`). Do not re-litigate or
+weaken this model.
+
+**Two WhatsApp pipes — do not mix them.**
+
+- **Agent → AgentZero (Jarvis):** Twilio `POST /api/whatsapp`. Inbound `From` /
+  `To` are read from the webhook. Replies use `to=From`, `from=To`. Do not
+  hardcode the AgentZero or tester number.
+- **Lead inbox memory + console templates (including Morning Brief):** Meta
+  Cloud (`/api/meta/webhook`, Graph send). Distinct from Twilio.
+
+**Identity.** Twilio `From` digits → `resolveJarvisSender()`
+(`src/lib/jarvis/resolve-sender.js`) → `{ tenantId, agentId, waId, … }` from
+`agents.wa_id` (globally unique index). No env slug, no shared Sterling
+fallback.
+
+**Fail closed.** Missing identity, unknown `wa_id`, or missing
+`tenantId`/`agentId` (`assertJarvisActor` in `src/lib/jarvis/visibility.js`)
+refuses the turn. Direct lead ids, phones, or names are not proof of ownership.
+
+**Inbox (`jarvis_leads`).** `tenant_id = T AND (assigned_agent_id IS NULL OR
+assigned_agent_id = A)` via `applyVisibleInboxLeadScope`. Unassigned inbox
+threads are visible to the current agent; another agent's assigned threads are
+not.
+
+**Campaign (`leads`, Smart Callback, Morning Brief body).**
+`tenant_id = T AND assigned_agent_id = A`. Unassigned campaign rows are
+excluded. Helpers: `applyCampaignAgentScope` in `visibility.js`, or the same
+predicate (e.g. Morning Brief `buildMorningBrief` uses `.eq("assigned_agent_id",
+agent.id)`).
+
+**Calls.** `calls` has no `agent_id`. Authorize through
+`calls.jarvis_lead_id` → parent `jarvis_leads.assigned_agent_id` (same
+visibility helpers).
+
+**Contact writes.** `upsertCallableJarvisContact` (`src/lib/jarvis/contacts.js`)
+cannot overwrite another agent's contact by phone.
+
+**`/api/jarvis/chat`.** Requires `senderPhone`; resolves with
+`resolveJarvisSender` and passes that `agentId`. Shared header
+`x-jarvis-key` (`JARVIS_ACCESS_KEY`; unset = open in development, locked in
+production). There is no default-tenant fallback.
+
+**`get_run_status`.** Jarvis passes `agentId` and filters
+`call_batches.agent_id`. Copilot chat is **tenant-wide** (no `agentId`). Do not
+unify those behaviours.
+
+**Verification.** `scripts/qa-jarvis-visibility.mjs`,
+`scripts/qa-lead-ownership.mjs`. Production WhatsApp E2E (inbox / unreplied)
+was confirmed for a registered tester `wa_id`. A full A1-vs-A2 isolation
+matrix was **not** proven in production (test-coverage limitation, not a
+reason to change the model).
+
 ## Development & test identity
 
 - **`test-auth` on tenant `az-test` is the permanent development agent — not
@@ -342,6 +422,17 @@ Unknown senders are handled and dropped (no other agent's brief, no Jarvis lead 
 **Send-now.** Same notification function as cron. `already_sent_today` returns HTTP 200 `{ already: true }`, not 502. It does not bypass the button to dump the full brief.
 
 **Template.** Defined in `src/lib/whatsapp/cloud.js` as `process.env.WA_TEMPLATE_BRIEF || "agentzero_morning_brief"`. The fallback is a **placeholder**, not an approved Meta name. Do not guess a production id. When Shuayb provides the approved **template name**, set `WA_TEMPLATE_BRIEF` on the web/cron env — no code change unless the approved template has body variables. Current Graph payload is **zero body parameters** (static copy: “Your AgentZero morning brief is ready”, quick reply **Send brief**, no URL). If the approved template uses `{{1}}` placeholders, update `sendMorningBriefNotification` to match that exact shape. Quick-reply payload should be `send_brief`; the handler also accepts title/id `Send brief`. Until the real name is set, Graph fails and the daily claim is released.
+
+**OPEN / KNOWN ISSUE — Meta Graph API `#100 Invalid parameter`.** Console
+Settings/join **“Send me one right now”** → `POST /api/console/brief/send-now`
+→ `sendMorningBriefNotification()` → Meta Cloud
+`/{phone_number_id}/messages`. This is **not** Twilio. Captured Graph error:
+`code: 100`, `type: OAuthException`, `error_data.details: Invalid parameter`
+(no subcode). The exact invalid Graph field was **not** verified. The code
+still sends placeholder template name `WA_TEMPLATE_BRIEF` or
+`agentzero_morning_brief`. Handle later as configuration/Graph work. Do **not**
+“fix” it by routing Morning Brief through Twilio or by changing Jarvis
+ownership code.
 
 **Scheduler (not wired yet — do not activate without approval).** Call-queue/batch-callback already use **separate Railway cron services that run a Node script**. Morning Brief should follow that pattern:
 

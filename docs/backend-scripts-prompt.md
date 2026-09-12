@@ -14,8 +14,11 @@ given — later phases depend on earlier ones. Stop and report after each phase.
 - The spoken prompt currently lives in the Vapi dashboard, not the repo. This
   feature moves ownership into the repo.
 - `call_queue` is the batch table. It has no assistant/script column.
-- Copilot auth is env users (`COPILOT_USERS_JSON`) bound to `tenantSlug`, not to
-  the `agents` table. No agent phone on the session.
+- **Audit finding (historical):** Copilot auth was env users
+  (`COPILOT_USERS_JSON`) bound to `tenantSlug`, not to the `agents` table, with
+  no agent phone on the session. **Do not re-implement that.** Current console
+  auth is `docs/AGENTS.md` → **Authentication (current)** (`getSession()`,
+  Supabase Auth + HMAC v3 cookie; `agents` row is source of truth).
 - `getVapiConfig()` requires `VAPI_ASSISTANT_ID` even when a tenant ID is passed.
 - Test-call paths hardcode Shuayb / +971585690693.
 
