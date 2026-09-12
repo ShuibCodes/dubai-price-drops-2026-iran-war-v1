@@ -55,9 +55,18 @@ route uses it. 403 on tenant mismatch, no exceptions.
 
 1. **Supabase Auth (preferred).** Middleware and `getSession()` call
    `supabase.auth.getUser()`. A signed-in user loads
-   `agents.auth_user_id`. Google: `/api/copilot/auth/google` and
+   `agents.auth_user_id`. Google and Facebook use
+   `/api/copilot/auth/{google|facebook}` and the shared
    `/api/copilot/auth/callback`. Uses server-only `SUPABASE_ANON_KEY` (not
-   `NEXT_PUBLIC_`). There is no browser Supabase client.
+   `NEXT_PUBLIC_`). There is no browser Supabase client. Existing agents are
+   resolved by both immutable Auth user id and verified email; disagreement
+   fails closed and an existing non-null `auth_user_id` is never overwritten.
+   A genuinely new identity calls the service-role-only
+   `resolve_or_provision_social_agent` RPC, which creates one tenant plus its
+   `admin` agent atomically, then sends the owner to
+   `/copilot/<generated-slug>/join`. The slug is random server-side and no
+   tenant, role, or redirect supplied by the browser participates in creation.
+   Existing agents keep their tenant and role.
 2. **Legacy HMAC cookie.** If there is no Auth user, cookie `copilot_session`
    (`SESSION_VERSION` 3: `agentId`, `tenantId`, `tenantSlug`) is verified, then
    the agent row is loaded by those ids. Username/password still authenticates
@@ -76,6 +85,22 @@ route uses it. 403 on tenant mismatch, no exceptions.
 4. **Landing Log in.** The marketing header button
    (`src/components/landing/agentzero-landing-page.jsx`) is a Next.js `Link` to
    `/copilot`. It does not authenticate.
+
+**Social-provider operations.** `SUPABASE_URL` and `SUPABASE_ANON_KEY` keep
+their server-only names. Google preserves the existing behavior (enabled when
+those values exist) and can be disabled with
+`SUPABASE_AUTH_GOOGLE_ENABLED=0`. Facebook is hidden and its route rejects
+unless `SUPABASE_AUTH_FACEBOOK_ENABLED=1`; only enable Facebook after it is
+enabled in Supabase Auth and the Meta provider console. Both
+providers must return a confirmed email that matches the provider identity.
+The Facebook app must grant the `email` permission; missing or unconfirmed
+Facebook email fails before any tenant is created.
+The application callback is
+`https://www.agentzero.ae/api/copilot/auth/callback`; the provider-specific
+OAuth callback configured in Google/Meta is Supabase's callback URL. Keep
+Vercel `APP_URL=https://www.agentzero.ae` and add the application callback to
+Supabase's redirect allowlist. These dashboard settings are external
+requirements and are not established by repository code.
 
 Do not force remaining username/password agents onto Google as a side effect of
 other work.

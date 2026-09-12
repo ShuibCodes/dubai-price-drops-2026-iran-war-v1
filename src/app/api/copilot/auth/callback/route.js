@@ -1,15 +1,17 @@
 import { NextResponse } from "next/server";
-import {
-  findAgentByEmail,
-  linkAgentToAuthUser,
-  syncAgentClaims,
-} from "@/lib/copilot/auth-claims";
+import { syncAgentClaims } from "@/lib/copilot/auth-claims";
 import { safeNextPath } from "@/lib/copilot/next-path";
+import {
+  isSocialProviderConfigured,
+  resolveOrProvisionSocialAgent,
+  socialAuthErrorCode,
+  verifiedSocialIdentity,
+} from "@/lib/copilot/social-auth";
+import { oauthLoginRedirect, oauthOrigin } from "@/lib/copilot/oauth-route";
 import {
   COPILOT_SESSION_COOKIE,
   copilotSessionCookieOptions,
 } from "@/lib/copilot-auth";
-import { COPILOT_LOGIN_PATH } from "@/lib/copilot-auth-constants";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import {
   createRouteAuthClient,
@@ -19,92 +21,69 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function origin(request) {
-  const configured = String(
-    process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || ""
-  ).trim();
-  return configured ? configured.replace(/\/+$/, "") : request.nextUrl.origin;
-}
-
-function loginUrl(request, code) {
-  // Directly to the login page — the /copilot/login stub drops ?error=.
-  const url = new URL(COPILOT_LOGIN_PATH, origin(request));
-  if (code) url.searchParams.set("error", code);
-  return url;
-}
-
-/**
- * Google is the only enabled provider and always asserts a verified address,
- * but the check is explicit because the email is the whole allowlist key.
- * Verification must belong to the identity that owns user.email — a verified
- * flag on some *other* linked identity says nothing about this address.
- */
-function emailIsVerified(user) {
-  if (!user?.email) return false;
-  if (user.email_confirmed_at) return true;
-  const address = user.email.toLowerCase();
-  return (user.identities || []).some(
-    (identity) =>
-      identity?.identity_data?.email_verified === true &&
-      String(identity?.identity_data?.email || "").toLowerCase() === address
-  );
-}
-
 export async function GET(request) {
   if (!isSupabaseAuthConfigured()) {
-    return NextResponse.redirect(loginUrl(request, "google_unavailable"));
+    return oauthLoginRedirect(request, "social_unavailable");
   }
 
   const params = request.nextUrl.searchParams;
   const code = params.get("code");
   if (params.get("error") || !code) {
-    return NextResponse.redirect(loginUrl(request, "google_failed"));
+    return oauthLoginRedirect(request, "social_failed");
   }
 
   const { supabase, applyTo } = createRouteAuthClient(request);
 
   // Any rejection past this point must drop the half-built session, otherwise an
-  // unauthorised Google account keeps a valid Supabase cookie.
+  // rejected social account keeps a valid Supabase cookie.
   async function deny(code) {
-    await supabase.auth.signOut();
-    return applyTo(NextResponse.redirect(loginUrl(request, code)));
+    const response = oauthLoginRedirect(request, code);
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (!error) return applyTo(response);
+      console.error("[copilot/auth/callback] sign-out failed", error.message);
+    } catch (error) {
+      console.error("[copilot/auth/callback] sign-out failed", error?.message);
+    }
+
+    // Do not apply pending exchange cookies if revocation failed. Expire every
+    // Supabase cookie already present on the request as a second fail-closed
+    // barrier; this includes chunked sessions and the PKCE verifier.
+    for (const cookie of request.cookies.getAll()) {
+      if (cookie.name.startsWith("sb-")) {
+        response.cookies.set(cookie.name, "", { path: "/", maxAge: 0 });
+      }
+    }
+    return response;
   }
 
+  let provider = "social";
   try {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
     const user = data?.user;
     if (error || !user) {
       console.error("[copilot/auth/callback] exchange failed", error?.message);
-      return deny("google_failed");
+      return deny("social_failed");
     }
 
-    if (!user.email || !emailIsVerified(user)) {
-      return deny("google_unverified");
+    const identity = verifiedSocialIdentity(user, params.get("provider"));
+    if (!identity) {
+      return deny("social_unverified");
+    }
+    provider = identity.provider;
+    if (!isSocialProviderConfigured(provider)) {
+      return deny(`${provider}_unavailable`);
     }
 
     const admin = getSupabaseServerClient();
-    if (!admin) return deny("google_unavailable");
+    if (!admin) return deny("social_unavailable");
 
-    let agent = await findAgentByEmail(admin, user.email);
-    if (!agent?.tenants?.slug) {
-      console.warn("[copilot/auth/callback] no agent for verified Google identity");
-      return deny("not_authorised");
-    }
-
-    if (!agent.auth_user_id) {
-      // Re-read regardless of race outcome: a successful update must not leave
-      // the in-memory row stale, or the guard below reads it as a conflict.
-      await linkAgentToAuthUser(admin, agent.id, user.id);
-      agent = await findAgentByEmail(admin, user.email);
-    }
-    if (agent?.auth_user_id !== user.id) {
-      console.warn("[copilot/auth/callback] agent already linked to another auth user", {
-        agentId: agent?.id,
-      });
-      return deny("link_conflict");
-    }
-
-    const tenantSlug = agent.tenants.slug;
+    const agent = await resolveOrProvisionSocialAgent(admin, {
+      authUserId: user.id,
+      email: identity.email,
+      displayName: identity.displayName,
+    });
+    const tenantSlug = agent.tenant_slug;
     await syncAgentClaims(admin, user.id, agent, tenantSlug);
 
     // Claims are minted into the JWT, so the token from the exchange predates
@@ -112,7 +91,7 @@ export async function GET(request) {
     const refreshed = await supabase.auth.refreshSession();
     if (refreshed.error) {
       console.error("[copilot/auth/callback] refresh failed", refreshed.error.message);
-      return deny("google_failed");
+      return deny(`${provider}_failed`);
     }
 
     await admin
@@ -120,8 +99,12 @@ export async function GET(request) {
       .update({ last_login_at: new Date().toISOString() })
       .eq("id", agent.id);
 
-    const target = safeNextPath(params.get("next"), tenantSlug);
-    const response = NextResponse.redirect(new URL(target, origin(request)));
+    // A newly-created owner always enters setup. Client-controlled next is only
+    // considered for identities that already belonged to an AgentZero agent.
+    const target = agent.was_created
+      ? `/copilot/${encodeURIComponent(tenantSlug)}/join`
+      : safeNextPath(params.get("next"), tenantSlug);
+    const response = NextResponse.redirect(new URL(target, oauthOrigin(request)));
 
     // The Supabase session now owns this browser's identity; a leftover legacy
     // cookie for a different agent would only sow confusion after logout.
@@ -135,6 +118,6 @@ export async function GET(request) {
     return applyTo(response);
   } catch (error) {
     console.error("[copilot/auth/callback]", error?.message);
-    return deny("google_failed");
+    return deny(socialAuthErrorCode(error, provider));
   }
 }

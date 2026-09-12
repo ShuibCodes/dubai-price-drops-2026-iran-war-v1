@@ -79,21 +79,39 @@ check(
 // The Google checks flip meaning with configuration state: unconfigured they
 // must degrade, configured they must engage. The dev server reads the same
 // .env.local, so this mirrors what it sees.
-const googleConfigured = Boolean(env.SUPABASE_URL && env.SUPABASE_ANON_KEY);
+const supabaseAuthConfigured = Boolean(env.SUPABASE_URL && env.SUPABASE_ANON_KEY);
+const googleConfigured =
+  supabaseAuthConfigured &&
+  !["0", "false", "off"].includes(
+    String(env.SUPABASE_AUTH_GOOGLE_ENABLED || "").toLowerCase()
+  );
+const facebookConfigured =
+  supabaseAuthConfigured &&
+  ["1", "true", "yes", "on"].includes(
+    String(env.SUPABASE_AUTH_FACEBOOK_ENABLED || "").toLowerCase()
+  );
 
 const loginPage = await hit("/copilot");
 const loginHtml = await loginPage.text();
-const hasButton = loginHtml.includes("Continue with Google");
+const hasGoogleButton = loginHtml.includes("Continue with Google");
 check(
   googleConfigured
     ? "login page shows Google when configured"
     : "login page hides Google when unconfigured",
-  loginPage.status === 200 && hasButton === googleConfigured,
-  `status=${loginPage.status} button=${hasButton ? "shown" : "hidden"}`
+  loginPage.status === 200 && hasGoogleButton === googleConfigured,
+  `status=${loginPage.status} button=${hasGoogleButton ? "shown" : "hidden"}`
+);
+const hasFacebookButton = loginHtml.includes("Continue with Facebook");
+check(
+  facebookConfigured
+    ? "login page shows enabled Facebook"
+    : "login page hides disabled Facebook",
+  hasFacebookButton === facebookConfigured,
+  `button=${hasFacebookButton ? "shown" : "hidden"}`
 );
 
 console.log(
-  googleConfigured ? "\nGOOGLE ROUTES (ANON KEY PRESENT)" : "\nGOOGLE ROUTES WITH NO ANON KEY"
+  googleConfigured ? "\nGOOGLE ROUTES (ENABLED)" : "\nGOOGLE ROUTES (UNAVAILABLE)"
 );
 
 const authorize = await hit("/api/copilot/auth/google");
@@ -107,6 +125,21 @@ check(
     ? redirected && authorizeTo.includes("/auth/v1/authorize")
     : redirected && authorizeTo.includes("error=google_unavailable"),
   `${authorize.status} -> ${authorizeTo}`
+);
+
+const facebook = await hit("/api/copilot/auth/facebook");
+const facebookTo = facebook.headers.get("location") || "";
+check(
+  facebookConfigured
+    ? "Facebook authorize hands off to Supabase"
+    : "Facebook authorize safely unavailable",
+  facebook.status >= 300 &&
+    facebook.status < 400 &&
+    (facebookConfigured
+      ? facebookTo.includes("/auth/v1/authorize") &&
+        facebookTo.includes("provider=facebook")
+      : facebookTo.includes("error=facebook_unavailable")),
+  `${facebook.status} -> ${facebookTo}`
 );
 
 // The PKCE verifier cookie set on the handoff is written by the same helper
@@ -125,13 +158,15 @@ if (googleConfigured) {
 const callback = await hit("/api/copilot/auth/callback?code=not-a-real-code");
 const callbackTo = callback.headers.get("location") || "";
 check(
-  googleConfigured
+  supabaseAuthConfigured
     ? "callback rejects a junk code, fails closed"
     : "callback degrades to login",
   callback.status >= 300 &&
     callback.status < 400 &&
     callbackTo.includes("/copilot?error=") &&
-    (!googleConfigured || callbackTo.includes("error=google_failed")),
+    (supabaseAuthConfigured
+      ? callbackTo.includes("error=social_failed")
+      : callbackTo.includes("error=social_unavailable")),
   `${callback.status} -> ${callbackTo}`
 );
 

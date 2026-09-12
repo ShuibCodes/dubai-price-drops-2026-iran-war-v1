@@ -6,14 +6,19 @@ import { copilotHomePath, safeCopilotNextPath } from "@/lib/copilot-auth-constan
 
 // Error codes set by /api/copilot/auth/google and /api/copilot/auth/callback.
 const CALLBACK_ERRORS = {
+  social_unavailable:
+    "Social sign-in isn't set up yet. Use your username and password.",
+  social_failed: "Social sign-in didn't complete. Try again.",
+  social_unverified:
+    "That social account did not provide a verified email address.",
   google_unavailable:
     "Google sign-in isn't set up yet. Use your username and password.",
   google_failed: "Google sign-in didn't complete. Try again.",
-  google_unverified: "That Google account has no verified email address.",
-  not_authorised:
-    "That Google account isn't linked to an AgentZero agent. Ask your admin to add it.",
-  link_conflict:
-    "That account is already linked to a different sign-in. Ask your admin.",
+  facebook_unavailable:
+    "Facebook sign-in isn't set up yet. Use your username and password.",
+  facebook_failed: "Facebook sign-in didn't complete. Try again.",
+  identity_conflict:
+    "That social identity conflicts with an existing account. Ask your admin.",
 };
 
 function IconUser() {
@@ -76,7 +81,10 @@ function IconEye({ off }) {
   );
 }
 
-export function CopilotLoginForm({ googleEnabled = false }) {
+export function CopilotLoginForm({
+  googleEnabled = false,
+  facebookEnabled = false,
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedNext = searchParams.get("next");
@@ -86,6 +94,11 @@ export function CopilotLoginForm({ googleEnabled = false }) {
     requestedNext && requestedNext.startsWith("/copilot/")
       ? `/api/copilot/auth/google?next=${encodeURIComponent(requestedNext)}`
       : "/api/copilot/auth/google";
+  const facebookHref =
+    requestedNext && requestedNext.startsWith("/copilot/")
+      ? `/api/copilot/auth/facebook?next=${encodeURIComponent(requestedNext)}`
+      : "/api/copilot/auth/facebook";
+  const socialEnabled = googleEnabled || facebookEnabled;
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -144,14 +157,24 @@ export function CopilotLoginForm({ googleEnabled = false }) {
         Welcome back. Sign in to continue.
       </p>
 
-      {googleEnabled ? (
-        <div className="mt-8">
-          <a
-            className="flex w-full items-center justify-center rounded-[10px] border border-[#E4E9F2] bg-white py-3 text-[15px] font-semibold text-[#0a0a0a] transition hover:border-hot"
-            href={googleHref}
-          >
-            Continue with Google
-          </a>
+      {socialEnabled ? (
+        <div className="mt-8 space-y-3">
+          {googleEnabled ? (
+            <a
+              className="flex w-full items-center justify-center rounded-[10px] border border-[#E4E9F2] bg-white py-3 text-[15px] font-semibold text-[#0a0a0a] transition hover:border-hot"
+              href={googleHref}
+            >
+              Continue with Google
+            </a>
+          ) : null}
+          {facebookEnabled ? (
+            <a
+              className="flex w-full items-center justify-center rounded-[10px] border border-[#E4E9F2] bg-white py-3 text-[15px] font-semibold text-[#0a0a0a] transition hover:border-hot"
+              href={facebookHref}
+            >
+              Continue with Facebook
+            </a>
+          ) : null}
           <div className="mt-6 flex items-center gap-3 text-xs uppercase tracking-[.14em] text-[#9AA3B2]">
             <span className="h-px flex-1 bg-[#E4E9F2]" />
             or
@@ -160,7 +183,7 @@ export function CopilotLoginForm({ googleEnabled = false }) {
         </div>
       ) : null}
 
-      <form onSubmit={handleSubmit} className={googleEnabled ? "mt-6" : "mt-8"}>
+      <form onSubmit={handleSubmit} className={socialEnabled ? "mt-6" : "mt-8"}>
         <label className="block text-sm font-medium text-[#3D4A5C]">
           Username
           <span className="relative mt-1.5 block">

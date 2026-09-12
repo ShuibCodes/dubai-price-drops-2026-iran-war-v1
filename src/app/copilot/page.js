@@ -1,8 +1,9 @@
 import { Suspense } from "react";
 import { CopilotLoginForm } from "@/components/console/copilot-login-form";
 import { CopilotLoginPreview } from "@/components/console/copilot-login-preview";
-import { isSupabaseAuthConfigured } from "@/lib/supabase/auth-server";
+import { isSocialProviderConfigured } from "@/lib/copilot/social-auth";
 
+export const dynamic = "force-dynamic";
 export const metadata = {
   title: "Log in | Operations Copilot",
   description: "Sign in to Operations Copilot to run campaigns, review calls, and chase leads.",
@@ -19,7 +20,10 @@ export default function CopilotPage() {
     <main className="grid min-h-dvh bg-white lg:h-dvh lg:grid-cols-2 lg:overflow-hidden">
       <section className="flex items-center justify-center overflow-y-auto bg-white px-6 py-12 text-[#0a0a0a] sm:px-12">
         <Suspense fallback={<LoginFormFallback />}>
-          <CopilotLoginForm googleEnabled={isSupabaseAuthConfigured()} />
+          <CopilotLoginForm
+            googleEnabled={isSocialProviderConfigured("google")}
+            facebookEnabled={isSocialProviderConfigured("facebook")}
+          />
         </Suspense>
       </section>
       <CopilotLoginPreview />
