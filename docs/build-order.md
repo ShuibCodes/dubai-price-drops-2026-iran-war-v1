@@ -23,10 +23,10 @@ Summary of what changed:
 | Audit found | Resolution |
 |---|---|
 | No console design system; DXB Dip palette + slate/emerald chat page | Extend DXB Dip tokens. Primitives get defined in Phase 8. |
-| `/copilot/[tenant]` is a live web chat | Remove it. Console home takes the route. Confirm nobody's using it first. |
+| `/copilot/[tenant]` is a live web chat | **Done.** `ConsoleHome` takes the route. |
 | Auth is username, not email | Phase 1 authenticates by `username`. Email is an optional column. |
 | `opted_out` missing; Copilot needs full phone numbers | Constraint 8 is now scoped — full data to the owning agent, last-initial in KB and Vapi prompts. |
-| `zod` not installed | `npm i zod` before Phase 2. |
+| `zod` not installed | **Done.** `zod` is in `package.json`; see `src/lib/scripts/schema.js`. |
 | Service-role client bypasses RLS | Tenant isolation is application-layer via `getSession()`. RLS is defence in depth only. |
 | recharts + modals ship in DXB Dip | Constraints 2 and 3 scoped to `src/app/copilot/**`. |
 | WABA is tenant-level | No per-agent connect. Setup wizard drops to two steps. |
@@ -69,7 +69,7 @@ prompt: *"Extract Button, Pill, Row, Field, Label, Stat, Toggle, Check and Strip
 into `src/components/ui/` as you build this, generic enough that a run or a lead
 can use them. Do not hardcode script-specific props into Row."*
 
-Before Phase 2: `npm i zod`.
+Before Phase 2: `zod` is already installed (`src/lib/scripts/schema.js`).
 
 ---
 
