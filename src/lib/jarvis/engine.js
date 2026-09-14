@@ -31,6 +31,7 @@ import {
   formatRelayConfirmation,
   placeRelayCall,
 } from "@/lib/jarvis/relay";
+import { maybeHandleSmartCallbackRequest } from "@/lib/jarvis/smart-callback";
 import { getJarvisRecentConversations, formatLiveContext } from "@/lib/kb/live-conversations";
 import {
   buildScriptBatchConfirm,
@@ -602,6 +603,15 @@ export async function runJarvisTurn({ tenantId, messages, agentName, senderPhone
   }
 
   const listMatch = matchSavedListFromMessages(savedLists, conversation);
+  const smartCallback = await maybeHandleSmartCallbackRequest({
+    tenantId,
+    messages: conversation,
+    senderPhone,
+    listMatch,
+  });
+  if (smartCallback?.handled) {
+    return { text: smartCallback.text, toolRounds: 0 };
+  }
   const savedListsPrompt = [
     formatSavedListsPrompt(savedLists, listMatch),
     formatScriptsPrompt(listedScripts),

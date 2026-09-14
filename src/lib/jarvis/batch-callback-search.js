@@ -47,6 +47,17 @@ function fullPhone(waId) {
   return digits ? `+${digits}` : null;
 }
 
+/**
+ * True only when the lead is explicitly assigned to this agent id.
+ * Unassigned (null/empty assigned_agent_id) and other agents' leads are excluded.
+ */
+export function isLeadAssignedToAgentId(lead, agentId) {
+  const assigned = lead?.assigned_agent_id;
+  if (assigned == null || assigned === "") return false;
+  if (!agentId) return false;
+  return String(assigned) === String(agentId);
+}
+
 function clampInt(value, { min, max, fallback }) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
@@ -146,34 +157,80 @@ export function parseBatchCallbackCommand(text) {
   return { intent, windowDays, raw };
 }
 
-async function loadActiveThreads({
-  tenantId,
-  windowDays,
-  maxThreads,
-  messagesPerThread,
-}) {
-  const supabase = db();
-  const since = new Date(
-    Date.now() - windowDays * 24 * 60 * 60 * 1000
-  ).toISOString();
+/**
+ * Lead ids assigned to this agent id (tenant-scoped rows).
+ * Unassigned and other-agent leads are never included.
+ */
+export function buildAssignedLeadIdSet(leads, agentId) {
+  const allowed = new Set();
+  if (!agentId) return allowed;
+  for (const lead of leads || []) {
+    if (!lead?.id) continue;
+    if (!isLeadAssignedToAgentId(lead, agentId)) continue;
+    allowed.add(lead.id);
+  }
+  return allowed;
+}
 
-  // One bounded pull, group in memory — ~2k rows for a typical 21d Sterling window.
-  const { data, error } = await supabase
-    .from(MESSAGES_TABLE)
-    .select("id, jarvis_lead_id, direction, body, msg_type, timestamp")
+/**
+ * Confirm agentId belongs to tenantId. Returns agentId on success, else null
+ * (fail closed — no tenant-wide search).
+ */
+export async function assertAgentBelongsToTenant({
+  tenantId,
+  agentId,
+  supabase = null,
+} = {}) {
+  if (!tenantId || !agentId) return null;
+  const client = supabase || db();
+  const { data: agent, error } = await client
+    .from("agents")
+    .select("id, tenant_id")
+    .eq("id", agentId)
     .eq("tenant_id", tenantId)
-    .not("jarvis_lead_id", "is", null)
-    .gte("timestamp", since)
-    .order("timestamp", { ascending: false })
-    .limit(8000);
+    .maybeSingle();
+  if (error) throw new Error(`Agent lookup failed: ${error.message}`);
+  return agent?.id || null;
+}
+
+/**
+ * Lead ids in this tenant with assigned_agent_id = requesting agentId.
+ * Unassigned (null) and other-agent leads are never included.
+ */
+export async function loadAssignedLeadIdsForAgent({
+  tenantId,
+  agentId,
+  supabase = null,
+} = {}) {
+  if (!tenantId || !agentId) return new Set();
+
+  const client = supabase || db();
+  const { data, error } = await client
+    .from(JARVIS_LEADS_TABLE)
+    .select("id, assigned_agent_id")
+    .eq("tenant_id", tenantId)
+    .eq("assigned_agent_id", agentId);
   if (error) {
-    throw new Error(`Batch callback message prefilter failed: ${error.message}`);
+    throw new Error(`Assigned leads lookup failed: ${error.message}`);
   }
 
+  return buildAssignedLeadIdSet(data, agentId);
+}
+
+/**
+ * Group tenant message rows into threads, keeping only leads in allowedLeadIds.
+ * This is the production Smart Callback security filter (agent-assigned only).
+ */
+export function groupMessageRowsIntoAssignedThreads(
+  messageRows,
+  allowedLeadIds,
+  { maxThreads, messagesPerThread } = {}
+) {
   const byLead = new Map();
-  for (const row of data || []) {
+  for (const row of messageRows || []) {
     const leadId = row.jarvis_lead_id;
     if (!leadId) continue;
+    if (!allowedLeadIds?.has(leadId)) continue;
     let bucket = byLead.get(leadId);
     if (!bucket) {
       bucket = {
@@ -188,7 +245,7 @@ async function loadActiveThreads({
     }
   }
 
-  const threads = [...byLead.values()]
+  return [...byLead.values()]
     .sort(
       (a, b) =>
         new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
@@ -197,25 +254,71 @@ async function loadActiveThreads({
     .map((t) => ({
       jarvisLeadId: t.jarvisLeadId,
       lastMessageAt: t.lastMessageAt,
-      // Chronological for the model
       messages: [...t.messagesNewestFirst].reverse(),
     }));
+}
+
+async function loadActiveThreads({
+  tenantId,
+  agentId,
+  windowDays,
+  maxThreads,
+  messagesPerThread,
+}) {
+  const supabase = db();
+  const since = new Date(
+    Date.now() - windowDays * 24 * 60 * 60 * 1000
+  ).toISOString();
+
+  const allowedLeadIds = await loadAssignedLeadIdsForAgent({
+    tenantId,
+    agentId,
+    supabase,
+  });
+  if (!allowedLeadIds.size) {
+    return { since, threads: [], scannedMessageRows: 0 };
+  }
+
+  // One bounded pull, group in memory — ~2k rows for a typical 21d Sterling window.
+  const { data, error } = await supabase
+    .from(MESSAGES_TABLE)
+    .select("id, jarvis_lead_id, direction, body, msg_type, timestamp")
+    .eq("tenant_id", tenantId)
+    .not("jarvis_lead_id", "is", null)
+    .gte("timestamp", since)
+    .order("timestamp", { ascending: false })
+    .limit(8000);
+  if (error) {
+    throw new Error(`Batch callback message prefilter failed: ${error.message}`);
+  }
+
+  const threads = groupMessageRowsIntoAssignedThreads(data, allowedLeadIds, {
+    maxThreads,
+    messagesPerThread,
+  });
 
   return { since, threads, scannedMessageRows: (data || []).length };
 }
 
-async function loadLeadsById(tenantId, leadIds) {
+async function loadLeadsById(tenantId, agentId, leadIds) {
   if (!leadIds.length) return new Map();
   const supabase = db();
   const { data, error } = await supabase
     .from(JARVIS_LEADS_TABLE)
     .select(
-      "id, wa_id, push_name, inferred_name, inferred_name_confidence, inferred_name_at"
+      "id, wa_id, push_name, inferred_name, inferred_name_confidence, inferred_name_at, assigned_agent_id"
     )
     .eq("tenant_id", tenantId)
+    .eq("assigned_agent_id", agentId)
     .in("id", leadIds);
   if (error) throw new Error(`Jarvis leads lookup failed: ${error.message}`);
-  return new Map((data || []).map((row) => [row.id, row]));
+  const map = new Map();
+  for (const row of data || []) {
+    // Defence in depth: never enrich / return another agent's or unassigned lead.
+    if (!isLeadAssignedToAgentId(row, agentId)) continue;
+    map.set(row.id, row);
+  }
+  return map;
 }
 
 function parseMatchArray(text) {
@@ -296,10 +399,11 @@ async function mapPool(items, concurrency, worker) {
 
 /**
  * Semantic / intent-based candidate search for Jarvis batch callbacks.
- * Standalone — not wired to WhatsApp confirm flow yet.
+ * Scoped to one agent: only leads with assigned_agent_id = agentId.
  *
  * @param {{
  *   tenantId: string,
+ *   agentId: string,
  *   intent: string,
  *   windowDays?: number,
  *   limit?: number,
@@ -309,6 +413,7 @@ async function mapPool(items, concurrency, worker) {
  */
 export async function searchBatchCallbackCandidates({
   tenantId,
+  agentId,
   intent,
   windowDays = BATCH_CALLBACK_DEFAULT_WINDOW_DAYS,
   limit = BATCH_CALLBACK_MATCH_LIMIT,
@@ -318,9 +423,32 @@ export async function searchBatchCallbackCandidates({
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("Missing ANTHROPIC_API_KEY");
   if (!tenantId) throw new Error("tenantId is required");
+  if (!agentId) throw new Error("agentId is required");
 
   const cleanedIntent = String(intent || "").trim();
   if (!cleanedIntent) throw new Error("intent is required");
+
+  // Fail closed: agent must exist in this tenant.
+  const ownedAgentId = await assertAgentBelongsToTenant({ tenantId, agentId });
+  if (!ownedAgentId) {
+    return {
+      intent: cleanedIntent,
+      windowDays: clampInt(windowDays, {
+        min: 1,
+        max: 366,
+        fallback: BATCH_CALLBACK_DEFAULT_WINDOW_DAYS,
+      }),
+      since: null,
+      scannedMessageRows: 0,
+      threadsConsidered: 0,
+      threadsEvaluated: 0,
+      matchLimit: 0,
+      matches: [],
+      model: null,
+      stoppedEarly: false,
+      failClosed: true,
+    };
+  }
 
   const days = clampInt(windowDays, {
     min: 1,
@@ -340,6 +468,7 @@ export async function searchBatchCallbackCandidates({
 
   const { since, threads, scannedMessageRows } = await loadActiveThreads({
     tenantId,
+    agentId: ownedAgentId,
     windowDays: days,
     maxThreads: threadCap,
     messagesPerThread: BATCH_CALLBACK_MESSAGES_PER_THREAD,
@@ -422,6 +551,7 @@ export async function searchBatchCallbackCandidates({
 
   const leadMap = await loadLeadsById(
     tenantId,
+    ownedAgentId,
     matches.map((m) => m.jarvisLeadId)
   );
 
