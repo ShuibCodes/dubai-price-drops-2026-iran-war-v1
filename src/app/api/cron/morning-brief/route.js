@@ -1,5 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
-import { briefDueToday, sendMorningBrief } from "@/lib/brief/send";
+import {
+  briefDueToday,
+  sendMorningBriefNotification,
+} from "@/lib/brief/send";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,10 +49,11 @@ export async function POST(request) {
     const tenant = agent.tenants;
     if (!tenant) continue;
     try {
-      const sent = await sendMorningBrief({
+      const sent = await sendMorningBriefNotification({
         supabase,
         tenant,
         agent,
+        now,
       });
       results.push({ agentId: agent.id, ...sent });
     } catch (err) {

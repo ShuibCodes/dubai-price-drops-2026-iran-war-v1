@@ -1,4 +1,4 @@
-import { consoleContext, jsonError, loadConsoleTenant } from "@/lib/console/http";
+import { consoleContext, jsonError, loadConsoleTenant, whatsappHealthy } from "@/lib/console/http";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -59,9 +59,7 @@ export async function GET(request) {
       agent,
       tenant: {
         display_phone: tenant?.display_phone || null,
-        whatsapp_connected: Boolean(
-          tenant?.waba_id && tenant?.phone_number_id && tenant?.business_token
-        ),
+        whatsapp_connected: whatsappHealthy(tenant),
       },
       inherited_docs: (docs || []).map((doc) => ({
         ...doc,

@@ -1,9 +1,8 @@
 import { handleContactConfirmationMessage } from "@/lib/jarvis/contacts";
-import { JARVIS_TENANT_SLUG, runJarvisTurn } from "@/lib/jarvis/engine";
+import { runJarvisTurn } from "@/lib/jarvis/engine";
 import { handleRelayConfirmationMessage } from "@/lib/jarvis/relay";
 import { resolveJarvisSender } from "@/lib/jarvis/resolve-sender";
 import { timingSafeEqual } from "@/lib/security/timing-safe";
-import { getSupabaseServerClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,64 +14,33 @@ function verifyAccess(request) {
   return timingSafeEqual(request.headers.get("x-jarvis-key"), expected);
 }
 
-function defaultJarvisSenderPhone() {
-  return String(process.env.JARVIS_WHATSAPP_WA_IDS || "")
-    .split(",")
-    .map((value) => value.replace(/\D/g, ""))
-    .filter(Boolean)[0] || null;
-}
-
-async function resolveSlugTenant(supabase, slug) {
-  const { data: tenant, error } = await supabase
-    .from("tenants")
-    .select("id, name, slug")
-    .eq("slug", slug)
-    .maybeSingle();
-  if (error) throw new Error(`Tenant lookup failed: ${error.message}`);
-  return tenant || null;
-}
-
 export async function POST(request) {
   try {
     if (!verifyAccess(request)) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
-    const supabase = getSupabaseServerClient();
-    if (!supabase) {
-      return Response.json({ error: "Supabase not configured" }, { status: 500 });
-    }
-
     const body = await request.json().catch(() => ({}));
     if (!Array.isArray(body.messages)) {
       return Response.json({ error: "messages must be an array" }, { status: 400 });
     }
 
     const requestedPhone = String(body.senderPhone || "").replace(/\D/g, "");
-    const senderPhone = requestedPhone || defaultJarvisSenderPhone();
-    const sender = senderPhone ? await resolveJarvisSender(senderPhone) : null;
-
-    let tenantId = null;
-    let agentName = String(body.agentName || "").trim();
-
-    if (sender) {
-      tenantId = sender.tenantId;
-      if (!agentName) agentName = sender.agentName;
-    } else if (requestedPhone) {
+    if (!requestedPhone) {
+      return Response.json(
+        { error: "senderPhone is required." },
+        { status: 403 }
+      );
+    }
+    const sender = await resolveJarvisSender(requestedPhone);
+    if (!sender) {
       return Response.json(
         { error: "Unknown AgentZero sender. This WhatsApp number is not on an agent." },
         { status: 403 }
       );
-    } else {
-      const tenant = await resolveSlugTenant(supabase, JARVIS_TENANT_SLUG);
-      if (!tenant) {
-        return Response.json(
-          { error: `Tenant ${JARVIS_TENANT_SLUG} not found` },
-          { status: 404 }
-        );
-      }
-      tenantId = tenant.id;
-      if (!agentName) agentName = "Jarvis user";
     }
+    const senderPhone = sender.waId;
+    const tenantId = sender.tenantId;
+    const agentName = sender.agentName;
 
     const latestUser = [...body.messages]
       .reverse()
@@ -81,6 +49,7 @@ export async function POST(request) {
 
     const contactConfirm = await handleContactConfirmationMessage({
       tenantId,
+      agentId: sender.agentId,
       senderPhone,
       message: latestText,
     });
@@ -90,6 +59,7 @@ export async function POST(request) {
 
     const relayConfirm = await handleRelayConfirmationMessage({
       tenantId,
+      agentId: sender.agentId,
       senderPhone,
       message: latestText,
     });
@@ -99,6 +69,7 @@ export async function POST(request) {
 
     const result = await runJarvisTurn({
       tenantId,
+      agentId: sender.agentId,
       messages: body.messages,
       agentName,
       senderPhone,

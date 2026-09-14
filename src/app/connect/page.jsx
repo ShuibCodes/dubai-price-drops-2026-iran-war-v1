@@ -78,6 +78,11 @@ export default function ConnectPage() {
       return;
     }
 
+    if (!tenantSlug) {
+      setStatus("Missing tenant. Open /connect?tenant=<workspace-slug>.");
+      return;
+    }
+
     signupInfoRef.current = null;
     setSignupInfo(null);
     setStatus("Opening WhatsApp embedded signup...");
@@ -96,6 +101,7 @@ export default function ConnectPage() {
           try {
             const exchangeResponse = await fetch("/api/meta/exchange", {
               method: "POST",
+              credentials: "include",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 code,
@@ -107,6 +113,10 @@ export default function ConnectPage() {
 
             const exchangePayload = await exchangeResponse.json();
             if (!exchangeResponse.ok || !exchangePayload.ok) {
+              if (exchangeResponse.status === 401) {
+                setStatus("Sign in to AgentZero first, then connect WhatsApp.");
+                return;
+              }
               setStatus(`Connection failed: ${exchangePayload?.error || "token exchange failed"}`);
               return;
             }
@@ -147,7 +157,10 @@ export default function ConnectPage() {
     <main style={{ fontFamily: "sans-serif", padding: "2rem", maxWidth: "640px" }}>
       <h1>Connect WhatsApp</h1>
       <p>
-        Workspace: <strong>{tenantSlug || "oldest tenant (no ?tenant= given)"}</strong>
+        Workspace:{" "}
+        <strong>
+          {tenantSlug || "none — add ?tenant=<workspace-slug> to this URL"}
+        </strong>
       </p>
       <p>{status}</p>
       {signupInfo ? (
@@ -155,7 +168,7 @@ export default function ConnectPage() {
           {JSON.stringify(signupInfo, null, 2)}
         </pre>
       ) : null}
-      <button type="button" onClick={handleConnect} disabled={!sdkReady}>
+      <button type="button" onClick={handleConnect} disabled={!sdkReady || !tenantSlug}>
         Connect WhatsApp
       </button>
     </main>

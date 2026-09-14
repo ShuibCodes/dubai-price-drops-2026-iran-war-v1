@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
-import { Pill } from "@/components/ui/pill";
-import { Row } from "@/components/ui/row";
+import { Label } from "@/components/ui/label";
 import { Strip } from "@/components/ui/strip";
 import { ConsoleShell } from "@/components/console/console-shell";
+import { consoleBase, consoleJson } from "@/lib/console/client";
 import { runsLabel } from "@/lib/scripts/display";
 
 export function ScriptsList({ tenant }) {
@@ -18,20 +18,18 @@ export function ScriptsList({ tenant }) {
   const [newName, setNewName] = useState("");
   const [saving, setSaving] = useState(false);
 
-  async function load() {
-    const res = await fetch("/api/scripts");
-    if (res.status === 401) {
-      window.location.href = `/copilot?next=/copilot/${encodeURIComponent(tenant)}/scripts`;
-      return;
-    }
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error || "Could not load scripts.");
+  const base = consoleBase(tenant);
+
+  const load = useCallback(async () => {
+    const body = await consoleJson(base, "/api/scripts", {
+      fallback: "Could not load scripts.",
+    });
     setScripts(body.scripts || []);
-  }
+  }, [base]);
 
   useEffect(() => {
     load().catch((err) => setError(err.message));
-  }, [tenant]);
+  }, [load]);
 
   async function createScript(event) {
     event.preventDefault();
@@ -40,14 +38,13 @@ export function ScriptsList({ tenant }) {
     setSaving(true);
     setError("");
     try {
-      const res = await fetch("/api/scripts", {
+      const body = await consoleJson(base, "/api/scripts", {
         method: "POST",
         headers: { "content-type": "application/json" },
+        fallback: "Could not create script.",
         body: JSON.stringify({ display_name }),
       });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Could not create script.");
-      router.push(`/copilot/${encodeURIComponent(tenant)}/scripts/${body.id}`);
+      router.push(`${base}/scripts/${body.id}`);
     } catch (err) {
       setError(err.message);
       setSaving(false);
@@ -55,34 +52,44 @@ export function ScriptsList({ tenant }) {
   }
 
   function openScript(id) {
-    router.push(`/copilot/${encodeURIComponent(tenant)}/scripts/${id}`);
+    router.push(`${base}/scripts/${id}`);
   }
 
   return (
-    <ConsoleShell
-      action={
-        <Button onClick={() => setCreating(true)} variant="primary">
-          New script
-        </Button>
-      }
-      tenant={tenant}
-      title="Scripts"
-    >
+    <ConsoleShell tenant={tenant} width={1040}>
+      <div className="mb-3.5 flex flex-wrap items-end justify-between gap-5">
+        <div>
+          <h1 className="az-h1 mb-2.5 text-fg">Call scripts</h1>
+          <p className="max-w-[560px] text-[17px] text-dim">
+            What AgentZero says when it rings a lead. Only a{" "}
+            <span className="text-az">LIVE</span> script can be used on a list —
+            drafts are yours to play with.
+          </p>
+        </div>
+        {creating ? null : (
+          <Button onClick={() => setCreating(true)} variant="white">
+            New script
+          </Button>
+        )}
+      </div>
+
       {error ? (
-        <Strip className="mb-4" tone="markup">
+        <Strip className="mt-6" tone="markup">
           <span>{error}</span>
         </Strip>
       ) : null}
 
       {creating ? (
-        <form className="mb-6 border border-rule-2 bg-surface p-4" onSubmit={createScript}>
+        <form className="az-card mt-6 p-6.5" onSubmit={createScript}>
+          <Label htmlFor="script-name">Name the script</Label>
           <Field
             autoFocus
+            id="script-name"
             onChange={(event) => setNewName(event.target.value)}
-            placeholder="Script name"
+            placeholder="Cold list"
             value={newName}
           />
-          <div className="mt-3 flex gap-2">
+          <div className="mt-4 flex flex-wrap gap-2.5">
             <Button disabled={saving || !newName.trim()} type="submit">
               {saving ? "Creating…" : "Create"}
             </Button>
@@ -92,7 +99,7 @@ export function ScriptsList({ tenant }) {
                 setNewName("");
               }}
               type="button"
-              variant="ghost"
+              variant="quiet"
             >
               Cancel
             </Button>
@@ -100,41 +107,53 @@ export function ScriptsList({ tenant }) {
         </form>
       ) : null}
 
-      <div className="border-t border-rule">
+      <div className="mt-9 border-t border-line">
         {scripts == null ? (
           <>
-            <Row sub=" " title=" " />
-            <Row sub=" " title=" " />
-            <Row sub=" " title=" " />
+            <div className="az-row h-[86px]" />
+            <div className="az-row h-[86px]" />
+            <div className="az-row h-[86px]" />
           </>
         ) : scripts.length === 0 ? (
-          <p className="py-8 text-sm text-ink-2">
+          <p className="py-8 text-[15px] text-dim">
             No scripts yet. Create one with New script.
           </p>
         ) : (
           scripts.map((script) => (
-            <Row
+            <button
+              className="az-row hover:bg-panel"
               key={script.id}
               onClick={() => openScript(script.id)}
-              right={
-                <>
-                  <Pill tone={script.status === "live" ? "live" : "draft"}>
-                    {script.status === "live" ? "LIVE" : "DRAFT"}
-                  </Pill>
-                  <Button
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      openScript(script.id);
-                    }}
-                    variant="secondary"
+              type="button"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <span className="text-[19px] font-medium text-fg">
+                    {script.display_name}
+                  </span>
+                  <span
+                    className={
+                      script.status === "live" ? "az-pill-live" : "az-pill-draft"
+                    }
                   >
-                    Edit
-                  </Button>
-                </>
-              }
-              sub={`${script.goal_label || "No goal"} · ${script.voice_label || "No voice"} · ${runsLabel(script.runs)}`}
-              title={script.display_name}
-            />
+                    {script.status === "live" ? "LIVE" : "DRAFT"}
+                  </span>
+                </div>
+                <div className="mt-1.5 text-sm text-dim">
+                  {[
+                    script.goal_label || "No goal yet",
+                    script.voice_label || "No voice yet",
+                    runsLabel(script.runs),
+                  ].join(" · ")}
+                </div>
+              </div>
+              <span className="font-mono text-xs text-ghost">
+                v{script.current_version}
+              </span>
+              <span className="rounded-lg border border-line-2 px-4 py-2.5 text-sm text-dim">
+                Edit
+              </span>
+            </button>
           ))
         )}
       </div>

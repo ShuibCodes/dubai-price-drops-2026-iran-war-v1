@@ -3,20 +3,25 @@ import {
   upsertJarvisLead,
   insertJarvisMessageIfNew,
 } from "@/lib/ingest/jarvis-ingest";
-import { timingSafeEqual } from "@/lib/security/timing-safe";
+import { verifyConfiguredWebhookSecret } from "@/lib/security/webhook-secret";
 import { scheduleAutoReply } from "@/lib/whautomate/autoreply";
+import {
+  extractWhautomateChannelId,
+  resolveWhautomateTenant,
+} from "@/lib/whautomate/tenant";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
 function verifySecret(request) {
-  const expected = process.env.WHAUTOMATE_WEBHOOK_SECRET;
-  if (!expected) return true; // dev mode — accept everything while mapping the payload
   const url = new URL(request.url);
   const provided =
     request.headers.get("x-whautomate-secret") || url.searchParams.get("secret");
-  return timingSafeEqual(provided, expected);
+  return verifyConfiguredWebhookSecret({
+    expected: process.env.WHAUTOMATE_WEBHOOK_SECRET,
+    provided,
+  });
 }
 
 function clean(value) {
@@ -89,19 +94,6 @@ function mapWhautomatePayload(payload = {}) {
   };
 }
 
-// Whautomate payloads carry no channel identifier — single-tenant fallback, silent
-async function resolveTenant(supabase) {
-  const { data } = await supabase
-    .from("tenants")
-    .select(
-      "id, name, whautomate_channel_id, autoreply_enabled, reply_prompt"
-    )
-    .not("whautomate_channel_id", "is", null)
-    .limit(1);
-
-  return data?.[0] || null;
-}
-
 export async function GET() {
   return Response.json({
     ok: true,
@@ -139,10 +131,19 @@ export async function POST(request) {
       return Response.json({ ok: true, ingested: false, reason: "no_supabase" });
     }
 
-    const tenant = await resolveTenant(supabase);
+    const url = new URL(request.url);
+    const channelId = extractWhautomateChannelId(payload, {
+      searchParams: url.searchParams,
+      headers: request.headers,
+    });
+    const { tenant, reason } = await resolveWhautomateTenant(supabase, channelId);
     if (!tenant) {
-      console.warn("Whautomate webhook: no tenant with whautomate_channel_id configured");
-      return Response.json({ ok: true, ingested: false, reason: "no_tenant" });
+      console.warn("Whautomate webhook: tenant not resolved", reason || "unknown");
+      return Response.json({
+        ok: true,
+        ingested: false,
+        reason: reason || "no_tenant",
+      });
     }
 
     const waId = normalizeWaId(mapped.phone);

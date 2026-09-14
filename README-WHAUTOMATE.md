@@ -16,13 +16,14 @@ If Whautomate's UI supports a custom header, use `x-whautomate-secret: <value>`.
 
 ## 3. Point Whautomate at the endpoint
 
-In Whautomate → webhook forwarding settings, set the URL to:
+In Whautomate → webhook forwarding settings, set a **per-tenant** URL. The
+query `channel` must match that tenant's `tenants.whautomate_channel_id`:
 
 ```
-https://<railway-domain>/api/whautomate/webhook
+https://<railway-domain>/api/whautomate/webhook?channel=<whautomate_channel_id>
 ```
 
-(Optionally `...?secret=<WHAUTOMATE_WEBHOOK_SECRET>` per above.)
+(Optionally also `&secret=<WHAUTOMATE_WEBHOOK_SECRET>` per above.)
 
 ## 4. Send a test message and read the raw log
 
@@ -36,15 +37,20 @@ Every request is logged in full **before** any mapping — this is the source of
 
 ## 5. Enable your tenant
 
-Whautomate payloads carry **no channel identifier**, so the route ingests into the first (single) tenant that has `whautomate_channel_id` set — the value just acts as an on-switch. Set any marker value:
+Set `tenants.whautomate_channel_id` to a unique marker (Sterling today uses
+`whautomate-default`) and send that same value on the webhook as `?channel=`.
 
 ```sql
 UPDATE tenants
-SET whautomate_channel_id = 'whautomate'
-WHERE id = 'YOUR_TENANT_UUID';
+SET whautomate_channel_id = 'whautomate-default'
+WHERE slug = 'sterling';
 ```
 
-Until this is set, ingestion is skipped with a `no_tenant` reason in the response.
+Standard Whautomate message payloads do **not** include a location/account id.
+`message.channel` is only the medium (`whatsApp`) and is ignored. If the request
+has no channel, or it does not match exactly one tenant, ingestion is skipped
+(`missing_channel` / `unknown_channel` / `ambiguous_channel`). There is no
+first-tenant fallback.
 
 ## 6. Payload mapping (confirmed shape)
 

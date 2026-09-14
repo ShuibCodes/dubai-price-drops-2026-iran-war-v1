@@ -1,135 +1,334 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Pill } from "@/components/ui/pill";
-import { Row } from "@/components/ui/row";
 import { Stat } from "@/components/ui/stat";
 import { Strip } from "@/components/ui/strip";
 import { ConsoleShell } from "@/components/console/console-shell";
+import { Expandable } from "@/components/console/expandable";
+import { consoleBase, consoleJson } from "@/lib/console/client";
+import {
+  runIsInFlight,
+  runIsScheduled,
+  runWindowStart,
+  tenantWhatsAppLink,
+} from "@/lib/console/format";
+
+function metaLine(run) {
+  if (!run) return "";
+  const when = new Date(run.created_at)
+    .toLocaleString("en-GB", {
+      timeZone: "Asia/Dubai",
+      weekday: "long",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+    .toUpperCase();
+  const script = String(run.script_name || "").toUpperCase();
+  const dialed = Number(run.counts?.dialed || 0);
+  let state = String(run.status || "").toUpperCase();
+  if (dialed < 1 && runIsScheduled(run)) state = "SCHEDULED";
+  else if (dialed < 1 && runIsInFlight(run)) state = "DIALLING";
+  return `${when} · ${script} · ${state}`;
+}
+
+function toneFor(call) {
+  if (call.worth >= 50) return { label: "HOT", className: "text-az" };
+  if (call.worth >= 30) return { label: "WARM", className: "text-az" };
+  if (call.status === "queued") return { label: "QUEUED", className: "text-warn" };
+  if (call.status === "failed") return { label: "FAILED", className: "text-markup" };
+  return { label: String(call.status || "DONE").toUpperCase(), className: "text-faint" };
+}
+
+function azRunAsk(run) {
+  const list = String(run?.list_name || "").trim();
+  return list ? `how's my ${list}` : "how's the run";
+}
+
+function restLabel(rest, queuedCount) {
+  if (queuedCount >= rest.length) {
+    return `Show the ${rest.length} still queued`;
+  }
+  const tail = queuedCount
+    ? `${rest.length - queuedCount} done, ${queuedCount} still queued`
+    : "no interest, voicemail";
+  return `Show the other ${rest.length} call${rest.length === 1 ? "" : "s"} (${tail})`;
+}
+
+function CallBody({ call }) {
+  return (
+    <div className="border-b border-hairline px-1 pb-6 pt-5">
+      {call.quote ? (
+        <div className="rounded-r-[10px] border-l-2 border-az bg-az-wash px-5.5 py-5 text-[17px] italic leading-relaxed text-[#dce3df]">
+          “{call.quote}”
+        </div>
+      ) : (
+        <p className="text-[15px] text-dim">
+          {call.status === "queued"
+            ? "Not dialled yet — this one is still in the queue."
+            : "Nothing came back on this call yet."}
+        </p>
+      )}
+      {call.phone ? (
+        <div className="mt-4 font-mono text-[13px] text-faint">{call.phone}</div>
+      ) : null}
+      <div className="mt-4.5 flex flex-wrap gap-2.5">
+        {call.recording_url ? (
+          <a
+            className="az-btn-ghost"
+            href={call.recording_url}
+            rel="noreferrer"
+            target="_blank"
+          >
+            ▶ Play recording
+          </a>
+        ) : null}
+      </div>
+      {call.transcript ? (
+        <pre className="mt-4 max-h-56 overflow-auto whitespace-pre-wrap rounded-[10px] border border-line-2 bg-field p-4 font-mono text-[11px] leading-relaxed text-dim">
+          {call.transcript}
+        </pre>
+      ) : null}
+    </div>
+  );
+}
 
 export function RunResults({ tenant, runId }) {
   const [data, setData] = useState(null);
-  const [openId, setOpenId] = useState(null);
   const [error, setError] = useState("");
-  const [sending, setSending] = useState(false);
+  const [home, setHome] = useState(null);
+  const [showRest, setShowRest] = useState(false);
+  const base = consoleBase(tenant);
 
   useEffect(() => {
-    fetch(`/api/console/runs/${runId}`)
-      .then(async (res) => {
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(body.error || "Could not load run.");
-        setData(body);
-      })
+    consoleJson(base, `/api/console/runs/${runId}`, {
+      fallback: "Could not load run.",
+    })
+      .then(setData)
       .catch((err) => setError(err.message));
-  }, [runId]);
+  }, [base, runId]);
 
-  async function sendWhatsApp() {
-    setSending(true);
-    setError("");
-    try {
-      const res = await fetch(`/api/console/runs/${runId}/whatsapp`, { method: "POST" });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Send failed.");
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSending(false);
-    }
-  }
+  useEffect(() => {
+    consoleJson(base, "/api/console/home", { fallback: "Could not load home." })
+      .then(setHome)
+      .catch(() => {});
+  }, [base]);
 
   const stats = data?.stats || {};
-  const worth = (data?.calls || []).filter((row) => row.worth >= 30).length;
+  const run = data?.run;
+  const calls = data?.calls || [];
+  const hot = calls.filter((row) => row.worth >= 30);
+  const rest = calls.filter((row) => row.worth < 30);
+  const queuedCount = calls.filter((row) => row.status === "queued").length;
+  const dialed = Number(stats.dialed || 0);
+  const windowStart = runWindowStart(run);
+  const scheduled = runIsScheduled(run);
+  const stillGoing = queuedCount > 0 || runIsInFlight(run);
+  const notYetDialled = stillGoing && dialed < 1;
+  const ask = azRunAsk(run);
+  const waLink = tenantWhatsAppLink({
+    connected: Boolean(home?.tenant?.whatsapp_healthy),
+    displayPhone: home?.tenant?.display_phone,
+  });
 
   return (
-    <ConsoleShell
-      action={
-        data ? (
-          <Pill tone={data.run.status === "complete" ? "live" : "warn"}>
-            {data.run.status}
-          </Pill>
-        ) : null
-      }
-      tenant={tenant}
-      title={data?.run.script_name || "Run"}
-    >
+    <ConsoleShell tenant={tenant} width={880}>
+      <Link
+        className="mb-5 inline-block font-mono text-[11px] tracking-[.14em] text-faint hover:text-fg"
+        href={base}
+      >
+        ← HOME
+      </Link>
+      <h1 className="mb-2 text-[44px] font-semibold leading-[1.02] tracking-[-.03em] text-fg">
+        {data?.run?.script_name || "Run"}
+      </h1>
+      <div className="mb-10 font-mono text-xs tracking-[.1em] text-faint">
+        {data ? metaLine(data.run) : "LOADING…"}
+      </div>
+
       {error ? (
-        <Strip className="mb-4" tone="markup">
+        <Strip className="mb-8" tone="markup">
           <span>{error}</span>
         </Strip>
       ) : null}
+      {notYetDialled ? (
+        <Strip className="mb-8" tone="warn">
+          <span>
+            <strong className="font-mono text-[13px] tracking-[.1em]">
+              {scheduled ? "SCHEDULED" : "DIALLING…"}
+            </strong>{" "}
+            {scheduled
+              ? `— first calls go out ${windowStart.toLocaleString("en-GB", {
+                  timeZone: "Asia/Dubai",
+                  weekday: "short",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })} Dubai time. You don’t need to sit here. In WhatsApp, text AgentZero: ${ask}.`
+              : `— calls are going out now. You don’t need to sit here. In WhatsApp, text AgentZero: ${ask}.`}
+          </span>
+        </Strip>
+      ) : queuedCount ? (
+        <Strip className="mb-8" tone="warn">
+          <span>
+            <strong className="font-mono text-[13px] tracking-[.1em]">
+              {queuedCount} STILL GOING OUT
+            </strong>{" "}
+            — you don’t need to sit here. In WhatsApp, text AgentZero: {ask}.
+          </span>
+        </Strip>
+      ) : null}
 
-      <div className="mb-8 grid grid-cols-3 gap-4">
-        <Stat label="Dialed" n={stats.dialed ?? "—"} />
-        <Stat label="Qualified" n={stats.qualified ?? "—"} />
-        <Stat label="Worth your time" n={worth || "—"} />
+      <div className="mb-11 flex flex-wrap gap-3.5">
+        <Stat
+          label="worth your time"
+          n={hot.length}
+          sub={hot.length ? `text AgentZero: ${ask}` : "none yet"}
+          tone="live"
+        />
+        <Stat label="qualified" n={stats.qualified ?? "—"} tone="ink" />
+        {notYetDialled ? (
+          <Stat
+            label={scheduled ? "scheduled" : "in progress"}
+            n={scheduled ? "Later" : "Dialling…"}
+            sub={`In WhatsApp: ${ask}`}
+            tone="warn"
+          />
+        ) : (
+          <Stat
+            label="dialled"
+            n={dialed}
+            sub={queuedCount ? `${queuedCount} still going out` : undefined}
+            tone="dim"
+          />
+        )}
       </div>
 
-      <div className="border-t border-rule">
-        {(data?.calls || []).map((call) => (
-          <div key={call.id}>
-            <Row
-              onClick={() => setOpenId(openId === call.id ? null : call.id)}
-              right={
-                <Pill
-                  tone={
-                    call.worth >= 50
-                      ? "live"
-                      : call.status === "queued"
-                        ? "warn"
-                        : "required"
-                  }
-                >
-                  {call.status}
-                </Pill>
-              }
-              sub={call.extracted || call.phone}
-              title={call.name}
-            />
-            {openId === call.id ? (
-              <div className="border-b border-rule pb-4 pl-0 text-sm text-ink-2">
-                {call.quote ? <p className="italic">“{call.quote}”</p> : null}
-                {call.recording_url ? (
-                  <p className="mt-2">
-                    <a
-                      className="underline underline-offset-2"
-                      href={call.recording_url}
-                      rel="noreferrer"
-                      target="_blank"
-                    >
-                      Recording
-                    </a>
-                  </p>
-                ) : null}
-                {call.transcript ? (
-                  <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap font-mono text-[11px] text-ink-3">
-                    {call.transcript}
-                  </pre>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-        ))}
-        {data && data.calls.length === 0 ? (
-          <p className="py-6 text-sm text-ink-2">
-            Nobody is on this run yet. If you just queued a list, go back and
-            check the match count before Start.
+      <div className="az-eyebrow mb-3.5 block">
+        {hot.length
+          ? `CALL THESE ${hot.length} BACK`
+          : notYetDialled || queuedCount
+            ? "WAITING ON THE FIRST ANSWERS"
+            : "NOBODY WORTH A CALLBACK YET"}
+      </div>
+      <div className="border-t border-line">
+        {data == null ? (
+          <>
+            <div className="az-row h-[82px]" />
+            <div className="az-row h-[82px]" />
+          </>
+        ) : hot.length === 0 ? (
+          <p className="py-8 text-[15px] text-dim">
+            {calls.length === 0
+              ? "Nobody is on this run yet. If you just queued a list, go back and check the match count before Start."
+              : notYetDialled || queuedCount
+                ? `Nothing to review yet. In WhatsApp, text AgentZero: ${ask}.`
+                : "No callbacks yet. The calls below have the detail."}
           </p>
-        ) : null}
+        ) : (
+          hot.map((call, index) => {
+            const tone = toneFor(call);
+            return (
+              <Expandable
+                defaultOpen={index === 0}
+                head={(open) => (
+                  <>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-lg font-medium text-fg">
+                        {call.name}
+                      </div>
+                      <div className="mt-1 truncate text-sm text-dim">
+                        {call.extracted || call.phone || "No detail captured"}
+                      </div>
+                    </div>
+                    <span
+                      className={`font-mono text-[11px] tracking-[.1em] ${tone.className}`}
+                    >
+                      {tone.label}
+                    </span>
+                    <span className="text-sm text-ghost">{open ? "▲" : "▼"}</span>
+                  </>
+                )}
+                key={call.id}
+              >
+                <CallBody call={call} />
+              </Expandable>
+            );
+          })
+        )}
       </div>
 
-      <div className="mt-8 flex flex-wrap gap-3">
-        <Button
-          onClick={() => {
-            window.location.href = `/api/console/runs/${runId}/export`;
-          }}
-          variant="secondary"
-        >
-          Export CSV
-        </Button>
-        <Button disabled={sending} onClick={sendWhatsApp} variant="ghost">
-          {sending ? "Sending…" : `Send the ${worth} to my WhatsApp`}
-        </Button>
+      {rest.length ? (
+        showRest ? (
+          <div className="mt-5.5 border-t border-line">
+            {rest.map((call) => {
+              const tone = toneFor(call);
+              return (
+                <Expandable
+                  head={(open) => (
+                    <>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-lg font-medium text-fg-soft">
+                          {call.name}
+                        </div>
+                        <div className="mt-1 truncate text-sm text-dim">
+                          {call.extracted || call.phone || "No detail captured"}
+                        </div>
+                      </div>
+                      <span
+                        className={`font-mono text-[11px] tracking-[.1em] ${tone.className}`}
+                      >
+                        {tone.label}
+                      </span>
+                      <span className="text-sm text-ghost">{open ? "▲" : "▼"}</span>
+                    </>
+                  )}
+                  key={call.id}
+                >
+                  <CallBody call={call} />
+                </Expandable>
+              );
+            })}
+          </div>
+        ) : (
+          <button
+            className="mt-5.5 text-[15px] text-dim hover:text-fg"
+            onClick={() => setShowRest(true)}
+            type="button"
+          >
+            {restLabel(rest, queuedCount)}
+          </button>
+        )
+      ) : null}
+
+      <div className="mt-11 rounded-2xl border border-az-edge bg-az-wash p-7">
+        <div className="mb-3 font-mono text-[11px] tracking-[.16em] text-az">
+          BEFORE YOU LEAVE
+        </div>
+        <p className="text-[17px] leading-snug text-fg">
+          In WhatsApp, text AgentZero:{" "}
+          <span className="font-semibold">{ask}</span>
+        </p>
+        <p className="mt-2 text-sm text-dim">
+          You’ll get dialled/total and who is worth a callback. You don’t need
+          to watch this page.
+        </p>
+        <div className="mt-5">
+          {waLink ? (
+            <a
+              className="az-btn az-btn-primary inline-flex"
+              href={waLink}
+              rel="noreferrer"
+              target="_blank"
+            >
+              Go back to WhatsApp
+            </a>
+          ) : (
+            <Link className="az-btn az-btn-primary inline-flex" href={`${base}/settings`}>
+              Check WhatsApp connection
+            </Link>
+          )}
+        </div>
       </div>
     </ConsoleShell>
   );

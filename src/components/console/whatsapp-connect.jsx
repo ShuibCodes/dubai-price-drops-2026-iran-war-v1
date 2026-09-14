@@ -57,6 +57,10 @@ export function WhatsAppConnect({ tenantSlug, onConnected }) {
       setStatus("Missing Meta config id.");
       return;
     }
+    if (!tenantSlug) {
+      setStatus("Missing tenant. Refresh this page from your workspace.");
+      return;
+    }
     signupInfoRef.current = null;
     setStatus("Opening Meta’s WhatsApp signup…");
     window.FB.login(
@@ -71,6 +75,7 @@ export function WhatsAppConnect({ tenantSlug, onConnected }) {
           try {
             const exchangeResponse = await fetch("/api/meta/exchange", {
               method: "POST",
+              credentials: "include",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 code,

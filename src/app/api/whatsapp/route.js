@@ -23,6 +23,23 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 90;
 
+const TEMPORARY_FAILURE_REPLY =
+  "I hit a temporary issue. Please try again in a moment.";
+const ANTHROPIC_CREDITS_REPLY =
+  "AgentZero is out of Anthropic credits. Add credits in Anthropic Billing, then try again.";
+
+function failureReply(error) {
+  const message = error instanceof Error ? error.message : String(error || "");
+  if (
+    /credit balance is too low|purchase credits|plans\s*&\s*billing/i.test(
+      message
+    )
+  ) {
+    return ANTHROPIC_CREDITS_REPLY;
+  }
+  return TEMPORARY_FAILURE_REPLY;
+}
+
 function makeTwiml(text = "") {
   const response = new twilio.twiml.MessagingResponse();
   const safe = String(text || "").trim();
@@ -56,6 +73,7 @@ async function runJarvisAndReply({
 
     const contactConfirm = await handleContactConfirmationMessage({
       tenantId: sender.tenantId,
+      agentId: sender.agentId,
       senderPhone,
       message: userText,
     });
@@ -75,6 +93,7 @@ async function runJarvisAndReply({
 
     const relayConfirm = await handleRelayConfirmationMessage({
       tenantId: sender.tenantId,
+      agentId: sender.agentId,
       senderPhone,
       message: userText,
     });
@@ -94,6 +113,7 @@ async function runJarvisAndReply({
 
     const result = await runJarvisTurn({
       tenantId: sender.tenantId,
+      agentId: sender.agentId,
       messages: nextMessages,
       agentName: sender.agentName,
       senderPhone,
@@ -118,7 +138,7 @@ async function runJarvisAndReply({
       await sendWhatsAppText({
         to: from,
         from: to,
-        body: "I hit a temporary issue. Please try again in a moment.",
+        body: failureReply(error),
       });
     } catch (sendError) {
       console.error("WhatsApp Jarvis failure reply failed:", sendError);
@@ -204,6 +224,7 @@ export async function POST(request) {
     if (useJarvis) {
       const contactConfirm = await handleContactConfirmationMessage({
         tenantId: sender.tenantId,
+        agentId: sender.agentId,
         senderPhone: sender.waId,
         message: body,
       });
@@ -212,6 +233,7 @@ export async function POST(request) {
       } else {
         const relayConfirm = await handleRelayConfirmationMessage({
           tenantId: sender.tenantId,
+          agentId: sender.agentId,
           senderPhone: sender.waId,
           message: body,
         });
@@ -220,6 +242,7 @@ export async function POST(request) {
         } else {
           const result = await runJarvisTurn({
             tenantId: sender.tenantId,
+            agentId: sender.agentId,
             messages: nextMessages,
             agentName: sender.agentName,
             senderPhone: sender.waId,
@@ -261,8 +284,6 @@ export async function POST(request) {
     if (message.includes("Missing ANTHROPIC_API_KEY")) {
       console.error("Set ANTHROPIC_API_KEY in Vercel project environment variables.");
     }
-    return xmlResponse(
-      makeTwiml("I hit a temporary issue. Please try again in a moment.")
-    );
+    return xmlResponse(makeTwiml(failureReply(error)));
   }
 }

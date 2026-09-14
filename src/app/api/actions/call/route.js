@@ -1,9 +1,25 @@
+import { actionsCallGuard } from "@/lib/actions/call-guard";
+import { getSession } from "@/lib/copilot/session";
 import { getTargetLead, startTargetLeadCall } from "@/lib/vapi/client";
 
 export const runtime = "nodejs";
 
 export async function POST(request) {
   try {
+    let session = null;
+    try {
+      session = await getSession(request);
+    } catch (error) {
+      if (error.status === 403) {
+        return Response.json({ ok: false, error: "Forbidden" }, { status: 403 });
+      }
+      throw error;
+    }
+    const gate = actionsCallGuard(session);
+    if (!gate.ok) {
+      return Response.json({ ok: false, error: gate.error }, { status: gate.status });
+    }
+
     const body = await request.json().catch(() => ({}));
     const requestedLead = String(body?.lead || "").toLowerCase();
 

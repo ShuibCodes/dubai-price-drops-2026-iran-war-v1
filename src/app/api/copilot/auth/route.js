@@ -8,6 +8,10 @@ import {
 } from "@/lib/copilot-auth";
 import { verifyPassword } from "@/lib/copilot/password";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import {
+  createRouteAuthClient,
+  isSupabaseAuthConfigured,
+} from "@/lib/supabase/auth-server";
 
 export const runtime = "nodejs";
 
@@ -104,6 +108,29 @@ export async function POST(request) {
       tenantSlug,
     });
     response.cookies.set(COPILOT_SESSION_COOKIE, token, copilotSessionCookieOptions());
+
+    // Supabase sessions win precedence in middleware and getSession(), so a
+    // leftover one would shadow the identity that just typed its password.
+    // Revoke it server-side when possible, and always expire its cookies —
+    // the manual sweep also covers chunked cookies and a failed revocation.
+    const supabaseCookies = request.cookies
+      .getAll()
+      .filter((cookie) => cookie.name.startsWith("sb-"));
+    if (supabaseCookies.length && isSupabaseAuthConfigured()) {
+      try {
+        const { supabase } = createRouteAuthClient(request);
+        await supabase.auth.signOut();
+      } catch (error) {
+        console.warn(
+          "[copilot/auth] supabase sign-out on legacy login failed",
+          error?.message
+        );
+      }
+    }
+    for (const cookie of supabaseCookies) {
+      response.cookies.set(cookie.name, "", { path: "/", maxAge: 0 });
+    }
+
     return response;
   } catch (error) {
     console.error("Copilot auth error:", error?.message);
@@ -119,11 +146,24 @@ export async function POST(request) {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(request) {
   const response = NextResponse.json({ ok: true });
   response.cookies.set(COPILOT_SESSION_COOKIE, "", {
     ...copilotSessionCookieOptions(),
     maxAge: 0,
   });
+
+  // Both session types coexist during the migration, so clear both regardless
+  // of which one signed this agent in.
+  if (isSupabaseAuthConfigured()) {
+    try {
+      const { supabase, applyTo } = createRouteAuthClient(request);
+      await supabase.auth.signOut();
+      return applyTo(response);
+    } catch (error) {
+      console.error("[copilot/auth] supabase sign-out failed", error?.message);
+    }
+  }
+
   return response;
 }

@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { CopilotLoginForm } from "@/components/console/copilot-login-form";
 import { CopilotLoginPreview } from "@/components/console/copilot-login-preview";
+import { isSupabaseAuthConfigured } from "@/lib/supabase/auth-server";
 
 export const metadata = {
   title: "Log in | Operations Copilot",
@@ -18,7 +19,7 @@ export default function CopilotPage() {
     <main className="grid min-h-dvh bg-white lg:h-dvh lg:grid-cols-2 lg:overflow-hidden">
       <section className="flex items-center justify-center overflow-y-auto bg-white px-6 py-12 text-[#0a0a0a] sm:px-12">
         <Suspense fallback={<LoginFormFallback />}>
-          <CopilotLoginForm />
+          <CopilotLoginForm googleEnabled={isSupabaseAuthConfigured()} />
         </Suspense>
       </section>
       <CopilotLoginPreview />

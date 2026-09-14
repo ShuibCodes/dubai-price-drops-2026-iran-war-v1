@@ -124,10 +124,11 @@ brochures — with inherited `scope: 'tenant'` docs shown pre-ticked and
 untickable-to-hide. Skippable.
 
 **Morning brief.** Prose explaining the overnight pipeline scan. One
-toggle, one time. Then **"Send me one now →"**, which builds a real brief from
-real pipeline data and pushes it to their WhatsApp. This is the activation
-moment — an agent who receives one live brief during setup is a retained agent.
-Final button is a WhatsApp deep link. There is no "go to dashboard".
+toggle, one time. Then **"Send me one now →"**, which sends the morning-brief
+**notification template** (not the full text). The agent taps `send_brief` on
+WhatsApp to receive the owned pipeline brief. Same path as the scheduled job.
+See `docs/AGENTS.md` (Morning Brief V1). Final button is a WhatsApp deep link.
+There is no "go to dashboard".
 
 ### `/copilot/[tenant]` — home
 **This route currently serves the web ops chat, which is being removed.** The

@@ -24,7 +24,7 @@ const JARVIS_TENANT_SLUG =
   String(process.env.JARVIS_TENANT_SLUG || "sterling").trim() || "sterling";
 
 function parseArgs(argv) {
-  const args = { days: null, parseOnly: false, limit: null, text: null };
+  const args = { days: null, parseOnly: false, limit: null, text: null, agentId: null };
   const positional = [];
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
@@ -34,10 +34,14 @@ function parseArgs(argv) {
       args.days = Number(argv[++i]);
     } else if (a === "--limit") {
       args.limit = Number(argv[++i]);
+    } else if (a === "--agent-id") {
+      args.agentId = String(argv[++i] || "").trim();
     } else if (a.startsWith("--days=")) {
       args.days = Number(a.slice("--days=".length));
     } else if (a.startsWith("--limit=")) {
       args.limit = Number(a.slice("--limit=".length));
+    } else if (a.startsWith("--agent-id=")) {
+      args.agentId = a.slice("--agent-id=".length).trim();
     } else {
       positional.push(a);
     }
@@ -81,7 +85,7 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args.text) {
     console.error(
-      'Usage: node --experimental-loader ./scripts/alias-loader.mjs scripts/test-batch-callback-search.mjs "everyone who mentioned a budget" [--days 21]'
+      'Usage: node --experimental-loader ./scripts/alias-loader.mjs scripts/test-batch-callback-search.mjs "everyone who mentioned a budget" --agent-id <uuid> [--days 21]'
     );
     process.exitCode = 1;
     return;
@@ -106,11 +110,20 @@ async function main() {
   }
 
   const tenant = await resolveSterlingTenantId();
+  const agentId =
+    args.agentId || String(process.env.BATCH_CALLBACK_AGENT_ID || "").trim();
+  if (!agentId) {
+    throw new Error(
+      "agentId is required. Pass --agent-id <uuid> or BATCH_CALLBACK_AGENT_ID."
+    );
+  }
   console.log(`tenant:     ${tenant.slug} (${tenant.id})`);
+  console.log(`agentId:    ${agentId}`);
 
   const started = Date.now();
   const result = await searchBatchCallbackCandidates({
     tenantId: tenant.id,
+    agentId,
     intent: parsed.intent,
     windowDays,
     limit: args.limit || BATCH_CALLBACK_MATCH_LIMIT,

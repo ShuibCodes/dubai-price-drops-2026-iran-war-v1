@@ -1,5 +1,6 @@
 import { getSupabaseServerClient, normalizeWaId, MESSAGES_TABLE } from "@/lib/supabase/server";
 import { JARVIS_LEADS_TABLE } from "@/lib/ingest/jarvis-ingest";
+import { listVisibleInboxLeadIds } from "@/lib/jarvis/visibility";
 
 function formatRelativeTime(timestamp) {
   if (!timestamp) return "unknown time";
@@ -109,16 +110,22 @@ export async function getRecentConversations(tenantId, { limit = 5, messageLimit
 /** Personal WhatsApp inbox path — jarvis_leads only. */
 export async function getJarvisRecentConversations(
   tenantId,
+  agentId,
   { limit = 5, messageLimit = 10 } = {}
 ) {
   const supabase = getSupabaseServerClient();
-  if (!supabase || !tenantId) return [];
+  if (!supabase) return [];
+  const visibleIds = await listVisibleInboxLeadIds(supabase, {
+    tenantId,
+    agentId,
+  });
+  if (!visibleIds.size) return [];
 
   const { data: recent, error: recentError } = await supabase
     .from(MESSAGES_TABLE)
     .select("jarvis_lead_id, timestamp")
     .eq("tenant_id", tenantId)
-    .not("jarvis_lead_id", "is", null)
+    .in("jarvis_lead_id", [...visibleIds])
     .order("timestamp", { ascending: false })
     .limit(200);
 
@@ -138,6 +145,7 @@ export async function getJarvisRecentConversations(
   const { data: leads, error: leadsError } = await supabase
     .from(JARVIS_LEADS_TABLE)
     .select("id, wa_id, push_name, last_message_at")
+    .eq("tenant_id", tenantId)
     .in("id", leadIds);
 
   if (leadsError || !leads?.length) return [];

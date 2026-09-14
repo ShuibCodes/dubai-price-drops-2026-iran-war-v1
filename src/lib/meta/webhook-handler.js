@@ -4,6 +4,10 @@ import {
   upsertJarvisLead,
   insertJarvisMessageIfNew,
 } from "@/lib/ingest/jarvis-ingest";
+import {
+  handleSendBriefButton,
+  isSendBriefButton,
+} from "@/lib/brief/button";
 
 function unixToIso(unixSeconds) {
   const value = Number(unixSeconds);
@@ -156,6 +160,14 @@ export async function processMetaWebhookPayload(payload) {
 
       for (const message of inboundMessages) {
         try {
+          if (isSendBriefButton(message)) {
+            await handleSendBriefButton({
+              supabase,
+              tenant,
+              message,
+            });
+            continue;
+          }
           await processMessage({
             supabase,
             tenantId: tenant.id,
