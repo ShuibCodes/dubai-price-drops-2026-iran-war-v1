@@ -40,7 +40,7 @@ async function handleOnboard(request, pathname, isApi) {
 }
 
 async function handleCopilot(request, pathname, isApi) {
-  // /api/copilot/auth, /auth/google and /auth/callback all run pre-session.
+  // Password auth and the Google/Facebook OAuth routes all run pre-session.
   if (pathname.startsWith("/api/copilot/auth")) {
     return NextResponse.next();
   }
