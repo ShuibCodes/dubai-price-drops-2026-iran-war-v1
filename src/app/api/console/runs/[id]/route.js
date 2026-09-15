@@ -1,6 +1,7 @@
 import { consoleContext, jsonError } from "@/lib/console/http";
 import { quotedSentence, worthScore } from "@/lib/console/run-status";
 import { routeId } from "@/lib/scripts/http";
+import { callHasPlayableRecording } from "@/lib/console/recording-playback";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -59,7 +60,7 @@ export async function GET(request, { params }) {
         supabase
           .from("calls")
           .select(
-            "id, lead_id, jarvis_lead_id, status, summary, transcript, recording_url, qualification, created_at, ended_at, duration_seconds, leads(push_name, wa_id), jarvis_leads(push_name, wa_id)"
+            "id, lead_id, jarvis_lead_id, vapi_call_id, status, summary, transcript, recording_url, qualification, created_at, ended_at, duration_seconds, leads(push_name, wa_id), jarvis_leads(push_name, wa_id)"
           )
           .eq("tenant_id", session.tenantId)
           .eq("batch_id", id)
@@ -87,7 +88,7 @@ export async function GET(request, { params }) {
         phone: person.wa_id ? `+${person.wa_id}` : null,
         status: call.status,
         quote: quotedSentence(call),
-        recording_url: call.recording_url || null,
+        has_recording: callHasPlayableRecording(call),
         transcript: call.transcript || null,
         extracted: extractedSub(call, findOut),
         worth: worthScore(call),
@@ -110,7 +111,7 @@ export async function GET(request, { params }) {
           phone: person.wa_id ? `+${person.wa_id}` : null,
           status: failed ? "failed" : row.processed ? "dialed" : "queued",
           quote: row.failure_reason || null,
-          recording_url: null,
+          has_recording: false,
           transcript: null,
           extracted: row.scheduled_for
             ? `Scheduled ${new Date(row.scheduled_for).toLocaleString("en-GB", {

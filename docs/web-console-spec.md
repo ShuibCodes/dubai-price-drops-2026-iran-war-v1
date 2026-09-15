@@ -157,6 +157,12 @@ row per Phase 6. Set once, never updated.
 ### `/copilot/[tenant]/runs/[id]` — results
 Three stats, qualified in `live` green. Rows, worth-your-time first. Expanding a
 row shows one quoted sentence from the lead, then recording and transcript.
+Recording playback uses `GET /api/console/calls/[id]/recording`: an authenticated
+console session, scoped to `session.tenantId`, loads a fresh media URL from Vapi
+(`GET /call/{vapi_call_id}`) and proxies the audio. The browser never receives
+`VAPI_API_KEY` or the stored webhook `recording_url`. That stored URL is only a
+signal that a recording existed; playback does not use it. Calls without a usable
+https recording URL show **No recording**.
 `extracted` fields render as the sub-line — the shape comes from the script
 version's `find_out`, which is why it is typed. Footer: Export CSV + "Send the N
 to my WhatsApp".
