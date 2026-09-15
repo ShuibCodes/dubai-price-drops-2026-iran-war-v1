@@ -5,7 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Strip } from "@/components/ui/strip";
 import { loadFacebookSdk } from "@/lib/meta/facebook-sdk";
 
-export function WhatsAppConnect({ tenantSlug, onConnected }) {
+export function WhatsAppConnect({
+  tenantSlug,
+  onConnected,
+  showDetails = true,
+  buttonLabel = "Connect WhatsApp",
+}) {
   const [status, setStatus] = useState("Loading Meta…");
   const [sdkReady, setSdkReady] = useState(false);
   const signupInfoRef = useRef(null);
@@ -117,33 +122,37 @@ export function WhatsAppConnect({ tenantSlug, onConnected }) {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm leading-6 text-ink-2">
-        AgentZero sits on the same business number that is already on your phone.
-        Leads keep texting you. After this connects, you text AgentZero from
-        this phone only — not someone else&apos;s line. Nobody else who messages
-        AgentZero can see your chats.
-      </p>
-      <p className="text-sm leading-6 text-ink-2">
-        AgentZero is an official Meta tech provider. Connecting uses Meta
-        Embedded Signup — Meta issues the WhatsApp Business Account and tokens.
-        Messages and number metadata go through Meta’s Cloud API. The app is
-        verified through Meta; you are granting AgentZero access to this number
-        via Meta, not handing a login to a random form.
-      </p>
-      <p className="text-sm leading-6 text-ink-3">
-        Meta’s terms apply to that path. You can disconnect later in Settings.{" "}
-        <a className="underline underline-offset-2" href="/privacy">
-          Privacy policy
-        </a>
-        .
-      </p>
+      {showDetails ? (
+        <>
+          <p className="text-sm leading-6 text-ink-2">
+            AgentZero sits on the same business number that is already on your phone.
+            Leads keep texting you. After this connects, you text AgentZero from
+            this phone only — not someone else&apos;s line. Nobody else who messages
+            AgentZero can see your chats.
+          </p>
+          <p className="text-sm leading-6 text-ink-2">
+            AgentZero is an official Meta tech provider. Connecting uses Meta
+            Embedded Signup — Meta issues the WhatsApp Business Account and tokens.
+            Messages and number metadata go through Meta’s Cloud API. The app is
+            verified through Meta; you are granting AgentZero access to this number
+            via Meta, not handing a login to a random form.
+          </p>
+          <p className="text-sm leading-6 text-ink-3">
+            Meta’s terms apply to that path. You can disconnect later in Settings.{" "}
+            <a className="underline underline-offset-2" href="/privacy">
+              Privacy policy
+            </a>
+            .
+          </p>
+        </>
+      ) : null}
       {status ? (
         <Strip tone="warn">
           <span>{status}</span>
         </Strip>
       ) : null}
       <Button disabled={!sdkReady} onClick={handleConnect}>
-        Connect WhatsApp
+        {buttonLabel}
       </Button>
     </div>
   );

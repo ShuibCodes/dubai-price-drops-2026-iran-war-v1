@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Check } from "@/components/ui/check";
 import { Drop } from "@/components/ui/drop";
@@ -15,9 +16,21 @@ import { Tooltip } from "@/components/console/tooltip";
 import { consoleBase, consoleJson } from "@/lib/console/client";
 import { tenantWhatsAppLink } from "@/lib/console/format";
 
-export function JoinWizard({ tenant }) {
+function ChoicePoint({ children }) {
+  return (
+    <li className="flex gap-3 text-[15px] leading-relaxed text-fg-soft">
+      <span className="mt-[9px] h-1.5 w-1.5 shrink-0 rounded-full bg-az" />
+      <span>{children}</span>
+    </li>
+  );
+}
+
+export function JoinWizard({ tenant, previewChoice = false }) {
+  const router = useRouter();
   const [profile, setProfile] = useState(null);
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(-1);
+  const [path, setPath] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [sent, setSent] = useState(null);
@@ -48,16 +61,19 @@ export function JoinWizard({ tenant }) {
         setLanguages((agent.languages || []).join(", ") || "English");
         setBriefOn(agent.brief_enabled !== false);
         setBriefTime(String(agent.brief_time || "07:30").slice(0, 5));
-        setStep(body.tenant?.whatsapp_connected ? 1 : 0);
+        if (body.tenant?.whatsapp_connected && !previewChoice) {
+          setPath("whatsapp");
+          setStep(1);
+        }
       })
-      .catch((err) => setError(err.message));
-  }, [base]);
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, [base, previewChoice]);
 
   const connected = Boolean(profile?.tenant?.whatsapp_connected);
-  const total = connected ? 2 : 3;
-  const stepNo = connected ? step : step + 1;
-  const stepLabel =
-    step === 0 ? "SETUP" : step === 1 ? "ABOUT YOU" : "MORNING BRIEF";
+  const total = path === "whatsapp" ? 3 : 2;
+  const stepNo = step === 1 ? 2 : 3;
+  const stepLabel = step === 1 ? "ABOUT YOU" : "MORNING BRIEF";
 
   async function saveProfile(extra = {}) {
     return consoleJson(base, "/api/console/profile", {
@@ -126,36 +142,51 @@ export function JoinWizard({ tenant }) {
     }
   }
 
+  async function finishConsole() {
+    setSaving(true);
+    setError("");
+    try {
+      await saveProfile({ onboarded: true, brief_enabled: false });
+      router.push(base);
+    } catch (err) {
+      setError(err.message);
+      setSaving(false);
+    }
+  }
+
   const waLink = tenantWhatsAppLink({
     connected: connected,
     displayPhone: profile?.tenant?.display_phone,
   });
 
   return (
-    <ConsoleShell bare footer={false} tenant={tenant} width={620}>
-      <div className="az-eyebrow mb-4 block">
-        STEP {stepNo} OF {total} · {stepLabel}
-      </div>
-
-      {step === 0 ? (
-        <>
-          <h1 className="az-h1 mb-3.5 text-fg">
-            Connect your brokerage WhatsApp
+    <ConsoleShell bare footer={false} tenant={tenant} width={step === -1 ? 1040 : 620}>
+      {loading ? (
+        <div className="az-eyebrow mb-4 block">LOADING WORKSPACE</div>
+      ) : step === -1 ? (
+        <div className="mb-9">
+          <div className="az-eyebrow mb-4 block">CHOOSE YOUR SETUP</div>
+          <h1 className="az-h1 mb-3.5 max-w-[720px] text-fg">
+            How do you want to use AgentZero?
           </h1>
-          <p className="mb-9 text-lg leading-snug text-fg-2 [text-wrap:pretty]">
-            This is the number your leads already know. AgentZero listens on it
-            and texts you back. Your existing chats keep working exactly as they
-            do today.
+          <p className="max-w-[680px] text-lg leading-snug text-fg-2 [text-wrap:pretty]">
+            Start with WhatsApp intelligence or run everything from the console.
+            You can connect WhatsApp later from Settings.
           </p>
-        </>
-      ) : null}
+        </div>
+      ) : (
+        <div className="az-eyebrow mb-4 block">
+          STEP {stepNo} OF {total} · {stepLabel}
+        </div>
+      )}
 
       {step === 1 ? (
         <>
           <h1 className="az-h1 mb-3.5 text-fg">A little about you</h1>
           <p className="mb-9 text-lg leading-snug text-fg-2 [text-wrap:pretty]">
-            So calls and briefs sound like you, not a call centre. Every field
-            here changes what AgentZero says — skip anything that does not.
+            {path === "whatsapp"
+              ? "So calls and briefs sound like you, not a call centre. Every field here changes what AgentZero says — skip anything that does not."
+              : "Set up the basics for your calls and console. Every field changes what AgentZero says — skip anything that does not."}
           </p>
         </>
       ) : null}
@@ -176,28 +207,118 @@ export function JoinWizard({ tenant }) {
         </Strip>
       ) : null}
 
-      {step === 0 ? (
-        <div className="az-card p-6.5">
-          <WhatsAppConnect
-            onConnected={async () => {
-              try {
-                await reloadProfile();
+      {loading ? (
+        <div className="az-card p-6 text-sm text-dim">Loading your workspace…</div>
+      ) : null}
+
+      {!loading && step === -1 ? (
+        <div className="grid items-stretch gap-5 md:grid-cols-2">
+          <section className="az-card-live flex flex-col p-7 sm:p-8">
+            <div className="mb-5">
+              <span className="az-pill-live">FULL EXPERIENCE</span>
+            </div>
+            <h2 className="text-[28px] font-semibold tracking-[-.025em] text-fg">
+              AgentZero + WhatsApp
+            </h2>
+            <p className="mt-2 text-lg font-medium text-az">
+              You do the closing. AgentZero handles the rest.
+            </p>
+            <p className="mt-5 text-[15px] leading-relaxed text-fg-2">
+              Connects securely to your WhatsApp Business through Meta. No new
+              app, no ChatGPT.
+            </p>
+            <ul className="my-7 grid gap-4">
+              <ChoicePoint>
+                <strong className="text-fg">Thousands of calls a week.</strong>{" "}
+                AgentZero calls your leads in any accent or language, so only
+                the qualified ones land on your WhatsApp.
+              </ChoicePoint>
+              <ChoicePoint>
+                <strong className="text-fg">Calls with context.</strong> The AI
+                already knows the budget, area, property type and timeline a
+                lead shared on WhatsApp, so the conversation picks up naturally.
+              </ChoicePoint>
+              <ChoicePoint>
+                <strong className="text-fg">Run it all from WhatsApp.</strong>{" "}
+                Message AgentZero who to call or which campaign to launch, with
+                no dashboard needed.
+              </ChoicePoint>
+              <ChoicePoint>
+                <strong className="text-fg">Revive leads going cold.</strong> It
+                spots conversations that went quiet and tells you who&apos;s worth
+                calling back.
+              </ChoicePoint>
+            </ul>
+            <p className="mb-5 mt-auto text-[13px] leading-relaxed text-dim">
+              AgentZero never sends WhatsApp messages on your behalf.
+            </p>
+            <WhatsAppConnect
+              onConnected={async () => {
+                try {
+                  setPath("whatsapp");
+                  await reloadProfile();
+                  setStep(1);
+                } catch (err) {
+                  setError(err.message);
+                }
+              }}
+              showDetails={false}
+              tenantSlug={tenant}
+            />
+          </section>
+
+          <section className="az-card flex flex-col p-7 sm:p-8">
+            <div className="mb-5">
+              <span className="az-pill-quiet">CONSOLE ONLY</span>
+            </div>
+            <h2 className="text-[28px] font-semibold tracking-[-.025em] text-fg">
+              AgentZero Console
+            </h2>
+            <p className="mt-2 text-lg font-medium text-fg-soft">
+              Powerful AI calling, without connecting WhatsApp.
+            </p>
+            <p className="mt-5 text-[15px] leading-relaxed text-fg-2">
+              Plan, launch and review your calling from the AgentZero web app.
+              Your WhatsApp conversations stay completely separate.
+            </p>
+            <ul className="my-7 grid gap-4">
+              <ChoicePoint>
+                <strong className="text-fg">Build calls your way.</strong> Create
+                scripts for different lead types, languages and campaigns.
+              </ChoicePoint>
+              <ChoicePoint>
+                <strong className="text-fg">Launch on your schedule.</strong>{" "}
+                Upload lead lists and run calls now or schedule them for later.
+              </ChoicePoint>
+              <ChoicePoint>
+                <strong className="text-fg">Add brokerage knowledge.</strong>{" "}
+                Upload brochures, payment plans and area information for the AI
+                to use.
+              </ChoicePoint>
+              <ChoicePoint>
+                <strong className="text-fg">See every result.</strong> Review
+                call outcomes, transcripts and qualified leads in one console.
+              </ChoicePoint>
+            </ul>
+            <p className="mb-5 mt-auto text-[13px] leading-relaxed text-dim">
+              No WhatsApp access or conversation intelligence. Connect later
+              from Settings whenever you&apos;re ready.
+            </p>
+            <Button
+              className="self-start"
+              onClick={() => {
+                setPath("console");
                 setStep(1);
-              } catch (err) {
-                setError(err.message);
-              }
-            }}
-            tenantSlug={tenant}
-          />
-          <div className="mt-4.5 grid gap-2.5 text-sm leading-snug text-dim">
-            <div>1 — Meta opens in a new tab. Log in as the brokerage.</div>
-            <div>2 — Pick the business number. One number per brokerage.</div>
-            <div>3 — You land back here. Takes about two minutes.</div>
-          </div>
+              }}
+              variant="secondary"
+            >
+              Continue with Console
+            </Button>
+          </section>
         </div>
       ) : null}
 
-      {step === 1 ? (
+      {!loading && step === 1 ? (
         <form
           className="grid gap-5"
           onSubmit={async (event) => {
@@ -205,8 +326,13 @@ export function JoinWizard({ tenant }) {
             setSaving(true);
             setError("");
             try {
-              await saveProfile();
-              setStep(2);
+              if (path === "console") {
+                await saveProfile({ onboarded: true, brief_enabled: false });
+                router.push(base);
+              } else {
+                await saveProfile();
+                setStep(2);
+              }
             } catch (err) {
               setError(err.message);
             } finally {
@@ -302,16 +428,44 @@ export function JoinWizard({ tenant }) {
 
           <div className="flex flex-wrap gap-2.5 pt-2">
             <Button disabled={saving} type="submit">
-              {saving ? "Saving…" : "Continue"}
+              {saving
+                ? "Saving…"
+                : path === "console"
+                  ? "Enter AgentZero Console"
+                  : "Continue"}
             </Button>
-            <Button onClick={() => setStep(2)} type="button" variant="quiet">
+            <Button
+              disabled={saving}
+              onClick={() => {
+                if (path === "console") {
+                  void finishConsole();
+                } else {
+                  setStep(2);
+                }
+              }}
+              type="button"
+              variant="quiet"
+            >
               Skip
             </Button>
+            {path === "console" ? (
+              <Button
+                disabled={saving}
+                onClick={() => {
+                  setPath(null);
+                  setStep(-1);
+                }}
+                type="button"
+                variant="quiet"
+              >
+                Back
+              </Button>
+            ) : null}
           </div>
         </form>
       ) : null}
 
-      {step === 2 ? (
+      {!loading && step === 2 ? (
         <>
           <div className="az-card px-6.5 py-6">
             <div className="flex flex-wrap items-start justify-between gap-5">
