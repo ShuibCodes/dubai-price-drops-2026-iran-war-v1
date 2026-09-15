@@ -15,21 +15,20 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata = {
-  title: "The DXB Dip",
-  description:
-    "Track Dubai sales price drops and increases versus pre-war averages. Real-time sale listings ranked by largest pricing dislocations.",
+  title: "AgentZero",
+  description: "UAE's fastest growing Real Estate AI companion",
   keywords: ["Dubai real estate", "Dubai sales prices", "pre-war vs post-war", "DXB property sales", "Dubai market transparency"],
   openGraph: {
-    title: "The DXB Dip",
-    description: "Track Dubai sales price drops and increases versus pre-war averages in real time.",
-    siteName: "The DXB Dip",
+    title: "AgentZero",
+    description: "UAE's fastest growing Real Estate AI companion",
+    siteName: "AgentZero",
     locale: "en_AE",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "The DXB Dip",
-    description: "Track Dubai sales price drops and increases versus pre-war averages in real time.",
+    title: "AgentZero",
+    description: "UAE's fastest growing Real Estate AI companion",
   },
 };
 
