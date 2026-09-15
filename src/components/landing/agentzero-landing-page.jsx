@@ -8,6 +8,7 @@ import logo1416 from "@/app/images/1416-logo.png";
 import logoCondCity from "@/app/images/cond-city-logo.png";
 import logoMeta from "@/app/images/meta-logo-new.jpeg";
 import logoSterling from "@/app/images/sterling.jpg";
+import { TYPEFORM_ENQUIRY_URL } from "@/lib/typeform";
 
 const CLIENT_LOGOS = [
   {
@@ -29,8 +30,6 @@ const CLIENT_LOGOS = [
     className: "h-8 w-auto max-h-10 max-w-[9.5rem] object-contain sm:h-10 sm:max-w-[11rem]",
   },
 ];
-
-const WHATSAPP_URL = "https://wa.me/971585690693";
 
 function CountUp({ to, duration = 2, format }) {
   const ref = useRef(null);
@@ -279,12 +278,12 @@ export default function AgentZeroLandingPage() {
           </div>
           <div className="flex shrink-0 items-center gap-2 sm:gap-3">
             <a
-              href={WHATSAPP_URL}
+              href={TYPEFORM_ENQUIRY_URL}
               target="_blank"
               rel="noreferrer"
               className="rounded-full border border-white/10 px-3 py-2 text-sm text-white transition hover:text-white sm:px-4"
             >
-              Book a call
+              Get Started
             </a>
             <Link
               href="/copilot"
@@ -312,12 +311,12 @@ export default function AgentZeroLandingPage() {
           </p>
           <div className="mt-7 flex flex-wrap gap-3 sm:mt-8">
             <a
-              href={WHATSAPP_URL}
+              href={TYPEFORM_ENQUIRY_URL}
               target="_blank"
               rel="noreferrer"
               className="inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
             >
-              Book a call
+              Get Started
             </a>
           </div>
         </div>
@@ -409,12 +408,12 @@ export default function AgentZeroLandingPage() {
             </p>
             <div className="mt-7 flex flex-wrap gap-3 sm:mt-8">
               <a
-                href={WHATSAPP_URL}
+                href={TYPEFORM_ENQUIRY_URL}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
               >
-                Request access
+                Get Started
               </a>
             </div>
           </div>
@@ -470,12 +469,12 @@ export default function AgentZeroLandingPage() {
             </p>
             <div className="mt-7 flex flex-wrap gap-3 sm:mt-8">
               <a
-                href={WHATSAPP_URL}
+                href={TYPEFORM_ENQUIRY_URL}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
               >
-                Get access
+                Get Started
               </a>
             </div>
           </div>
@@ -549,12 +548,12 @@ export default function AgentZeroLandingPage() {
 
         <div className="mt-8 flex flex-wrap justify-center gap-3 sm:mt-10">
           <a
-            href={WHATSAPP_URL}
+            href={TYPEFORM_ENQUIRY_URL}
             target="_blank"
             rel="noreferrer"
             className="inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
           >
-            Book a call
+            Get Started
           </a>
         </div>
       </section>
@@ -632,12 +631,12 @@ export default function AgentZeroLandingPage() {
 
             <div className="mt-auto pt-8 sm:pt-10">
               <a
-                href={WHATSAPP_URL}
+                href={TYPEFORM_ENQUIRY_URL}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex w-full justify-center rounded-full bg-[#ffd60a] px-6 py-3.5 text-sm font-semibold text-black transition hover:opacity-90 sm:py-3"
               >
-                Get started
+                Get Started
               </a>
             </div>
           </article>
@@ -662,12 +661,12 @@ export default function AgentZeroLandingPage() {
 
             <div className="mt-auto pt-8 sm:pt-10">
               <a
-                href={WHATSAPP_URL}
+                href={TYPEFORM_ENQUIRY_URL}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex w-full justify-center rounded-full border border-[#ffd60a]/60 px-6 py-3.5 text-sm font-semibold text-[#ffd60a] transition hover:bg-[#ffd60a]/10 sm:py-3"
               >
-                Request pricing
+                Get Started
               </a>
             </div>
           </article>
@@ -686,7 +685,7 @@ export default function AgentZeroLandingPage() {
             FAQ
           </div>
           <h2 className="mt-4 text-[1.7rem] font-semibold leading-tight text-white sm:text-4xl">
-            Straight answers, before you book a call.
+            Straight answers, before you get started.
           </h2>
         </div>
 
@@ -700,12 +699,12 @@ export default function AgentZeroLandingPage() {
           </p>
           <div className="mt-7 sm:mt-8">
             <a
-              href={WHATSAPP_URL}
+              href={TYPEFORM_ENQUIRY_URL}
               target="_blank"
               rel="noreferrer"
               className="inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-8 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
             >
-              Book a call
+              Get Started
             </a>
           </div>
         </div>
