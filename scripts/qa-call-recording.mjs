@@ -3,6 +3,9 @@
  *
  * node ./scripts/qa-call-recording.mjs
  */
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { register } from "node:module";
 
 register("./alias-loader.mjs", import.meta.url);
@@ -216,6 +219,21 @@ check(
       recording_url: CALL_A.recording_url,
       vapi_call_id: CALL_A.vapi_call_id,
     }).href === "/api/console/calls/call-a/recording"
+  );
+}
+
+console.log("\nRUNS API SELECT");
+{
+  const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+  const runsRoute = readFileSync(
+    join(root, "src/app/api/console/runs/[id]/route.js"),
+    "utf8"
+  );
+  const select = runsRoute.match(/from\("calls"\)[\s\S]*?\.select\(\s*"([^"]+)"/);
+  const columns = select?.[1] || "";
+  check(
+    "runs call select includes vapi_call_id for has_recording",
+    columns.includes("vapi_call_id") && columns.includes("recording_url")
   );
 }
 

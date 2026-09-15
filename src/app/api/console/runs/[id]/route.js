@@ -60,7 +60,7 @@ export async function GET(request, { params }) {
         supabase
           .from("calls")
           .select(
-            "id, lead_id, jarvis_lead_id, status, summary, transcript, recording_url, qualification, created_at, ended_at, duration_seconds, leads(push_name, wa_id), jarvis_leads(push_name, wa_id)"
+            "id, lead_id, jarvis_lead_id, vapi_call_id, status, summary, transcript, recording_url, qualification, created_at, ended_at, duration_seconds, leads(push_name, wa_id), jarvis_leads(push_name, wa_id)"
           )
           .eq("tenant_id", session.tenantId)
           .eq("batch_id", id)
