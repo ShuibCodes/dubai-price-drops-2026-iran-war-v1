@@ -176,6 +176,15 @@ export function parseBatchCallbackCommand(text) {
         return 365;
       },
     },
+    {
+      re: /\blast\s+(week|month|year)\b/i,
+      apply: (_n, unit) => {
+        const u = String(unit).toLowerCase();
+        if (u === "week") return 7;
+        if (u === "month") return 30;
+        return 365;
+      },
+    },
   ];
 
   for (const pattern of windowPatterns) {
