@@ -12,6 +12,10 @@ import {
 } from "../scripts/pointers.js";
 import { createCallBatch } from "../console/batches.js";
 import { assertLeadCallable } from "../console/opt-out.js";
+import {
+  FALLBACK_WHATSAPP_CONTEXT,
+  buildWhatsappCallBrief,
+} from "../jarvis/call-brief.js";
 
 /**
  * Hard max batch dials per tenant per Asia/Dubai day. Not overridable.
@@ -359,6 +363,8 @@ export async function dialLeadNow({
   scriptId = null,
   scriptVersionId = null,
   batchId = null,
+  startCall = startLeadCall,
+  buildCallBrief = buildWhatsappCallBrief,
 }) {
   assertOutboundActive(tenant);
   if (!jarvisLead) assertLeadCallable(lead);
@@ -418,7 +424,17 @@ export async function dialLeadNow({
     }
   }
 
-  const result = await startLeadCall({
+  let whatsappContext = null;
+  if (jarvisLead) {
+    whatsappContext = await buildCallBrief({
+      supabase,
+      tenantId: tenant.id,
+      jarvisLeadId: lead.id,
+    }).catch(() => FALLBACK_WHATSAPP_CONTEXT);
+    if (!whatsappContext) whatsappContext = FALLBACK_WHATSAPP_CONTEXT;
+  }
+
+  const result = await startCall({
     name: leadName,
     phone,
     assistantId,
@@ -430,6 +446,7 @@ export async function dialLeadNow({
       campaignTopic: fields.campaignTopic || "",
       formWhen: fields.formWhen || "",
       ownsProperty: fields.ownsProperty || lead.owns_property || "",
+      ...(jarvisLead ? { whatsappContext } : {}),
     },
     metadata: {
       tenantId: tenant.id,
