@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { MESSAGES_TABLE } from "@/lib/supabase/server";
+import { MESSAGES_TABLE } from "../supabase/server.js";
 
 export const CALL_BRIEF_MESSAGE_LIMIT = 25;
 export const CALL_BRIEF_MAX_CHARS = 2000;
