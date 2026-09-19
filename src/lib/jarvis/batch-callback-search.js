@@ -110,6 +110,108 @@ export async function getOwnedCallbackLead({
   return data || null;
 }
 
+
+/**
+ * True only when the lead is explicitly assigned to this agent id.
+ * Unassigned (null/empty assigned_agent_id) and other agents' leads are excluded.
+ */
+export function isLeadAssignedToAgentId(lead, agentId) {
+  const assigned = lead?.assigned_agent_id;
+  if (assigned == null || assigned === "") return false;
+  if (!agentId) return false;
+  return String(assigned) === String(agentId);
+}
+
+/**
+ * Lead ids assigned to this agent id (tenant-scoped rows).
+ * Unassigned and other-agent leads are never included.
+ */
+export function buildAssignedLeadIdSet(leads, agentId) {
+  const allowed = new Set();
+  if (!agentId) return allowed;
+  for (const lead of leads || []) {
+    if (!lead?.id) continue;
+    if (!isLeadAssignedToAgentId(lead, agentId)) continue;
+    allowed.add(lead.id);
+  }
+  return allowed;
+}
+
+/**
+ * Confirm agentId belongs to tenantId. Returns agentId on success, else null
+ * (fail closed — no tenant-wide search).
+ */
+export async function assertAgentBelongsToTenant({
+  tenantId,
+  agentId,
+  supabase = null,
+} = {}) {
+  if (!tenantId || !agentId) return null;
+  const client = db(supabase);
+  const { data: agent, error } = await client
+    .from("agents")
+    .select("id, tenant_id")
+    .eq("id", agentId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (error) throw new Error(`Agent lookup failed: ${error.message}`);
+  return agent?.id || null;
+}
+
+/**
+ * Lead ids in this tenant with assigned_agent_id = requesting agentId.
+ * Unassigned (null) and other-agent leads are never included.
+ */
+export async function loadAssignedLeadIdsForAgent({
+  tenantId,
+  agentId,
+  supabase = null,
+} = {}) {
+  if (!tenantId || !agentId) return new Set();
+  return listOwnedJarvisLeadIds({ supabase, tenantId, agentId });
+}
+
+/**
+ * Group tenant message rows into threads, keeping only leads in allowedLeadIds.
+ * This is the production Smart Callback security filter (agent-assigned only).
+ */
+export function groupMessageRowsIntoAssignedThreads(
+  messageRows,
+  allowedLeadIds,
+  { maxThreads, messagesPerThread } = {}
+) {
+  const byLead = new Map();
+  for (const row of messageRows || []) {
+    const leadId = row.jarvis_lead_id;
+    if (!leadId) continue;
+    if (!allowedLeadIds?.has(leadId)) continue;
+    let bucket = byLead.get(leadId);
+    if (!bucket) {
+      bucket = {
+        jarvisLeadId: leadId,
+        lastMessageAt: row.timestamp,
+        messagesNewestFirst: [],
+      };
+      byLead.set(leadId, bucket);
+    }
+    if (bucket.messagesNewestFirst.length < messagesPerThread) {
+      bucket.messagesNewestFirst.push(row);
+    }
+  }
+
+  return [...byLead.values()]
+    .sort(
+      (a, b) =>
+        new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
+    )
+    .slice(0, maxThreads)
+    .map((t) => ({
+      jarvisLeadId: t.jarvisLeadId,
+      lastMessageAt: t.lastMessageAt,
+      messages: [...t.messagesNewestFirst].reverse(),
+    }));
+}
+
 function fullPhone(waId) {
   const digits = String(waId || "").replace(/\D/g, "");
   return digits ? `+${digits}` : null;
@@ -249,36 +351,10 @@ async function loadActiveThreads({
     throw new Error(`Batch callback message prefilter failed: ${error.message}`);
   }
 
-  const byLead = new Map();
-  for (const row of data || []) {
-    const leadId = row.jarvis_lead_id;
-    if (!leadId || !ownedIds.has(leadId)) continue;
-    let bucket = byLead.get(leadId);
-    if (!bucket) {
-      bucket = {
-        jarvisLeadId: leadId,
-        lastMessageAt: row.timestamp,
-        messagesNewestFirst: [],
-      };
-      byLead.set(leadId, bucket);
-    }
-    if (bucket.messagesNewestFirst.length < messagesPerThread) {
-      bucket.messagesNewestFirst.push(row);
-    }
-  }
-
-  const threads = [...byLead.values()]
-    .sort(
-      (a, b) =>
-        new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
-    )
-    .slice(0, maxThreads)
-    .map((t) => ({
-      jarvisLeadId: t.jarvisLeadId,
-      lastMessageAt: t.lastMessageAt,
-      // Chronological for the model
-      messages: [...t.messagesNewestFirst].reverse(),
-    }));
+  const threads = groupMessageRowsIntoAssignedThreads(data, ownedIds, {
+    maxThreads,
+    messagesPerThread,
+  });
 
   return { since, threads, scannedMessageRows: (data || []).length };
 }
@@ -361,7 +437,7 @@ async function mapPool(items, concurrency, worker) {
 
 /**
  * Semantic / intent-based candidate search for Jarvis batch callbacks.
- * Standalone — not wired to WhatsApp confirm flow yet.
+ * Scoped to one agent: only leads with assigned_agent_id = agentId.
  *
  * @param {{
  *   tenantId: string,
@@ -391,6 +467,32 @@ export async function searchBatchCallbackCandidates({
   const cleanedIntent = String(intent || "").trim();
   if (!cleanedIntent) throw new Error("intent is required");
 
+  // Fail closed: agent must exist in this tenant.
+  const ownedAgentId = await assertAgentBelongsToTenant({
+    tenantId,
+    agentId,
+    supabase,
+  });
+  if (!ownedAgentId) {
+    return {
+      intent: cleanedIntent,
+      windowDays: clampInt(windowDays, {
+        min: 1,
+        max: 366,
+        fallback: BATCH_CALLBACK_DEFAULT_WINDOW_DAYS,
+      }),
+      since: null,
+      scannedMessageRows: 0,
+      threadsConsidered: 0,
+      threadsEvaluated: 0,
+      matchLimit: 0,
+      matches: [],
+      model: null,
+      stoppedEarly: false,
+      failClosed: true,
+    };
+  }
+
   const days = clampInt(windowDays, {
     min: 1,
     max: 366,
@@ -410,7 +512,7 @@ export async function searchBatchCallbackCandidates({
   const { since, threads, scannedMessageRows } = await loadActiveThreads({
     supabase,
     tenantId,
-    agentId,
+    agentId: ownedAgentId,
     windowDays: days,
     maxThreads: threadCap,
     messagesPerThread: BATCH_CALLBACK_MESSAGES_PER_THREAD,
@@ -494,7 +596,7 @@ export async function searchBatchCallbackCandidates({
   const leadMap = await loadOwnedLeadsById({
     supabase,
     tenantId,
-    agentId,
+    agentId: ownedAgentId,
     leadIds: matches.map((m) => m.jarvisLeadId),
   });
 
