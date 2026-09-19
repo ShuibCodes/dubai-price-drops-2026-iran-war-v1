@@ -10,6 +10,7 @@ import {
   scriptPointerForScript,
   scriptPointerForSource,
 } from "../scripts/pointers.js";
+import { parseScriptConfig } from "../scripts/schema.js";
 import { createCallBatch } from "../console/batches.js";
 import { assertLeadCallable } from "../console/opt-out.js";
 
@@ -378,6 +379,7 @@ export async function dialLeadNow({
   }
 
   let scriptAssistantId = null;
+  let firstMessage;
   if (pointer.script_id) {
     const { data: script, error: scriptError } = await supabase
       .from("scripts")
@@ -387,6 +389,16 @@ export async function dialLeadNow({
       .maybeSingle();
     if (scriptError) throw new Error(`Script assistant lookup failed: ${scriptError.message}`);
     scriptAssistantId = String(script?.vapi_assistant_id || "").trim() || null;
+  }
+  if (pointer.script_version_id) {
+    const { data: version, error: versionError } = await supabase
+      .from("script_versions")
+      .select("config_json")
+      .eq("id", pointer.script_version_id)
+      .maybeSingle();
+    if (versionError) throw new Error(`Script version lookup failed: ${versionError.message}`);
+    const parsed = parseScriptConfig(version?.config_json);
+    if (parsed.ok) firstMessage = parsed.data.first_message;
   }
 
   // 1. script_version → its script's vapi_assistant_id
@@ -423,6 +435,7 @@ export async function dialLeadNow({
     phone,
     assistantId,
     phoneNumberId: tenant.vapi_phone_number_id,
+    firstMessage,
     variableValues: {
       leadName,
       leadSource,

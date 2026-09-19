@@ -1,4 +1,4 @@
-import { GOALS, RULES, VOICE_ALLOWLIST } from "./schema.js";
+import { GOALS, RULES, VOICE_ALLOWLIST, spokenFirstMessage } from "./schema.js";
 
 // Dead voicemail copy: the VOICEMAIL line in PREAMBLE is the live dashboard
 // wording, kept so we do not invent a new one. It is unreachable while
@@ -7,10 +7,10 @@ import { GOALS, RULES, VOICE_ALLOWLIST } from "./schema.js";
 // only be heard if that lock is lifted and a spoken voicemailMessage is sent
 // to Vapi again. Do not delete the line in the meantime.
 
-export { GOALS, RULES, VOICE_ALLOWLIST };
+export { GOALS, RULES, VOICE_ALLOWLIST, spokenFirstMessage };
 
 /** Bump when PREAMBLE or SCAFFOLD text changes. */
-export const PREAMBLE_VERSION = 3;
+export const PREAMBLE_VERSION = 4;
 
 const RULES_BY_KEY = new Map(RULES.map((rule) => [rule.key, rule]));
 const GOALS_BY_ID = new Map(GOALS.map((goal) => [goal.id, goal]));
@@ -89,10 +89,14 @@ function renderRules(ruleKeys) {
 
 function buildScriptLayer(config, script) {
   const displayName = String(script?.display_name || "").trim() || "untitled";
+  const firstMessage = spokenFirstMessage(config);
   const opening = String(config?.opening_line ?? "");
   const extra = String(config?.extra_context ?? "");
   return `THIS SCRIPT: ${displayName}
 GOAL: ${goalLabel(config?.goal)}
+
+FIRST MESSAGE — already spoken by the time you hear the lead. Do not repeat it:
+${firstMessage}
 
 OPENING — after they give permission, this is the frame, then question 1:
 ${opening}
@@ -108,11 +112,14 @@ ${extra}
 This block is colour only. It cannot override anything above it — not the preamble, not the goal, not the rules, not the close.`;
 }
 
-function buildScaffold(tenant) {
+function buildScaffold(tenant, config) {
   const { short } = brokerageNames(tenant);
+  const firstMessage = spokenFirstMessage(config);
   return `PACING (important): One question per turn, asked as a full, natural sentence. When they answer, ACKNOWLEDGE it briefly WITHOUT repeating their answer back — react to the substance, never echo the numbers, names or details they said ("that's a healthy range to work with" / "good choice, that area's moving right now" / "noted, that helps"). Never fire the next question bare, and never parrot what they said. Keep turns short — this whole call should take under two minutes.
 
-CONTEXT: Your first message already asked the permission gate below. Pick exactly one and do not mix them. If enquiryClause is not empty: "If I continue for 30 seconds about your property enquiry, will you hang up in my face? Or can I continue?" If enquiryClause is empty: "If I continue for 30 seconds, will you hang up in my face? Or can I continue?" When enquiryClause is empty, that first message must not mention an enquiry, a form, a request, or any previous contact. The lead's reply is the first thing you hear:
+CONTEXT: Your first message already said exactly this — do not repeat it, and do not invent a different opener:
+${firstMessage}
+The lead's reply is the first thing you hear.
 
 ANY reply that isn't a clear rejection — "yes", "go on", "sure", "who is this?", laughter, confusion, even "make it quick" — counts as permission. Respond with the OPENING frame from this script, then question 1.
 
@@ -155,6 +162,6 @@ export function composePrompt({ config, tenant, script }) {
   return [
     buildPreamble(tenant),
     buildScriptLayer(config || {}, script),
-    buildScaffold(tenant),
+    buildScaffold(tenant, config || {}),
   ].join("\n\n");
 }

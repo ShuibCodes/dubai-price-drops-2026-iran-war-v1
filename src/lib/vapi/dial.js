@@ -1,5 +1,8 @@
 import { enquiryClauseForSource } from "../scripts/enquiry-source.js";
-import { VOICE_ALLOWLIST } from "../scripts/schema.js";
+import {
+  DEFAULT_FIRST_MESSAGE,
+  VOICE_ALLOWLIST,
+} from "../scripts/schema.js";
 
 function getRequiredEnv(name) {
   const value = process.env[name];
@@ -35,7 +38,8 @@ function normalizePhoneForVapi(phone) {
   return `+${digits}`;
 }
 
-/** Locked on every assistant write. Never from script config. */
+/** Locked on every assistant write. firstMessage is the default only —
+ *  script config can override it. firstMessageMode stays locked. */
 export const VAPI_ASSISTANT_LOCK = {
   maxDurationSeconds: 180,
   silenceTimeoutSeconds: 20,
@@ -88,12 +92,9 @@ export const VAPI_ASSISTANT_LOCK = {
     },
     beepMaxAwaitSeconds: 0,
   },
-  // Live 1416 Allan firstMessage (dashboard):
-  // "Hi my name is Allan, If i continue for 30 seconds will you hang up in my face? or can i continue?"
-  // Dropped "Hi my name is Allan," — persona is per-tenant and not on this write.
-  // Gate kept verbatim (live casing). Already enquiry-neutral.
-  firstMessage:
-    "If i continue for 30 seconds will you hang up in my face? or can i continue?",
+  // Default spoken opener. Script config.first_message overrides this.
+  // Live 1416 dropped "Hi my name is Allan," — persona is per-tenant.
+  firstMessage: DEFAULT_FIRST_MESSAGE,
   firstMessageMode: "assistant-waits-for-user",
 };
 
@@ -370,8 +371,8 @@ export async function startLeadCall({
 }
 
 /**
- * In-tab WebRTC test. Same locked firstMessage / prompt / voice as a phone
- * test. Does not dial a number. Caller must not put the prompt in the browser —
+ * In-tab WebRTC test. Same firstMessage / prompt / voice as a phone test.
+ * Does not dial a number. Caller must not put the prompt in the browser —
  * only the returned webCallUrl is joinable.
  */
 export async function startWebCall({

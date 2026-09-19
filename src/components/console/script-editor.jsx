@@ -18,7 +18,12 @@ import {
   maskPhone,
   runsLabel,
 } from "@/lib/scripts/display";
-import { GOALS, RULES, VOICE_ALLOWLIST } from "@/lib/scripts/schema";
+import {
+  DEFAULT_FIRST_MESSAGE,
+  GOALS,
+  RULES,
+  VOICE_ALLOWLIST,
+} from "@/lib/scripts/schema";
 import { joinWebTalk, leaveWebTalk, unlockMicrophone } from "@/lib/scripts/web-talk-client";
 
 const FIND_OUT_TYPES = [
@@ -31,6 +36,7 @@ function blankConfig() {
   return {
     goal: "qualify",
     voice_id: VOICE_ALLOWLIST[0].id,
+    first_message: DEFAULT_FIRST_MESSAGE,
     opening_line: "",
     find_out: [],
     rules: RULES.filter((rule) => rule.locked).map((rule) => rule.key),
@@ -59,6 +65,7 @@ function cloneConfig(raw) {
   if (!next.rules.includes("ai_disclosure")) {
     next.rules = ["ai_disclosure", ...next.rules];
   }
+  next.first_message = String(next.first_message || "").trim() || DEFAULT_FIRST_MESSAGE;
   next.opening_line = displayOpening(next.opening_line);
   return next;
 }
@@ -178,6 +185,8 @@ export function ScriptEditor({ tenant, scriptId, role, waPhone }) {
           display_name: name.trim(),
           config: {
             ...config,
+            first_message:
+              String(config.first_message || "").trim() || DEFAULT_FIRST_MESSAGE,
             opening_line: normalizeOpening(config.opening_line),
           },
         }),
@@ -393,20 +402,47 @@ export function ScriptEditor({ tenant, scriptId, role, waPhone }) {
           </div>
 
           <div>
+            <Label className="flex items-center gap-2" htmlFor="first-message">
+              First thing it says
+              <Tooltip>
+                This is the first sentence they hear. It is the Vapi first
+                message — not the opening line below.
+              </Tooltip>
+            </Label>
+            <Field
+              as="textarea"
+              id="first-message"
+              maxLength={200}
+              onChange={(event) =>
+                patchConfig({ first_message: event.target.value })
+              }
+              placeholder="If i continue for 30 seconds will you hang up in my face? or can i continue?"
+              rows={3}
+              trailing={`${(config.first_message || "").length}/200`}
+              value={config.first_message}
+            />
+            <div className="mt-2 text-[13px] text-faint">
+              Spoken first, after they pick up. Publish to push it to the live
+              assistant.
+            </div>
+          </div>
+
+          <div>
             <Label htmlFor="opening">How should it open</Label>
             <Field
               as="textarea"
               id="opening"
               maxLength={200}
               onChange={(event) => patchConfig({ opening_line: event.target.value })}
-              placeholder="After they give permission, this is the frame."
+              placeholder="After they answer the first sentence, this is the frame."
               rows={3}
               trailing={`${(config.opening_line || "").length}/200`}
               value={config.opening_line}
             />
             <div className="mt-2 text-[13px] text-faint">
-              The AI disclosure is required on every call in the UAE. It stays
-              in. Supports {"{{lead}}"} and {"{{agent}}"}.
+              Comes after they reply to the first sentence. The AI disclosure is
+              required on every call in the UAE. It stays in. Supports{" "}
+              {"{{lead}}"} and {"{{agent}}"}.
             </div>
           </div>
 
