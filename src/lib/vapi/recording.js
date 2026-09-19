@@ -2,10 +2,12 @@
  * Server-side Vapi recording retrieval.
  * Uses the same /call collection as getLatestTargetLeadCallSummary
  * (`VAPI_CALLS_PATH`, default `/call`) plus the call id already stored on
- * `calls.vapi_call_id`. Recording field names match the webhook extractor.
+ * `calls.vapi_call_id`. GET /call/{id} is always used so Vapi can issue a
+ * fresh signed URL; stored `calls.recording_url` is never a playback source.
  *
- * Stored `calls.recording_url` is never used as a playback source: it is the
- * short-lived URL that made the old Play button dead.
+ * Production GET /call shape: unsigned `recordingUrl` / `stereoRecordingUrl`
+ * (and `artifact.recording.mono.combinedUrl`) return HTTP 400. Fetchable audio
+ * is `artifact.presignedMonoUrl` (then `presignedStereoUrl`).
  */
 
 import { isHttpUrl } from "@/lib/console/recording-playback";
@@ -23,20 +25,40 @@ const FORWARD_HEADERS = [
   "accept-ranges",
 ];
 
+/** Signed R2/Vapi media URLs carry a query string; unsigned object URLs do not. */
+function isSignedHttpUrl(value) {
+  if (!isHttpUrl(value)) return false;
+  try {
+    return Boolean(new URL(String(value).trim()).search);
+  } catch {
+    return false;
+  }
+}
+
+function firstSignedUrl(candidates) {
+  for (const candidate of candidates) {
+    if (!isSignedHttpUrl(candidate)) continue;
+    return String(candidate).trim();
+  }
+  return "";
+}
+
 export function extractVapiRecordingUrl(payload) {
   if (!payload || typeof payload !== "object") return "";
-  const candidates = [
+  const artifact =
+    payload.artifact || payload.call?.artifact || payload.message?.artifact || {};
+  return firstSignedUrl([
+    artifact.presignedMonoUrl,
+    artifact.presignedStereoUrl,
+    artifact.presignedAssistantUrl,
+    artifact.presignedCustomerUrl,
     payload.recordingUrl,
     payload.stereoRecordingUrl,
     payload.call?.recordingUrl,
     payload.call?.stereoRecordingUrl,
     payload.message?.recordingUrl,
     payload.message?.stereoRecordingUrl,
-  ];
-  for (const candidate of candidates) {
-    if (isHttpUrl(candidate)) return String(candidate).trim();
-  }
-  return "";
+  ]);
 }
 
 export function recordingAccess(session, call) {

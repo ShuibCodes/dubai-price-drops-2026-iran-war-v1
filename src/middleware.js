@@ -20,8 +20,16 @@ import {
   isSupabaseAuthConfigured,
 } from "@/lib/supabase/auth-server";
 
+function isStaffLoginPath(pathname) {
+  return (
+    pathname === "/onboard/login" ||
+    pathname === "/internal/login" ||
+    pathname === "/api/onboard/auth"
+  );
+}
+
 async function handleOnboard(request, pathname, isApi) {
-  if (pathname === "/onboard/login" || pathname === "/api/onboard/auth") {
+  if (isStaffLoginPath(pathname)) {
     return NextResponse.next();
   }
 
@@ -34,7 +42,10 @@ async function handleOnboard(request, pathname, isApi) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
-  const loginUrl = new URL("/onboard/login", request.url);
+  const loginPath = pathname.startsWith("/internal")
+    ? "/internal/login"
+    : "/onboard/login";
+  const loginUrl = new URL(loginPath, request.url);
   loginUrl.searchParams.set("from", pathname);
   return NextResponse.redirect(loginUrl);
 }
@@ -137,8 +148,15 @@ export async function middleware(request) {
   const isOnboardPage =
     pathname === "/onboard" || pathname.startsWith("/onboard/");
   const isOnboardApi = pathname.startsWith("/api/onboard");
-  if (isOnboardPage || isOnboardApi) {
-    return handleOnboard(request, pathname, isOnboardApi);
+  const isInternalPage =
+    pathname === "/internal" || pathname.startsWith("/internal/");
+  const isInternalApi = pathname.startsWith("/api/internal");
+  if (isOnboardPage || isOnboardApi || isInternalPage || isInternalApi) {
+    return handleOnboard(
+      request,
+      pathname,
+      isOnboardApi || isInternalApi
+    );
   }
 
   const isCopilotPage =
@@ -167,5 +185,9 @@ export const config = {
     "/api/scripts/:path*",
     "/api/console",
     "/api/console/:path*",
+    "/internal",
+    "/internal/:path*",
+    "/api/internal",
+    "/api/internal/:path*",
   ],
 };

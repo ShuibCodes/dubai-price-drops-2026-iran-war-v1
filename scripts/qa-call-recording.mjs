@@ -114,12 +114,48 @@ console.log("\nUI");
 }
 
 console.log("\nVAPI PAYLOAD + FAILURES");
-check(
-  "extracts recordingUrl from call payload",
-  extractVapiRecordingUrl({
-    recordingUrl: "https://vapi-cdn.example/fresh.wav",
-  }) === "https://vapi-cdn.example/fresh.wav"
-);
+{
+  const signedMono =
+    "https://r2.example/349864e4060-mono.wav?X-Amz-Signature=test&X-Amz-Expires=3600";
+  const signedStereo =
+    "https://r2.example/f975fa887-stereo.wav?X-Amz-Signature=stereo&X-Amz-Expires=3600";
+  const unsignedMono = "https://r2.example/349864e4060-mono.wav";
+  const unsignedStereo = "https://r2.example/f975fa887-stereo.wav";
+  check(
+    "artifact.presignedMonoUrl is preferred when present",
+    extractVapiRecordingUrl({
+      recordingUrl: unsignedMono,
+      stereoRecordingUrl: unsignedStereo,
+      artifact: {
+        presignedMonoUrl: signedMono,
+        presignedStereoUrl: signedStereo,
+        recording: { mono: { combinedUrl: unsignedMono } },
+      },
+    }) === signedMono
+  );
+  check(
+    "unsigned recordingUrl is not selected when a signed field is available",
+    extractVapiRecordingUrl({
+      recordingUrl: unsignedMono,
+      artifact: { presignedMonoUrl: signedMono },
+    }) === signedMono &&
+      extractVapiRecordingUrl({
+        recordingUrl: unsignedMono,
+        artifact: { presignedStereoUrl: signedStereo },
+      }) === signedStereo
+  );
+  check(
+    "unsigned recordingUrl alone is not treated as fetchable",
+    extractVapiRecordingUrl({ recordingUrl: unsignedMono }) === ""
+  );
+  check(
+    "presignedStereoUrl is used when mono is absent",
+    extractVapiRecordingUrl({
+      recordingUrl: unsignedMono,
+      artifact: { presignedStereoUrl: signedStereo },
+    }) === signedStereo
+  );
+}
 check(
   "does not treat non-http recording fields as URLs",
   extractVapiRecordingUrl({ recordingUrl: "customer-did-not-answer" }) === ""
@@ -161,22 +197,39 @@ check(
         String(init.headers.Authorization).startsWith("Bearer ")
       );
       return Response.json({
-        recordingUrl: "https://vapi-cdn.example/fresh.wav",
+        recordingUrl: "https://r2.example/unsigned-mono.wav",
+        artifact: {
+          presignedMonoUrl:
+            "https://r2.example/fresh-mono.wav?X-Amz-Signature=test",
+        },
       });
     },
   });
-  check("valid Vapi call yields an https recording URL", fresh.ok && fresh.recordingUrl.startsWith("https://"));
+  check(
+    "valid Vapi call yields the signed recording URL",
+    fresh.ok &&
+      fresh.recordingUrl.includes("X-Amz-Signature") &&
+      !fresh.recordingUrl.endsWith("unsigned-mono.wav")
+  );
 }
 
 {
   const resolved = await resolveCallRecording(CALL_A, {
     apiKey: "secret-key-do-not-leak",
     fetchImpl: async () =>
-      Response.json({ recordingUrl: "https://vapi-cdn.example/fresh.wav" }),
+      Response.json({
+        recordingUrl: "https://r2.example/unsigned-mono.wav",
+        artifact: {
+          presignedMonoUrl:
+            "https://r2.example/fresh-mono.wav?X-Amz-Signature=test",
+        },
+      }),
   });
   check(
-    "resolves a fresh URL instead of returning the stored dead URL to the client helper",
-    resolved.ok && resolved.recordingUrl === "https://vapi-cdn.example/fresh.wav"
+    "resolves a fresh signed URL instead of returning the stored dead URL to the client helper",
+    resolved.ok &&
+      resolved.recordingUrl ===
+        "https://r2.example/fresh-mono.wav?X-Amz-Signature=test"
   );
 
   const noFallback = await resolveCallRecording(CALL_A, {
@@ -212,13 +265,22 @@ check(
     }),
   });
   check("Vapi API key is never present in client-facing helper output", !dumped.includes("VAPI"));
+  const play = recordingPlayback({
+    id: CALL_A.id,
+    recording_url: CALL_A.recording_url,
+    vapi_call_id: CALL_A.vapi_call_id,
+    has_recording: true,
+  });
   check(
     "raw stored Vapi URL is not used as the play href",
-    recordingPlayback({
-      id: CALL_A.id,
-      recording_url: CALL_A.recording_url,
-      vapi_call_id: CALL_A.vapi_call_id,
-    }).href === "/api/console/calls/call-a/recording"
+    play.href === "/api/console/calls/call-a/recording"
+  );
+  check(
+    "signed recording URL is not exposed on the client playback href",
+    play.kind === "play" &&
+      !String(play.href).includes("r2.example") &&
+      !String(play.href).includes("X-Amz-") &&
+      !String(play.href).includes("presigned")
   );
 }
 
@@ -234,6 +296,12 @@ console.log("\nRUNS API SELECT");
   check(
     "runs call select includes vapi_call_id for has_recording",
     columns.includes("vapi_call_id") && columns.includes("recording_url")
+  );
+  check(
+    "runs JSON maps has_recording and does not send recording_url to the client",
+    /has_recording:\s*callHasPlayableRecording\(call\)/.test(runsRoute) &&
+      /has_recording:\s*false/.test(runsRoute) &&
+      !/recording_url:\s*call\.recording_url/.test(runsRoute)
   );
 }
 

@@ -13,6 +13,7 @@
     "brief:send": "node scripts/send-morning-briefs.mjs",
     "qa:auth": "node scripts/qa-auth-migration.mjs",
     "qa:social-auth": "node scripts/qa-social-auth-new-user.mjs",
+    "qa:feedback": "node scripts/qa-feedback-tickets.mjs",
     "simulate:meta": "node scripts/simulate-meta.mjs all",
     "migrate:whatsapp": "node scripts/apply-migration.mjs",
     "verify:coexistence": "node scripts/verify-coexistence.mjs"

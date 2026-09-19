@@ -14,6 +14,7 @@ const NAV = [
   { href: "/scripts", label: "Scripts" },
   { href: "/runs", label: "Runs", match: "/runs" },
   { href: "/kb", label: "Knowledge" },
+  { href: "/feedback", label: "Feedback", match: "/feedback" },
   { href: "/settings", label: "Settings" },
 ];
 
