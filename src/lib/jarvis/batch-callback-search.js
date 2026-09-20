@@ -361,7 +361,7 @@ async function mapPool(items, concurrency, worker) {
 
 /**
  * Semantic / intent-based candidate search for Jarvis batch callbacks.
- * Standalone — not wired to WhatsApp confirm flow yet.
+ * WhatsApp list-shaped asks are routed here via maybeHandleSmartCallbackRequest.
  *
  * @param {{
  *   tenantId: string,
