@@ -1,8 +1,16 @@
 "use client";
 
-import { animate, useInView } from "framer-motion";
+import {
+  animate,
+  motion,
+  useInView,
+  useReducedMotion,
+  useScroll,
+  useTransform,
+} from "framer-motion";
 import Image from "next/image";
 import Link from "next/link";
+import Script from "next/script";
 import { useEffect, useRef, useState } from "react";
 import logo1416 from "@/app/images/1416-logo.png";
 import logoCondCity from "@/app/images/cond-city-logo.png";
@@ -10,24 +18,23 @@ import logoMeta from "@/app/images/meta-logo-new.jpeg";
 import logoSterling from "@/app/images/sterling.jpg";
 import { TYPEFORM_ENQUIRY_URL } from "@/lib/typeform";
 
+const WISTIA_MEDIA_ID = "z4i1d3k6sc";
+
 const CLIENT_LOGOS = [
   {
     src: logoSterling,
     alt: "Sterling Boulevard",
     name: "Sterling Boulevard",
-    className: "h-10 w-10 rounded-md object-cover sm:h-12 sm:w-12",
   },
   {
     src: logo1416,
     alt: "14:16",
     name: "14:16",
-    className: "h-8 w-auto max-h-10 object-contain sm:h-10",
   },
   {
     src: logoCondCity,
     alt: "Cond City",
     name: "Cond City",
-    className: "h-8 w-auto max-h-10 max-w-[9.5rem] object-contain sm:h-10 sm:max-w-[11rem]",
   },
 ];
 
@@ -47,6 +54,91 @@ function CountUp({ to, duration = 2, format }) {
   }, [inView, to, duration]);
 
   return <span ref={ref}>{format ? format(value) : Math.round(value)}</span>;
+}
+
+function HeroVideo() {
+  const ref = useRef(null);
+  const reduceMotion = useReducedMotion();
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    offset: ["start start", "end end"],
+  });
+
+  const scale = useTransform(scrollYProgress, [0, 0.7], [0.86, 1]);
+  const radius = useTransform(scrollYProgress, [0, 0.7], [28, 12]);
+  const headlineOpacity = useTransform(scrollYProgress, [0, 0.45], [1, 0]);
+  const headlineY = useTransform(scrollYProgress, [0, 0.45], [0, -60]);
+  const glowOpacity = useTransform(scrollYProgress, [0, 0.7], [0.35, 0.8]);
+
+  return (
+    <section ref={ref} className="relative h-[170vh] sm:h-[190vh]">
+      <div className="sticky top-0 flex min-h-[100svh] flex-col items-center justify-center overflow-hidden px-4 py-10 sm:px-6 lg:px-8">
+        <motion.div
+          style={reduceMotion ? undefined : { opacity: headlineOpacity, y: headlineY }}
+          className="mx-auto max-w-3xl text-center"
+        >
+          <h1 className="text-balance text-[2rem] font-semibold leading-[1.15] tracking-tight sm:text-5xl sm:leading-[1.1]">
+            Your CRM has 4,000 leads.{" "}
+            <em className="italic text-[#ff2d55]">When did you last call one?</em>
+          </h1>
+          <p className="mx-auto mt-4 max-w-xl text-base leading-7 text-white/70 sm:text-lg">
+            AI calls your leads and sends the good ones to your WhatsApp.
+          </p>
+          <a
+            href={TYPEFORM_ENQUIRY_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-6 inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
+          >
+            Get Started
+          </a>
+        </motion.div>
+
+        <div className="relative mt-8 w-[calc(100%+2rem)] max-w-5xl sm:mt-10 sm:w-full sm:max-w-[min(64rem,max(20rem,calc((100svh_-_24rem)*16/9)))]">
+          <motion.div
+            aria-hidden
+            style={reduceMotion ? undefined : { opacity: glowOpacity }}
+            className="pointer-events-none absolute -inset-6 rounded-[40px] bg-[#ff2d55]/25 blur-3xl sm:-inset-10"
+          />
+          <motion.div
+            style={reduceMotion ? { borderRadius: 20 } : { scale, borderRadius: radius }}
+            className="relative aspect-video w-full overflow-hidden border border-white/10 bg-[#0b0b0b]"
+          >
+            <Script src="https://fast.wistia.com/player.js" strategy="afterInteractive" />
+            <Script
+              src={`https://fast.wistia.com/embed/${WISTIA_MEDIA_ID}.js`}
+              type="module"
+              strategy="afterInteractive"
+            />
+            <style>{`wistia-player[media-id=${WISTIA_MEDIA_ID}]:not(:defined) { background: center / contain no-repeat url(https://fast.wistia.com/embed/medias/${WISTIA_MEDIA_ID}/swatch); display: block; filter: blur(5px); padding-top: 56.25%; }`}</style>
+            <wistia-player
+              media-id={WISTIA_MEDIA_ID}
+              aspect="1.7777777777777777"
+              player-color="ff2d55"
+              autoplay="true"
+              silent-autoplay="allow"
+              className="block h-full w-full"
+            />
+          </motion.div>
+        </div>
+
+        <div className="mt-8 flex items-center justify-center gap-3 sm:mt-10 sm:gap-4">
+          {CLIENT_LOGOS.map((logo) => (
+            <div
+              key={logo.name}
+              className="flex h-11 w-24 items-center justify-center rounded-xl bg-white px-3 sm:h-14 sm:w-32"
+            >
+              <Image
+                src={logo.src}
+                alt={logo.alt}
+                className="h-auto max-h-7 w-auto max-w-full rounded object-contain sm:max-h-9"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
 }
 
 const BROKERAGE_FEATURES = [
@@ -295,52 +387,13 @@ export default function AgentZeroLandingPage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
-        <div>
-          <div className="inline-flex max-w-full rounded-full border border-[#ff2d55]/25 bg-[#ff2d55]/10 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-[#ff9ab0] sm:px-4 sm:text-[11px] sm:tracking-[0.28em]">
-            For Dubai real estate brokerages
-          </div>
-          <h1 className="mt-6 text-balance text-[1.9rem] font-semibold leading-[1.18] tracking-tight sm:mt-8 sm:text-5xl sm:leading-[1.12] lg:text-[4.25rem] lg:leading-[1.08]">
-            Nobody Got Into Real Estate To{" "}
-            <em className="italic text-[#ff2d55]">Dial 200 Numbers.</em>
-          </h1>
-          <p className="mt-5 max-w-4xl text-base leading-7 text-white sm:mt-6 sm:text-lg sm:leading-8">
-            AgentZero makes the cold calls and does the admin after them —
-            qualifying, logging, following up — and hands your agents only the
-            leads with budget, timeline and intent, straight to their WhatsApp.
-          </p>
-          <div className="mt-7 flex flex-wrap gap-3 sm:mt-8">
-            <a
-              href={TYPEFORM_ENQUIRY_URL}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
-            >
-              Get Started
-            </a>
-          </div>
-        </div>
-      </section>
+      <HeroVideo />
 
       <section className="mx-auto max-w-7xl px-4 pb-14 sm:px-6 sm:pb-20 lg:px-8">
         <div className="mb-6 sm:mb-8">
           <div className="text-sm font-bold uppercase tracking-[0.18em] text-white sm:text-base">
             Proven in the market
           </div>
-        </div>
-        <div className="mb-8 flex flex-col items-center gap-3 sm:mb-10 sm:flex-row sm:items-center sm:gap-5">
-          {CLIENT_LOGOS.map((logo) => (
-            <div
-              key={logo.name}
-              className="flex h-20 w-40 shrink-0 items-center justify-center rounded-2xl bg-white p-5 sm:h-28 sm:w-52 sm:rounded-[20px] sm:p-7"
-            >
-              <Image
-                src={logo.src}
-                alt={logo.alt}
-                className={logo.className}
-              />
-            </div>
-          ))}
         </div>
         <div className="grid gap-4 sm:gap-6 lg:grid-cols-3">
           <article className="rounded-[28px] border border-[#ff2d55]/20 bg-[#ff2d55]/[0.06] p-6 sm:rounded-[32px] sm:p-10">
