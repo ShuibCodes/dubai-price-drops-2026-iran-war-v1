@@ -6,6 +6,8 @@ import { Pill } from "@/components/ui/pill";
 import { Strip } from "@/components/ui/strip";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { consoleBase, consoleJson } from "@/lib/console/client";
+import { uploadKnowledgeFile } from "@/lib/console/kb-upload";
+import { KB_ACCEPT } from "@/lib/kb/documents";
 
 function fileType(filename) {
   const ext = String(filename || "").split(".").pop();
@@ -24,6 +26,7 @@ export function KbPage({ tenant }) {
   const [docs, setDocs] = useState(null);
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState("");
+  const [confirmId, setConfirmId] = useState("");
   const base = consoleBase(tenant);
 
   const load = useCallback(async () => {
@@ -40,16 +43,26 @@ export function KbPage({ tenant }) {
   async function upload(files) {
     setError("");
     for (const file of files) {
-      const form = new FormData();
-      form.set("file", file);
-      form.set("scope", "private");
-      await consoleJson(base, "/api/console/kb", {
-        method: "POST",
-        body: form,
-        fallback: "Upload failed.",
-      });
+      await uploadKnowledgeFile(base, file, "private");
     }
     await load();
+  }
+
+  async function remove(id) {
+    setBusyId(id);
+    setError("");
+    try {
+      await consoleJson(base, `/api/console/kb/${id}`, {
+        method: "DELETE",
+        fallback: "Could not delete that document. Try again.",
+      });
+      setConfirmId("");
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusyId("");
+    }
   }
 
   async function patch(id, body) {
@@ -86,9 +99,9 @@ export function KbPage({ tenant }) {
       ) : null}
 
       <Drop
-        accept=".pdf,.txt,.md,.csv,.png,.jpg,.jpeg"
+        accept={KB_ACCEPT}
         className="mb-4"
-        hint="Price lists, payment plans, brochures. PDF, TXT, MD, CSV, PNG, JPG."
+        hint="Price lists, payment plans, brochures. PDF, TXT, MD, CSV, PNG, or JPG. Up to 20 MB."
         onFiles={(files) => upload(files).catch((err) => setError(err.message))}
       >
         Drop files here
@@ -152,6 +165,37 @@ export function KbPage({ tenant }) {
                 >
                   Hide
                 </button>
+              ) : null}
+              {doc.mine && confirmId !== doc.id ? (
+                <button
+                  className="text-sm text-faint hover:text-fg disabled:opacity-40"
+                  disabled={busyId === doc.id}
+                  onClick={() => setConfirmId(doc.id)}
+                  type="button"
+                >
+                  Delete
+                </button>
+              ) : null}
+              {doc.mine && confirmId === doc.id ? (
+                <span className="flex flex-wrap items-center gap-3">
+                  <span className="text-sm text-dim">Delete this file?</span>
+                  <button
+                    className="text-sm text-[#e08b8b] disabled:opacity-40"
+                    disabled={busyId === doc.id}
+                    onClick={() => remove(doc.id)}
+                    type="button"
+                  >
+                    {busyId === doc.id ? "Deleting…" : "Delete file"}
+                  </button>
+                  <button
+                    className="text-sm text-faint hover:text-fg"
+                    disabled={busyId === doc.id}
+                    onClick={() => setConfirmId("")}
+                    type="button"
+                  >
+                    Keep
+                  </button>
+                </span>
               ) : null}
             </div>
           ))

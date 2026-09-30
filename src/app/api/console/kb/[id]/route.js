@@ -1,5 +1,6 @@
 import { consoleContext, jsonError } from "@/lib/console/http";
 import { routeId } from "@/lib/scripts/http";
+import { KB_BUCKET, deleteKnowledgeDocument } from "@/lib/kb/documents";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -61,5 +62,55 @@ export async function PATCH(request, { params }) {
     return jsonError("Nothing to update.", 400);
   } catch (error) {
     return jsonError(error.message || "Unexpected error", error.status || 500);
+  }
+}
+
+export async function DELETE(request, { params }) {
+  try {
+    const ctx = await consoleContext(request);
+    if (ctx.response) return ctx.response;
+    const { session, supabase } = ctx;
+    const id = await routeId(params);
+
+    const { data: doc, error } = await supabase
+      .from("kb_documents")
+      .select("id, tenant_id, owner_agent_id, storage_path")
+      .eq("id", id)
+      .maybeSingle();
+    if (error) {
+      console.error("[kb] document lookup failed", error.message);
+      return jsonError("Could not delete that document. Try again.", 502);
+    }
+
+    const result = await deleteKnowledgeDocument({
+      doc,
+      session,
+      removeObject: async (storagePath) => {
+        const { error: removeError } = await supabase.storage
+          .from(KB_BUCKET)
+          .remove([storagePath]);
+        if (removeError) {
+          console.error("[kb] storage delete failed", removeError.message);
+          return { ok: false };
+        }
+        return { ok: true };
+      },
+      deleteRow: async (docId) => {
+        const { data, error: deleteError } = await supabase
+          .from("kb_documents")
+          .delete()
+          .eq("id", docId)
+          .eq("tenant_id", session.tenantId)
+          .eq("owner_agent_id", session.agentId)
+          .select("id");
+        if (deleteError) throw new Error(deleteError.message);
+        if (!data?.length) throw new Error("Document row was not deleted");
+      },
+    });
+    if (!result.ok) return jsonError(result.error, result.status);
+    return Response.json({ ok: true });
+  } catch (error) {
+    console.error("[kb] delete failed", error?.message || error);
+    return jsonError("Could not delete that document. Try again.", 500);
   }
 }

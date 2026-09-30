@@ -14,6 +14,8 @@ import { ConsoleShell } from "@/components/console/console-shell";
 import { WhatsAppConnect } from "@/components/console/whatsapp-connect";
 import { Tooltip } from "@/components/console/tooltip";
 import { consoleBase, consoleJson } from "@/lib/console/client";
+import { uploadKnowledgeFile } from "@/lib/console/kb-upload";
+import { KB_ACCEPT } from "@/lib/kb/documents";
 import { tenantWhatsAppLink } from "@/lib/console/format";
 
 function ChoicePoint({ children }) {
@@ -96,14 +98,7 @@ export function JoinWizard({ tenant, previewChoice = false }) {
 
   async function uploadFiles(files) {
     for (const file of files) {
-      const form = new FormData();
-      form.set("file", file);
-      form.set("scope", "tenant");
-      await consoleJson(base, "/api/console/kb", {
-        method: "POST",
-        body: form,
-        fallback: "Upload failed.",
-      });
+      await uploadKnowledgeFile(base, file, "tenant");
     }
   }
 
@@ -400,8 +395,8 @@ export function JoinWizard({ tenant, previewChoice = false }) {
           <div>
             <Label>Team material</Label>
             <Drop
-              accept=".pdf,.txt,.md,.csv,.png,.jpg"
-              hint="Price lists, payment plans, brochures. Everyone on the team can quote from these."
+              accept={KB_ACCEPT}
+              hint="Price lists, payment plans, brochures. PDF, TXT, MD, CSV, PNG, or JPG. Up to 20 MB."
               onFiles={(files) =>
                 uploadFiles(files).catch((err) => setError(err.message))
               }

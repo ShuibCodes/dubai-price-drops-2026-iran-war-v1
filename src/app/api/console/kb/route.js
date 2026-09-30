@@ -1,9 +1,18 @@
 import { consoleContext, jsonError } from "@/lib/console/http";
+import {
+  KB_BUCKET,
+  KB_ERRORS,
+  buildKnowledgeStoragePath,
+  createKnowledgeRowAfterUpload,
+  inspectKnowledgeFile,
+  knowledgeInsert,
+  publicKnowledgeDocument,
+} from "@/lib/kb/documents";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const BUCKET = "kb-documents";
+const BUCKET = KB_BUCKET;
 
 async function visibleDocs(supabase, session) {
   const [{ data: docs, error }, { data: hidden, error: hiddenError }] = await Promise.all([
@@ -59,11 +68,18 @@ export async function POST(request) {
       return jsonError("file is required.", 400);
     }
 
-    const filename = String(file.name || "untitled").slice(0, 180);
-    const bytes = Number(file.size) || 0;
+    const inspected = inspectKnowledgeFile({ name: file.name, size: file.size });
+    if (!inspected.ok) return jsonError(inspected.error, inspected.status);
+    if (inspected.direct) return jsonError(KB_ERRORS.tooBigForForm, 413);
+
     const buffer = Buffer.from(await file.arrayBuffer());
     const id = crypto.randomUUID();
-    const storagePath = `${session.tenantId}/${session.agentId}/${id}-${filename}`;
+    const storagePath = buildKnowledgeStoragePath({
+      tenantId: session.tenantId,
+      agentId: session.agentId,
+      filename: inspected.filename,
+      id,
+    });
 
     const { error: uploadError } = await supabase.storage
       .from(BUCKET)
@@ -72,30 +88,38 @@ export async function POST(request) {
         upsert: false,
       });
     if (uploadError) {
-      return jsonError(`Upload failed: ${uploadError.message}`, 502);
+      console.error("[kb] storage upload failed", uploadError.message);
     }
 
-    const textLike = /\.(txt|md|csv|json)$/i.test(filename);
-    const { data, error } = await supabase
-      .from("kb_documents")
-      .insert({
-        tenant_id: session.tenantId,
-        owner_agent_id: session.agentId,
-        scope,
-        filename,
-        storage_path: storagePath,
-        bytes,
-        parsed_at: textLike ? new Date().toISOString() : null,
-        index_status: textLike ? "indexed" : "queued",
-      })
-      .select(
-        "id, filename, scope, owner_agent_id, bytes, index_status, parsed_at, created_at"
-      )
-      .single();
-    if (error) throw new Error(`KB insert failed: ${error.message}`);
+    const result = await createKnowledgeRowAfterUpload({
+      uploaded: !uploadError,
+      insert: async () => {
+        const { data, error } = await supabase
+          .from("kb_documents")
+          .insert(
+            knowledgeInsert(session, {
+              scope,
+              filename: inspected.filename,
+              storagePath,
+              bytes: inspected.bytes,
+            })
+          )
+          .select(
+            "id, filename, scope, owner_agent_id, bytes, index_status, parsed_at, created_at"
+          )
+          .single();
+        if (error) throw new Error(error.message);
+        return publicKnowledgeDocument(data);
+      },
+      removeOrphan: async () => {
+        await supabase.storage.from(BUCKET).remove([storagePath]);
+      },
+    });
+    if (!result.ok) return jsonError(result.error, result.status);
 
-    return Response.json({ document: { ...data, inherited: false, hidden: false, mine: true } }, { status: 201 });
+    return Response.json({ document: result.document }, { status: 201 });
   } catch (error) {
-    return jsonError(error.message || "Unexpected error", error.status || 500);
+    console.error("[kb] upload failed", error?.message || error);
+    return jsonError(KB_ERRORS.storage, 500);
   }
 }
