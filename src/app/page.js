@@ -1,4 +1,5 @@
 import AgentZeroLandingPage from "@/components/landing/agentzero-landing-page";
+import Script from "next/script";
 
 export const metadata = {
   title: "AgentZero — Sterling Boulevard Real Estate",
@@ -7,5 +8,15 @@ export const metadata = {
 };
 
 export default function Home() {
-  return <AgentZeroLandingPage />;
+  return (
+    <>
+      <Script
+        defer
+        data-website-id="dfid_aqzPmo9l06RAI6kjno3Ok"
+        data-domain="agentzero.ae"
+        src="https://datafa.st/js/script.js"
+      />
+      <AgentZeroLandingPage />
+    </>
+  );
 }
