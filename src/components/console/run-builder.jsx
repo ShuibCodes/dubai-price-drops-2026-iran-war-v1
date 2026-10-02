@@ -274,6 +274,7 @@ export function RunBuilder({ tenant }) {
     matched > 0 &&
     !needsUploadName &&
     (source !== "segment" || listName.trim().length >= 2);
+  const dailyCap = 200;
   const startLabel = saving
     ? "Queueing…"
     : !scriptId
@@ -286,9 +287,11 @@ export function RunBuilder({ tenant }) {
           ? "Name the list first"
           : counting
             ? "Counting…"
-            : windowStart
-              ? `Schedule ${matched} calls`
-              : `Start calling ${matched} people`;
+            : matched > dailyCap
+              ? `Queue ${matched} · ${dailyCap} a day`
+              : windowStart
+                ? `Schedule ${matched} calls`
+                : `Start calling ${matched} people`;
   const saveLabel = savingList
     ? "Saving…"
     : contacts.length && needsUploadName
@@ -535,8 +538,9 @@ export function RunBuilder({ tenant }) {
           </div>
         ) : null}
         <div className="text-sm text-faint">
-          Calls only go out inside calling hours, {home?.agent?.tz || "Asia/Dubai"}{" "}
-          time. Anything outside waits.
+          200 calls a day. Not all{" "}
+          {matched > 0 ? matched.toLocaleString("en-US") : "of them"} would go
+          out at once.
         </div>
       </div>
 
