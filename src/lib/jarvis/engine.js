@@ -321,7 +321,7 @@ export const jarvisToolDefinitions = [
   },
 ];
 
-function systemPrompt({ liveContext, savedListsPrompt, agentName, runStatusBlock }) {
+export function systemPrompt({ liveContext, savedListsPrompt, agentName, runStatusBlock }) {
   const who = String(agentName || "").trim() || "the agent";
   return `You are Jarvis — a live WhatsApp knowledge base and action desk.
 
