@@ -1,4 +1,3 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { listLeadSources, listScripts, startColdBatch } from "@/lib/copilot/tools";
 import {
   formatRunStatusBlock,
@@ -47,8 +46,8 @@ import {
 } from "@/lib/scripts/resolve";
 import { HELP_TEXT, isHelpMessage } from "@/lib/console/help";
 import { assertJarvisActor } from "@/lib/jarvis/visibility";
+import { createJarvisMessageClient } from "@/lib/jarvis/model-client";
 
-const MODEL = "claude-sonnet-4-6";
 const MAX_TOOL_ROUNDS = 5;
 // Fallback slug for /api/jarvis/chat and scripts when no sender phone is sent.
 // Live AZ WhatsApp does not use this — it resolves tenant from agents.wa_id.
@@ -654,7 +653,7 @@ export async function runJarvisTurn({
     console.error("[jarvis] scripts unavailable:", error.message);
   }
 
-  const client = new Anthropic({ apiKey });
+  const createMessage = createJarvisMessageClient({ anthropicApiKey: apiKey });
   const conversation = normalizeMessages(messages);
   if (!conversation.length || conversation.at(-1).role !== "user") {
     throw new Error("A final user message is required");
@@ -705,9 +704,7 @@ export async function runJarvisTurn({
     .join("\n");
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
-    const response = await client.messages.create({
-      model: MODEL,
-      max_tokens: 1400,
+    const { response } = await createMessage({
       system: systemPrompt({
         liveContext,
         savedListsPrompt,
