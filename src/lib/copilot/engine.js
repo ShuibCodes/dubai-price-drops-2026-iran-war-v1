@@ -261,7 +261,7 @@ export const copilotToolDefinitions = [
   },
 ];
 
-function systemPrompt(tenantName, agentName, runStatusBlock) {
+export function systemPrompt(tenantName, agentName, runStatusBlock) {
   return `You are the operations Copilot for ${tenantName}.
 You are assisting ${agentName || "a team member"}. Be concise, warm, and numbers-first.
 
