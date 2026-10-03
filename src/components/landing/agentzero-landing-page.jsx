@@ -378,7 +378,7 @@ export default function AgentZeroLandingPage() {
   return (
     <main className="min-h-screen bg-black font-medium text-white">
       <section className="border-b border-white/5">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-5 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-5 sm:px-6 lg:px-8">
           <Link href="/" aria-label="AgentZero home" className="shrink-0">
             <Image
               src="/brand/agentzero-lockup-horizontal.svg"
@@ -390,7 +390,13 @@ export default function AgentZeroLandingPage() {
               className="h-6 w-auto sm:h-7"
             />
           </Link>
-          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+          <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
+            <Link
+              href="/live-updates"
+              className="rounded-full border border-white/10 px-3 py-2 text-sm text-white transition hover:text-white sm:px-4"
+            >
+              Distressed deals
+            </Link>
             <a
               href={TYPEFORM_ENQUIRY_URL}
               target="_blank"
