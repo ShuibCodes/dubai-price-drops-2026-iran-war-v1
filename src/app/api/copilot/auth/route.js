@@ -20,11 +20,19 @@ async function findAgentByUsername(supabase, username) {
   if (!name) return null;
   const { data, error } = await supabase
     .from("agents")
-    .select("id, tenant_id, username, role, password_hash, tenants!inner(id, slug)")
+    .select("id, tenant_id, username, role, password_hash")
     .ilike("username", name.replace(/[%_\\]/g, "\\$&"))
     .maybeSingle();
   if (error) throw new Error(`Agent lookup failed: ${error.message}`);
-  return data || null;
+  if (!data?.tenant_id) return null;
+  const { data: tenant, error: tenantError } = await supabase
+    .from("tenants")
+    .select("id, slug")
+    .eq("id", data.tenant_id)
+    .maybeSingle();
+  if (tenantError) throw new Error(`Agent lookup failed: ${tenantError.message}`);
+  if (!tenant?.id) return null;
+  return { ...data, tenants: { id: tenant.id, slug: tenant.slug } };
 }
 
 export async function POST(request) {
