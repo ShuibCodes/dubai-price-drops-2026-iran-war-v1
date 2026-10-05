@@ -6,6 +6,7 @@ import { handleContactConfirmationMessage } from "@/lib/jarvis/contacts";
 import { getPendingContact } from "@/lib/jarvis/pending-contact";
 import { getPendingRelay } from "@/lib/jarvis/pending-relay";
 import { handleRelayConfirmationMessage } from "@/lib/jarvis/relay";
+import { withJarvisConversation } from "@/lib/jarvis/conversation";
 import { resolveJarvisSender } from "@/lib/jarvis/resolve-sender";
 import {
   getSenderState,
@@ -15,6 +16,7 @@ import {
 } from "@/lib/whatsapp/state-store";
 import {
   sendWhatsAppText,
+  plainJarvisWhatsAppText,
   truncateWhatsAppBody,
   twilioRestConfigured,
 } from "@/lib/whatsapp/twilio-send";
@@ -26,7 +28,7 @@ export const maxDuration = 90;
 const TEMPORARY_FAILURE_REPLY =
   "I hit a temporary issue. Please try again in a moment.";
 const ANTHROPIC_CREDITS_REPLY =
-  "AgentZero is out of Anthropic credits. Add credits in Anthropic Billing, then try again.";
+  "AgentZero is out of credits. Add credits in billing, then try again.";
 
 function failureReply(error) {
   const message = error instanceof Error ? error.message : String(error || "");
@@ -59,79 +61,84 @@ function xmlResponse(xml) {
   });
 }
 
+async function composeJarvisReply(sender, userText, messages) {
+  const senderPhone = sender.waId;
+  const contactConfirm = await handleContactConfirmationMessage({
+    tenantId: sender.tenantId,
+    agentId: sender.agentId,
+    senderPhone,
+    message: userText,
+  });
+  if (contactConfirm?.handled) return truncateWhatsAppBody(contactConfirm.text);
+
+  const relayConfirm = await handleRelayConfirmationMessage({
+    tenantId: sender.tenantId,
+    agentId: sender.agentId,
+    senderPhone,
+    message: userText,
+  });
+  if (relayConfirm?.handled) return truncateWhatsAppBody(relayConfirm.text);
+
+  const result = await runJarvisTurn({
+    tenantId: sender.tenantId,
+    agentId: sender.agentId,
+    messages,
+    agentName: sender.agentName,
+    senderPhone,
+  });
+  return truncateWhatsAppBody(plainJarvisWhatsAppText(result.text));
+}
+
+async function replyWithDurableHistory({
+  from,
+  sender,
+  userText,
+  messageSid,
+  state,
+  deliver,
+}) {
+  const outcome = await withJarvisConversation({
+    tenantId: sender.tenantId,
+    agentId: sender.agentId,
+    senderPhone: sender.waId,
+    messageSid,
+    userText,
+    run: (messages) => composeJarvisReply(sender, userText, messages),
+    deliver,
+  });
+  const pendingRelay = await getPendingRelay(sender.waId).catch(() => null);
+  const pendingContact = await getPendingContact(sender.waId).catch(() => null);
+  setSenderState(from, {
+    ...state,
+    pendingRelay,
+    pendingContact,
+  });
+  return outcome;
+}
+
 async function runJarvisAndReply({
   from,
   to,
-  nextMessages,
   state,
   messageSid,
   userText,
   sender,
 }) {
   try {
-    const senderPhone = sender.waId;
-
-    const contactConfirm = await handleContactConfirmationMessage({
-      tenantId: sender.tenantId,
-      agentId: sender.agentId,
-      senderPhone,
-      message: userText,
-    });
-    if (contactConfirm?.handled) {
-      const replyText = truncateWhatsAppBody(contactConfirm.text);
-      await sendWhatsAppText({ to: from, from: to, body: replyText });
-      setSenderState(from, {
-        ...state,
-        mode: "jarvis",
-        messages: [
-          ...nextMessages,
-          { role: "assistant", content: replyText },
-        ].slice(-30),
-      });
-      return;
-    }
-
-    const relayConfirm = await handleRelayConfirmationMessage({
-      tenantId: sender.tenantId,
-      agentId: sender.agentId,
-      senderPhone,
-      message: userText,
-    });
-    if (relayConfirm?.handled) {
-      const replyText = truncateWhatsAppBody(relayConfirm.text);
-      await sendWhatsAppText({ to: from, from: to, body: replyText });
-      setSenderState(from, {
-        ...state,
-        mode: "jarvis",
-        messages: [
-          ...nextMessages,
-          { role: "assistant", content: replyText },
-        ].slice(-30),
-      });
-      return;
-    }
-
-    const result = await runJarvisTurn({
-      tenantId: sender.tenantId,
-      agentId: sender.agentId,
-      messages: nextMessages,
-      agentName: sender.agentName,
-      senderPhone,
-    });
-    const replyText = truncateWhatsAppBody(result.text);
-    await sendWhatsAppText({ to: from, from: to, body: replyText });
-    const pendingRelay = await getPendingRelay(senderPhone).catch(() => null);
-    const pendingContact = await getPendingContact(senderPhone).catch(() => null);
-    setSenderState(from, {
-      ...state,
-      mode: "jarvis",
-      pendingRelay,
-      pendingContact,
-      messages: [...nextMessages, { role: "assistant", content: replyText }].slice(
-        -30
-      ),
+    await replyWithDurableHistory({
+      from,
+      sender,
+      userText,
+      messageSid,
+      state,
+      deliver: async (text) => {
+        await sendWhatsAppText({ to: from, from: to, body: text });
+      },
     });
   } catch (error) {
+    // A failed WhatsApp send is caught inside the conversation turn and leaves
+    // sent_at unset. This catch is for model and lease failures, so it does not
+    // also send a generic failure after the saved answer.
     const message = error instanceof Error ? error.message : String(error);
     console.error("WhatsApp Jarvis async error:", message, error);
     try {
@@ -142,10 +149,6 @@ async function runJarvisAndReply({
       });
     } catch (sendError) {
       console.error("WhatsApp Jarvis failure reply failed:", sendError);
-    }
-  } finally {
-    if (messageSid) {
-      markProcessedMessageSid(from, messageSid);
     }
   }
 }
@@ -197,14 +200,14 @@ export async function POST(request) {
     }
 
     if (useJarvis && twilioRestConfigured() && to) {
-      if (messageSid) markProcessedMessageSid(from, messageSid);
+      // Known Jarvis duplicates are decided by the durable MessageSid row.
+      // Marking the sid here would drop a same-process retry of an unsent turn.
       waitUntil(
         runJarvisAndReply({
           from,
           to,
-          nextMessages,
           state,
-          messageSid: null,
+          messageSid,
           userText: body,
           sender,
         })
@@ -218,45 +221,23 @@ export async function POST(request) {
       );
     }
 
-    let replyText;
+    let replyText = "";
     let nextState = state;
 
     if (useJarvis) {
-      const contactConfirm = await handleContactConfirmationMessage({
-        tenantId: sender.tenantId,
-        agentId: sender.agentId,
-        senderPhone: sender.waId,
-        message: body,
+      const outcome = await replyWithDurableHistory({
+        from,
+        sender,
+        userText: body,
+        messageSid,
+        state,
+        deliver: async (text) => {
+          replyText = text;
+        },
       });
-      if (contactConfirm?.handled) {
-        replyText = truncateWhatsAppBody(contactConfirm.text);
-      } else {
-        const relayConfirm = await handleRelayConfirmationMessage({
-          tenantId: sender.tenantId,
-          agentId: sender.agentId,
-          senderPhone: sender.waId,
-          message: body,
-        });
-        if (relayConfirm?.handled) {
-          replyText = truncateWhatsAppBody(relayConfirm.text);
-        } else {
-          const result = await runJarvisTurn({
-            tenantId: sender.tenantId,
-            agentId: sender.agentId,
-            messages: nextMessages,
-            agentName: sender.agentName,
-            senderPhone: sender.waId,
-          });
-          replyText = truncateWhatsAppBody(result.text);
-        }
+      if (!replyText && outcome?.text && !outcome.duplicate && !outcome.abandoned) {
+        replyText = outcome.text;
       }
-      nextState = {
-        ...state,
-        mode: "jarvis",
-        messages: [...nextMessages, { role: "assistant", content: replyText }].slice(
-          -30
-        ),
-      };
     } else {
       const result = await runKbTurn({
         messages: nextMessages,
@@ -272,9 +253,9 @@ export async function POST(request) {
       };
     }
 
-    setSenderState(from, nextState);
-    if (messageSid) {
-      markProcessedMessageSid(from, messageSid);
+    if (!useJarvis) {
+      setSenderState(from, nextState);
+      if (messageSid) markProcessedMessageSid(from, messageSid);
     }
 
     return xmlResponse(makeTwiml(replyText));

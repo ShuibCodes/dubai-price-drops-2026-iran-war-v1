@@ -200,7 +200,9 @@ const whatsappRoute = await readFile(
 );
 check(
   "both Twilio Jarvis paths pass the resolved agentId",
-  whatsappRoute.match(/agentId: sender\.agentId/g)?.length === 6
+  (whatsappRoute.match(/await replyWithDurableHistory\(\{/g) || []).length === 2 &&
+    (whatsappRoute.match(/agentId: sender\.agentId/g) || []).length === 4 &&
+    (whatsappRoute.match(/runJarvisTurn\(/g) || []).length === 1
 );
 
 const leadTools = await readFile(

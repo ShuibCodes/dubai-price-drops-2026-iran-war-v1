@@ -73,24 +73,36 @@ function trimForWhatsapp(text) {
   return `${clean.slice(0, WHATSAPP_REPLY_CHAR_LIMIT - 3)}...`;
 }
 
+function normalizeKbConfirmText(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const AFFIRMATIVE_EXACT = new Set([
+  "yes",
+  "y",
+  "yeah",
+  "yep",
+  "go ahead",
+  "do it",
+  "please do",
+  "confirm",
+  "send it",
+  "resend",
+  "retry",
+]);
+
+const NEGATIVE_EXACT = new Set(["no", "nah", "nope", "cancel", "stop"]);
+
 function isAffirmative(text) {
-  const normalized = text.replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
-  const affirmativePhrases = [
-    "yes",
-    "yeah",
-    "yep",
-    "go ahead",
-    "do it",
-    "please do",
-    "sure",
-    "ok",
-    "okay",
-    "confirm",
-    "send it",
-    "resend",
-    "retry",
-  ];
-  return affirmativePhrases.some((phrase) => normalized.includes(phrase));
+  return AFFIRMATIVE_EXACT.has(normalizeKbConfirmText(text));
+}
+
+function isNegative(text) {
+  return NEGATIVE_EXACT.has(normalizeKbConfirmText(text));
 }
 
 function extractNameForCall(text) {
@@ -255,9 +267,17 @@ async function runCommandPath(lastUserMessage, messageHistory, state) {
     Date.now() > state.pendingConfirmationExpiry;
   const wantsToSendCall = isAffirmative(normalized) && hasPendingCallApproval;
   const wantsToSendEmail = isAffirmative(normalized) && hasPendingEmailApproval;
-  const wantsToCancel =
-    (hasPendingEmailApproval || hasPendingCallApproval) &&
-    (normalized.includes("cancel") || normalized.includes("stop") || normalized.includes("no"));
+  const wantsToCancel = hasPendingAction && isNegative(normalized);
+
+  if (hasPendingAction && !wantsToSendCall && !wantsToSendEmail && !wantsToCancel) {
+    return {
+      handled: true,
+      text: hasPendingCallApproval
+        ? "Please reply yes to place the call."
+        : "Please reply yes to send the email.",
+      nextState: state,
+    };
+  }
 
   if ((wantsToSendCall || wantsToSendEmail) && isPendingExpired) {
     return {
