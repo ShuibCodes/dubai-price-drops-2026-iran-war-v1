@@ -53,6 +53,7 @@ function createMemorySupabase(seed = {}) {
       return (store[table] || []).filter((row) =>
         state.filters.every((f) => {
           if (f.type === "eq") return row[f.k] === f.v;
+          if (f.type === "neq") return row[f.k] !== f.v;
           if (f.type === "in") return f.v.includes(row[f.k]);
           if (f.type === "not-null") return row[f.k] != null;
           if (f.type === "gte") return String(row[f.k] || "") >= f.v;
@@ -100,6 +101,13 @@ function createMemorySupabase(seed = {}) {
       },
       eq(k, v) {
         state.filters.push({ type: "eq", k, v });
+        return chain;
+      },
+      neq(k, v) {
+        state.filters.push({ type: "neq", k, v });
+        return chain;
+      },
+      or() {
         return chain;
       },
       in(k, v) {

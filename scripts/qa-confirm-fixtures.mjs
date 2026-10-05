@@ -67,6 +67,14 @@ function memoryQuery(rows) {
       state.filters.push([column, value]);
       return api;
     },
+    neq(column, value) {
+      state.filters.push([column, value, "neq"]);
+      return api;
+    },
+    in(column, values) {
+      state.filters.push([column, values, "in"]);
+      return api;
+    },
     or() {
       return api;
     },
@@ -91,7 +99,11 @@ function memoryQuery(rows) {
   };
 
   function matches(row) {
-    return state.filters.every(([column, value]) => row[column] === value);
+    return state.filters.every(([column, value, op]) => {
+      if (op === "neq") return row[column] !== value;
+      if (op === "in") return Array.isArray(value) && value.includes(row[column]);
+      return row[column] === value;
+    });
   }
 
   function finish(single) {

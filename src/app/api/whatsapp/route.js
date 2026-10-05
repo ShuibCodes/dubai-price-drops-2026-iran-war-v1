@@ -8,6 +8,7 @@ import { getPendingRelay } from "@/lib/jarvis/pending-relay";
 import { handleRelayConfirmationMessage } from "@/lib/jarvis/relay";
 import { withJarvisConversation } from "@/lib/jarvis/conversation";
 import { resolveJarvisSender } from "@/lib/jarvis/resolve-sender";
+import { bindAgentZeroInboundTo } from "@/lib/jarvis/self-chat";
 import {
   getSenderState,
   hasProcessedMessageSid,
@@ -91,21 +92,24 @@ async function composeJarvisReply(sender, userText, messages) {
 
 async function replyWithDurableHistory({
   from,
+  to,
   sender,
   userText,
   messageSid,
   state,
   deliver,
 }) {
-  const outcome = await withJarvisConversation({
-    tenantId: sender.tenantId,
-    agentId: sender.agentId,
-    senderPhone: sender.waId,
-    messageSid,
-    userText,
-    run: (messages) => composeJarvisReply(sender, userText, messages),
-    deliver,
-  });
+  const outcome = await bindAgentZeroInboundTo(to, () =>
+    withJarvisConversation({
+      tenantId: sender.tenantId,
+      agentId: sender.agentId,
+      senderPhone: sender.waId,
+      messageSid,
+      userText,
+      run: (messages) => composeJarvisReply(sender, userText, messages),
+      deliver,
+    })
+  );
   const pendingRelay = await getPendingRelay(sender.waId).catch(() => null);
   const pendingContact = await getPendingContact(sender.waId).catch(() => null);
   setSenderState(from, {
@@ -127,6 +131,7 @@ async function runJarvisAndReply({
   try {
     await replyWithDurableHistory({
       from,
+      to,
       sender,
       userText,
       messageSid,
@@ -227,6 +232,7 @@ export async function POST(request) {
     if (useJarvis) {
       const outcome = await replyWithDurableHistory({
         from,
+        to,
         sender,
         userText: body,
         messageSid,

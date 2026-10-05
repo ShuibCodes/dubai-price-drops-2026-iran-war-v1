@@ -1,4 +1,8 @@
 import { JARVIS_LEADS_TABLE } from "@/lib/ingest/jarvis-ingest";
+import {
+  excludeAgentZeroSelfChat,
+  isAgentZeroSelfContact,
+} from "@/lib/jarvis/self-chat";
 
 export function assertJarvisActor({ tenantId, agentId } = {}) {
   if (!tenantId) throw new Error("tenantId is required");
@@ -7,14 +11,17 @@ export function assertJarvisActor({ tenantId, agentId } = {}) {
 
 export function inboxLeadVisible(lead, agentId) {
   if (!lead || !agentId) return false;
+  if (isAgentZeroSelfContact(lead.wa_id)) return false;
   return !lead.assigned_agent_id || lead.assigned_agent_id === agentId;
 }
 
 export function applyVisibleInboxLeadScope(query, { tenantId, agentId } = {}) {
   assertJarvisActor({ tenantId, agentId });
-  return query
-    .eq("tenant_id", tenantId)
-    .or(`assigned_agent_id.is.null,assigned_agent_id.eq.${agentId}`);
+  return excludeAgentZeroSelfChat(
+    query
+      .eq("tenant_id", tenantId)
+      .or(`assigned_agent_id.is.null,assigned_agent_id.eq.${agentId}`)
+  );
 }
 
 export function applyCampaignAgentScope(query, { tenantId, agentId } = {}) {

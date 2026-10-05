@@ -45,6 +45,10 @@ function memorySupabase(seed) {
           );
           return chain;
         },
+        neq(key, value) {
+          filters.push((row) => row[key] !== value);
+          return chain;
+        },
         maybeSingle() {
           const data = seed.filter((row) => filters.every((fn) => fn(row)))[0] || null;
           return Promise.resolve({ data, error: null });

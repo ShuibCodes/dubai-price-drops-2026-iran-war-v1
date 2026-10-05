@@ -15,6 +15,7 @@ import {
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { verifyConfiguredWebhookSecret } from "@/lib/security/webhook-secret";
 import { resolveCompletedCallContext } from "@/lib/vapi/webhook-leads";
+import { agentZeroWhatsAppFromAddress } from "@/lib/jarvis/self-chat";
 import {
   sendWhatsAppText,
   truncateWhatsAppBody,
@@ -180,18 +181,6 @@ async function upsertCompletedCall(details, qualification) {
   return { call: callRecord, lead };
 }
 
-function twilioWhatsAppFrom() {
-  const configured = String(process.env.TWILIO_WHATSAPP_FROM || "").trim();
-  if (configured) {
-    return configured.startsWith("whatsapp:")
-      ? configured
-      : `whatsapp:${configured}`;
-  }
-  const phone = String(process.env.TWILIO_PHONE_NUMBER || "").trim();
-  if (!phone) return null;
-  return phone.startsWith("whatsapp:") ? phone : `whatsapp:${phone}`;
-}
-
 async function processRelayCallEnd(details) {
   const relay = await updateRelayCallFromWebhook({
     vapiCallId: details.callId,
@@ -209,7 +198,7 @@ async function processRelayCallEnd(details) {
   }
 
   if (twilioRestConfigured() && relay.sender_phone) {
-    const from = twilioWhatsAppFrom();
+    const from = agentZeroWhatsAppFromAddress();
     const to = `whatsapp:+${String(relay.sender_phone).replace(/\D/g, "")}`;
     if (from && to) {
       const summaryLine =
