@@ -236,6 +236,29 @@ export function createSidStore() {
         };
         return api;
       }
+      if (table === "tenants") {
+        const filters = [];
+        const api = {
+          select() {
+            return api;
+          },
+          eq(col, value) {
+            filters.push([col, value]);
+            return api;
+          },
+          maybeSingle() {
+            const id = filters.find(([col]) => col === "id")?.[1];
+            if (id === "11111111-1111-4111-8111-111111111111") {
+              return Promise.resolve({
+                data: { id, name: "Workspace", slug: "workspace" },
+                error: null,
+              });
+            }
+            return Promise.resolve({ data: null, error: null });
+          },
+        };
+        return api;
+      }
       if (table !== "jarvis_conversation_messages") {
         const api = {
           select() {

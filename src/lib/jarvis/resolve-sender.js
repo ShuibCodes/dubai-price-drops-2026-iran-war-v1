@@ -24,12 +24,21 @@ export async function resolveJarvisSender(senderPhone) {
 
   const { data: agent, error } = await supabase
     .from("agents")
-    .select("id, name, username, role, wa_id, tenant_id, tenants!inner(id, name, slug)")
+    .select("id, name, username, role, wa_id, tenant_id")
     .eq("wa_id", waId)
     .maybeSingle();
 
   if (error) throw new Error(`Jarvis sender lookup failed: ${error.message}`);
-  if (!agent?.tenant_id || !agent.tenants?.id) return null;
+  if (!agent?.tenant_id) return null;
+
+  const { data: tenant, error: tenantError } = await supabase
+    .from("tenants")
+    .select("id, name, slug")
+    .eq("id", agent.tenant_id)
+    .maybeSingle();
+
+  if (tenantError) throw new Error(`Jarvis sender lookup failed: ${tenantError.message}`);
+  if (!tenant?.id) return null;
 
   const agentName =
     String(agent.name || "").trim() ||
@@ -43,7 +52,7 @@ export async function resolveJarvisSender(senderPhone) {
     role: agent.role === "admin" ? "admin" : "agent",
     waId: agent.wa_id,
     tenantId: agent.tenant_id,
-    tenantName: agent.tenants.name || agent.tenants.slug || "workspace",
-    tenantSlug: agent.tenants.slug || null,
+    tenantName: tenant.name || tenant.slug || "workspace",
+    tenantSlug: tenant.slug || null,
   };
 }
