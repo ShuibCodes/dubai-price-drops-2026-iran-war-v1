@@ -1,0 +1,14 @@
+{
+  "type": "email.received",
+  "created_at": "2026-02-22T23:41:12.126Z",
+  "data": {
+    "email_id": "56761188-7520-42d8-8898-ff6fc54ce618",
+    "created_at": "2026-02-22T23:41:11.894Z",
+    "from": "noreply@dubizzle.com",
+    "to": ["sterling-k8f3x2@leads.agentzero.ae"],
+    "bcc": [],
+    "cc": [],
+    "message_id": "<111-222-333@email.example.com>",
+    "subject": "New enquiry on your listing"
+  }
+}
