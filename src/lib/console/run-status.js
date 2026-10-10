@@ -70,16 +70,22 @@ export function worthTone(score) {
   return null;
 }
 
-/** First substantial thing the lead said — the console highlight quote. */
+const NO_USEFUL_DETAILS = "No useful details shared";
+
+/** Highlight line for a call: the saved positive-signal recap, or the lead's first real line. */
 export function quotedSentence(call) {
+  const qualification =
+    call?.qualification && typeof call.qualification === "object" ? call.qualification : {};
+  if (Object.prototype.hasOwnProperty.call(qualification, "headline")) {
+    return String(qualification.headline || "").trim() || NO_USEFUL_DETAILS;
+  }
+
   const transcript = String(call?.transcript || "");
   const lines = transcript
     .split("\n")
     .map((line) => line.replace(/^(User|Lead|Customer)\s*:\s*/i, "").trim())
     .filter((line) => line && !/^(AI|Assistant|Agent)\s*:/i.test(line));
-  const sentence =
-    lines.find((line) => line.length > 12) || String(call?.summary || "").trim();
-  return sentence.slice(0, 240);
+  return (lines.find((line) => line.length > 12) || "").slice(0, 240);
 }
 
 function personFrom(row) {

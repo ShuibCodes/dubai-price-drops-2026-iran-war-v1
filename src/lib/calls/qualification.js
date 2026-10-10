@@ -317,7 +317,89 @@ export async function resolveQualification({
     qualification.crm_note = composeCrmNote(qualification, summary);
   }
 
+  if (clean(transcript)) {
+    const headline = await summarizeCallOneLine({ transcript, summary });
+    // null means the model call failed. Leave headline unset so a later
+    // page load can try again. "" means the call had no positive signal.
+    if (headline !== null) qualification.headline = headline;
+  }
+
   return qualification;
+}
+
+const HEADLINE_WORD_CAP = 10;
+
+function capHeadline(text) {
+  const line = clean(String(text || "").split("\n")[0])
+    .replace(/^["“]+|["”]+$/g, "")
+    .replace(/[.]+$/g, "")
+    .trim();
+  if (!line || /^none\b/i.test(line)) return "";
+  return line.split(/\s+/).filter(Boolean).slice(0, HEADLINE_WORD_CAP).join(" ");
+}
+
+/**
+ * One 5–8 word fragment of the positive signals in a call.
+ * Returns "" when the transcript has none, and null when generation fails
+ * so the caller can leave headline unset and retry later.
+ */
+export async function summarizeCallOneLine({ transcript, summary } = {}) {
+  if (!clean(transcript)) return "";
+
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    console.warn("summarizeCallOneLine: ANTHROPIC_API_KEY not set");
+    return null;
+  }
+
+  const prompt = `You are reading an outbound phone call transcript.
+Write ONE fragment of 5 to 8 words covering only the positive signals a broker can act on.
+Positive signals: property details the lead shared (unit type, area, rented or vacant, lease end), a timeline or callback window, a budget, intent to sell, buy or rent, or openness to hearing offers or a follow-up.
+Ignore rejections, confusion, greetings, and "not interested" lines.
+No quotes, no names, no trailing period.
+If the call has no positive signal at all, reply with exactly NONE.
+
+Examples:
+Owns 2BR in JVC, rented till March
+Open to revisiting in a month
+Budget 2M, wants Marina
+
+Summary:
+${clean(summary) || "(none)"}
+
+Transcript:
+${clean(transcript)}`;
+
+  try {
+    const response = await fetch(ANTHROPIC_API_URL, {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: ANTHROPIC_MODEL,
+        max_tokens: 30,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      console.error("summarizeCallOneLine: Anthropic error", body?.error?.message);
+      return null;
+    }
+
+    const rawText = (body.content || [])
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("\n");
+    return capHeadline(rawText);
+  } catch (error) {
+    console.error("summarizeCallOneLine:", error.message);
+    return null;
+  }
 }
 
 /** Map tenant slug / call source → qualification profile. */
