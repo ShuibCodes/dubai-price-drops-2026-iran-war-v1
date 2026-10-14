@@ -97,6 +97,7 @@ async function runJarvisAndReply({
       messages: nextMessages,
       agentName: sender.agentName,
       senderPhone,
+      agentId: sender.agentId,
     });
     const replyText = truncateWhatsAppBody(result.text);
     await sendWhatsAppText({ to: from, from: to, body: replyText });
@@ -223,6 +224,7 @@ export async function POST(request) {
             messages: nextMessages,
             agentName: sender.agentName,
             senderPhone: sender.waId,
+            agentId: sender.agentId,
           });
           replyText = truncateWhatsAppBody(result.text);
         }

@@ -5,6 +5,8 @@ import {
   listSavedLists,
   matchSavedList,
 } from "@/lib/console/lists";
+import { trustedAgentId } from "@/lib/calendar/dial-context";
+import { resolveJarvisSender } from "@/lib/jarvis/resolve-sender";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { draftLeadEmail, sendDraftEmail } from "@/lib/jarvis/email";
 import {
@@ -424,6 +426,7 @@ async function executeTool({
   input,
   tenantId,
   agentName,
+  agentId,
   messages,
   senderPhone,
   listMatch,
@@ -493,7 +496,7 @@ async function executeTool({
             "Ask the user to confirm the call (name + phone). Do not call the tool again this turn.",
         };
       }
-      return startJarvisTargetCall(tenantId, input.leadId, agentName || "Jarvis");
+      return startJarvisTargetCall(tenantId, input.leadId, agentName || "Jarvis", agentId);
     }
     case "start_cold_batch": {
       const source = String(input.source || "").trim() || listMatch?.name || "";
@@ -537,7 +540,8 @@ async function executeTool({
         agentName || "Jarvis",
         input.country,
         source,
-        phrase
+        phrase,
+        agentId
       );
     }
     case "draft_email":
@@ -561,8 +565,13 @@ async function executeTool({
   }
 }
 
-export async function runJarvisTurn({ tenantId, messages, agentName, senderPhone }) {
+export async function runJarvisTurn({ tenantId, messages, agentName, senderPhone, agentId = null }) {
   if (!tenantId) throw new Error("Resolved tenant ID is required");
+  let resolvedAgentId = trustedAgentId(agentId);
+  if (!resolvedAgentId && senderPhone) {
+    const sender = await resolveJarvisSender(senderPhone).catch(() => null);
+    resolvedAgentId = trustedAgentId(sender?.agentId);
+  }
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not configured");
 
@@ -638,6 +647,7 @@ export async function runJarvisTurn({ tenantId, messages, agentName, senderPhone
           input: toolUse.input || {},
           tenantId,
           agentName,
+          agentId: resolvedAgentId,
           messages,
           senderPhone,
           listMatch,

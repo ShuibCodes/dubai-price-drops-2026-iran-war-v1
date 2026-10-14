@@ -9,13 +9,16 @@ import { Label } from "@/components/ui/label";
 import { Strip } from "@/components/ui/strip";
 import { Toggle } from "@/components/ui/toggle";
 import { ConsoleShell } from "@/components/console/console-shell";
+import { CalendarConnect } from "@/components/console/calendar-connect";
 import { WhatsAppConnect } from "@/components/console/whatsapp-connect";
 import { waDeepLink } from "@/lib/console/format";
 
 export function JoinWizard({ tenant }) {
   const [profile, setProfile] = useState(null);
+  const [calendar, setCalendar] = useState(null);
   const [step, setStep] = useState(0);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
   const [sent, setSent] = useState(null);
 
@@ -29,6 +32,14 @@ export function JoinWizard({ tenant }) {
   const [briefTime, setBriefTime] = useState("07:30");
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const calendarResult = params.get("calendar");
+    if (calendarResult === "connected") {
+      setNotice("Google Calendar connected.");
+    } else if (calendarResult === "error") {
+      setError("Google Calendar could not be connected. Try again or skip.");
+    }
+
     fetch("/api/console/profile")
       .then(async (res) => {
         const body = await res.json().catch(() => ({}));
@@ -43,14 +54,31 @@ export function JoinWizard({ tenant }) {
         setLanguages((agent.languages || []).join(", ") || "English");
         setBriefOn(agent.brief_enabled !== false);
         setBriefTime(String(agent.brief_time || "07:30").slice(0, 5));
-        setStep(body.tenant?.whatsapp_connected ? 1 : 0);
+        if (calendarResult === "connected" || calendarResult === "error") {
+          setStep(2);
+        } else {
+          setStep(body.tenant?.whatsapp_connected ? 1 : 0);
+        }
       })
       .catch((err) => setError(err.message));
+
+    fetch("/api/console/calendar")
+      .then(async (res) => {
+        const body = await res.json().catch(() => ({}));
+        if (res.ok) setCalendar(body);
+      })
+      .catch(() => {});
   }, []);
 
-  const ticks = profile?.tenant?.whatsapp_connected ? [1, 2] : [0, 1, 2];
+  const ticks = profile?.tenant?.whatsapp_connected ? [1, 2, 3] : [0, 1, 2, 3];
   const stepLabel =
-    step === 0 ? "Connect WhatsApp" : step === 1 ? "About you" : "Morning brief";
+    step === 0
+      ? "Connect WhatsApp"
+      : step === 1
+        ? "About you"
+        : step === 2
+          ? "Calendar"
+          : "Morning brief";
 
   async function saveProfile(extra = {}) {
     const res = await fetch("/api/console/profile", {
@@ -127,6 +155,11 @@ export function JoinWizard({ tenant }) {
       {error ? (
         <Strip className="mb-4" tone="markup">
           <span>{error}</span>
+        </Strip>
+      ) : null}
+      {notice ? (
+        <Strip className="mb-4" tone="live">
+          <span>{notice}</span>
         </Strip>
       ) : null}
 
@@ -235,6 +268,44 @@ export function JoinWizard({ tenant }) {
       ) : null}
 
       {step === 2 ? (
+        <div className="space-y-5">
+          <p className="text-sm leading-6 text-ink-2">
+            Connect the Google Calendar this agent uses for viewings. AgentZero
+            owns the connection and uses it on calls. Skip if you will connect
+            later in Settings.
+          </p>
+          {calendar?.unavailable ? (
+            <Strip tone="markup">
+              <span>
+                Calendar storage is not available yet. Skip this step and
+                connect from Settings after it is enabled.
+              </span>
+            </Strip>
+          ) : null}
+          {calendar?.connected ? (
+            <p className="text-sm text-ink-2">
+              {calendar.label || calendar.email || "Google Calendar"}
+              {calendar.timezone ? ` · ${calendar.timezone}` : ""}
+              {" · connected"}
+            </p>
+          ) : (
+            <CalendarConnect
+              disabled={Boolean(calendar?.unavailable)}
+              next="join"
+            />
+          )}
+          <div className="flex gap-2 pt-2">
+            <Button onClick={() => setStep(3)} type="button">
+              Continue
+            </Button>
+            <Button onClick={() => setStep(3)} type="button" variant="ghost">
+              Skip
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      {step === 3 ? (
         <div className="space-y-5">
           <p className="text-sm leading-6 text-ink-2">
             Each morning AgentZero scans the overnight pipeline, ranks who is

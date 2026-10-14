@@ -9,6 +9,7 @@ import {
   isBatchQueueSource,
   nextDubaiSixPm,
 } from "../src/lib/calls/outbound.js";
+import { resolveQueueAgentId } from "../src/lib/calendar/dial-context.js";
 import { bumpBatchCount, refreshBatchStatus } from "../src/lib/console/batches.js";
 
 applyEnv(loadEnvFile());
@@ -78,7 +79,7 @@ async function main({ dryRun = false } = {}) {
 
   const { data: queueRows, error } = await supabase
     .from("call_queue")
-    .select("id, tenant_id, lead_id, jarvis_lead_id, scheduled_for, source, script_id, script_version_id, batch_id, leads(*), jarvis_leads(*)")
+    .select("id, tenant_id, lead_id, jarvis_lead_id, scheduled_for, source, script_id, script_version_id, batch_id, requested_by, leads(*), jarvis_leads(*)")
     .eq("processed", false)
     .is("processing_started_at", null)
     .lte("scheduled_for", now)
@@ -221,6 +222,11 @@ async function main({ dryRun = false } = {}) {
     }
     dialAttempts += 1;
     try {
+      const agentId = await resolveQueueAgentId(supabase, {
+        tenantId: item.tenant_id,
+        batchId: item.batch_id,
+        requestedBy: item.requested_by,
+      });
       await dialLeadNow({
         supabase,
         tenant,
@@ -230,6 +236,7 @@ async function main({ dryRun = false } = {}) {
         scriptId: item.script_id,
         scriptVersionId: item.script_version_id,
         batchId: item.batch_id,
+        agentId,
       });
 
       await updateQueueRow(supabase, item.id, {

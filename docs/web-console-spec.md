@@ -115,13 +115,17 @@ number; we are an official Meta tech provider; messages go through Meta’s
 Cloud API; the app is Meta-verified. Then the button. Already-connected
 tenants skip this step. There is no per-agent connect and no sync screen.
 
-Progress ticks: connect (if needed) → profile → brief.
+Progress ticks: connect (if needed) → profile → calendar → brief.
 
 **About you, and your material.** Profile: name, team, areas covered,
 typical ticket range, languages. Every field must change what AgentZero says or
 it doesn't belong. Then tenant material upload — price lists, payment plans,
 brochures — with inherited `scope: 'tenant'` docs shown pre-ticked and
 untickable-to-hide. Skippable.
+
+**Calendar.** Connect this agent's Google Calendar for viewings. One calendar
+per agent. AgentZero owns the connection. Skippable — can be connected later
+from Settings.
 
 **Morning brief.** Prose explaining the overnight pipeline scan. One
 toggle, one time. Then **"Send me one now →"**, which builds a real brief from
@@ -175,7 +179,7 @@ the <script> script`. **The same four must be returned by typing `help` in
 WhatsApp** — an agent who needs the cheat sheet is on their phone.
 
 ### `/copilot/[tenant]/settings`
-Number, brief time and timezone, data export, disconnect. Minimal.
+Number, brief time and timezone, **this agent’s Google Calendar**, data export, disconnect. Minimal. Calendar is per agent (`tenant_id` + `agent_id`), not the tenant WhatsApp number.
 
 ---
 

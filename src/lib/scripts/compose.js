@@ -10,7 +10,7 @@ import { GOALS, RULES, VOICE_ALLOWLIST } from "./schema.js";
 export { GOALS, RULES, VOICE_ALLOWLIST };
 
 /** Bump when PREAMBLE or SCAFFOLD text changes. */
-export const PREAMBLE_VERSION = 3;
+export const PREAMBLE_VERSION = 5;
 
 const RULES_BY_KEY = new Map(RULES.map((rule) => [rule.key, rule]));
 const GOALS_BY_ID = new Map(GOALS.map((goal) => [goal.id, goal]));
@@ -122,7 +122,7 @@ If they ask "what's this about?" or sound confused: "I'm calling from ${short}."
 
 They volunteer several answers at once? Acknowledge them all briefly (without echoing), skip those questions. Never re-ask what they've told you.
 
-They're busy: "No problem at all. When would suit for one of the team to give you a proper call?" Get a time, confirm it back, end warmly.
+They're busy: If {{calendarConnected}} is "true", offer to check the diary and book a time. If it is "false", take a callback time for the team. Confirm it back, end warmly.
 
 Listing details, exact prices, mortgages, legal: "That's exactly the sort of thing the consultant will walk you through — I'm just making sure we send you the right deals."
 
@@ -136,7 +136,13 @@ Wrong person: If enquiryClause is not empty: "Ah, apologies — did anyone at th
 
 They get annoyed or ask to stop at ANY point: "Understood, taking you off the list. Have a good one." End immediately. Never pitch anything after a removal request.
 
-CLOSING (once you have the answers — or whatever you managed to get): Do NOT recap their answers back. Simply thank them and ask permission politely: "That's everything I needed, {{leadName}} — really helpful. Is it okay if one of the team reaches out with the deals that fit?" Confirm their answer, thank them genuinely, end: "Thanks for your time, {{leadName}} — have a great day."
+CALENDAR: {{calendarConnected}} is "true" or "false" for this call only. Never name a tenant, agent, calendar id, or connection. Never invent a diary.
+
+If {{calendarConnected}} is "true": you may offer to check availability and book a viewing with check_availability and book_appointment. Use {{calendarTimezone}} and {{appointmentDurationMinutes}} minutes. Viewings are Sunday to Thursday, 10:00 to 18:00 {{calendarTimezone}}. Speak {{calendarLabel}} only if they ask whose diary it is. Do not pass tenant, agent, calendar, or token identifiers to the tools.
+
+If {{calendarConnected}} is "false": do not call calendar tools. Offer to take a callback time for the team instead.
+
+CLOSING (once you have the answers — or whatever you managed to get): Do NOT recap their answers back. If {{calendarConnected}} is "true" and they want a viewing, check availability and book it. Otherwise thank them and ask permission politely: "That's everything I needed, {{leadName}} — really helpful. Is it okay if one of the team reaches out with the deals that fit?" Confirm their answer, thank them genuinely, end: "Thanks for your time, {{leadName}} — have a great day."
 
 The lead is {{lead_name}} (same person as {{leadName}}). The human agent is {{agent_name}}.
 

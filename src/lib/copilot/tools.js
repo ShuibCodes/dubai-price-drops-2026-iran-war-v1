@@ -890,7 +890,8 @@ export async function startColdBatch(
   requestedBy,
   country,
   sourceFilter,
-  scriptPhrase
+  scriptPhrase,
+  agentId = null
 ) {
   const phrase = String(scriptPhrase || "").trim();
   if (!phrase) {
@@ -958,6 +959,7 @@ export async function startColdBatch(
         source: "copilot-cold-batch",
         requestedBy,
         scriptId: resolved.match.id,
+        agentId,
       });
       const byTimezone = {};
       for (const lead of leads) {
@@ -987,7 +989,7 @@ export async function startColdBatch(
   );
 }
 
-export async function startTargetCall(tenantId, leadId, requestedBy) {
+export async function startTargetCall(tenantId, leadId, requestedBy, agentId = null) {
   return auditedWrite(
     tenantId,
     "start_target_call",
@@ -1010,6 +1012,7 @@ export async function startTargetCall(tenantId, leadId, requestedBy) {
         tenant,
         lead,
         source: "copilot-target-call",
+        agentId,
       });
       return { ok: true, callId: result.callId };
     }
@@ -1033,7 +1036,8 @@ export async function scheduleBatch(
   requestedBy,
   spreadDays,
   country,
-  sourceFilter
+  sourceFilter,
+  agentId = null
 ) {
   const countryCode = normalizeCountryCode(country);
   return auditedWrite(
@@ -1118,6 +1122,7 @@ export async function scheduleBatch(
         scheduledTimes: schedule,
         source: "copilot-scheduled-batch",
         requestedBy,
+        agentId,
       });
       return {
         scheduled: queued.length,

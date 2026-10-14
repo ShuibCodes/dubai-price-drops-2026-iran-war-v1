@@ -102,6 +102,7 @@ export async function POST(request) {
       messages: body.messages,
       agentName,
       senderPhone,
+      agentId: sender?.agentId || null,
     });
 
     return Response.json({ message: result.text });

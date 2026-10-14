@@ -704,17 +704,18 @@ export async function setJarvisLeadName(tenantId, { leadId, phone, name } = {}) 
   };
 }
 
-async function dialJarvisLeadNow({ supabase, tenant, lead, source }) {
+async function dialJarvisLeadNow({ supabase, tenant, lead, source, agentId = null }) {
   return dialLeadNow({
     supabase,
     tenant,
     lead,
     source,
     jarvisLead: true,
+    agentId,
   });
 }
 
-export async function startJarvisTargetCall(tenantId, leadId, requestedBy) {
+export async function startJarvisTargetCall(tenantId, leadId, requestedBy, agentId = null) {
   const supabase = db();
   const tenant = await getOutboundTenant(supabase, tenantId);
   assertOutboundActive(tenant);
@@ -741,7 +742,7 @@ export async function startJarvisTargetCall(tenantId, leadId, requestedBy) {
       scheduled_for: scheduledFor,
       processed: false,
       source: "jarvis-target-call",
-      requested_by: requestedBy || null,
+      requested_by: agentId || requestedBy || null,
       script_id: pointer.script_id,
       script_version_id: pointer.script_version_id,
     });
@@ -754,6 +755,7 @@ export async function startJarvisTargetCall(tenantId, leadId, requestedBy) {
     tenant,
     lead,
     source: "jarvis-target-call",
+    agentId,
   });
   return { ok: true, callId: result.callId };
 }
