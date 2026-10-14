@@ -85,6 +85,15 @@ const VOICE_IDS = VOICE_ALLOWLIST.map((v) => v.id);
 const RULE_KEYS = RULES.map((r) => r.key);
 const LOCKED_RULE_KEYS = RULES.filter((r) => r.locked).map((r) => r.key);
 
+/** Default Vapi firstMessage. Existing scripts without the field keep this. */
+export const DEFAULT_FIRST_MESSAGE =
+  "If i continue for 30 seconds will you hang up in my face? or can i continue?";
+
+export function spokenFirstMessage(config) {
+  const text = String(config?.first_message || "").trim();
+  return text || DEFAULT_FIRST_MESSAGE;
+}
+
 const findOutItemSchema = z
   .strictObject({
     label: z.string().trim().min(1),
@@ -95,6 +104,11 @@ export const scriptConfigSchema = z
   .strictObject({
     goal: z.enum(GOAL_IDS),
     voice_id: z.enum(VOICE_IDS),
+    first_message: z
+      .string()
+      .max(200)
+      .optional()
+      .transform((value) => spokenFirstMessage({ first_message: value })),
     opening_line: z.string().max(200),
     find_out: z.array(findOutItemSchema).max(8),
     rules: z.array(z.enum(RULE_KEYS)),

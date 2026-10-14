@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Check } from "@/components/ui/check";
 import { Drop } from "@/components/ui/drop";
@@ -11,12 +13,28 @@ import { Toggle } from "@/components/ui/toggle";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { CalendarConnect } from "@/components/console/calendar-connect";
 import { WhatsAppConnect } from "@/components/console/whatsapp-connect";
-import { waDeepLink } from "@/lib/console/format";
+import { Tooltip } from "@/components/console/tooltip";
+import { consoleBase, consoleJson } from "@/lib/console/client";
+import { uploadKnowledgeFile } from "@/lib/console/kb-upload";
+import { KB_ACCEPT } from "@/lib/kb/documents";
+import { tenantWhatsAppLink } from "@/lib/console/format";
 
-export function JoinWizard({ tenant }) {
+function ChoicePoint({ children }) {
+  return (
+    <li className="flex gap-3 text-[15px] leading-relaxed text-fg-soft">
+      <span className="mt-[9px] h-1.5 w-1.5 shrink-0 rounded-full bg-az" />
+      <span>{children}</span>
+    </li>
+  );
+}
+
+export function JoinWizard({ tenant, previewChoice = false }) {
+  const router = useRouter();
   const [profile, setProfile] = useState(null);
   const [calendar, setCalendar] = useState(null);
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(-1);
+  const [path, setPath] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
@@ -31,6 +49,8 @@ export function JoinWizard({ tenant }) {
   const [briefOn, setBriefOn] = useState(true);
   const [briefTime, setBriefTime] = useState("07:30");
 
+  const base = consoleBase(tenant);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const calendarResult = params.get("calendar");
@@ -40,10 +60,10 @@ export function JoinWizard({ tenant }) {
       setError("Google Calendar could not be connected. Try again or skip.");
     }
 
-    fetch("/api/console/profile")
-      .then(async (res) => {
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(body.error || "Could not load profile.");
+    consoleJson(base, "/api/console/profile", {
+      fallback: "Could not load profile.",
+    })
+      .then((body) => {
         setProfile(body);
         const agent = body.agent || {};
         setName(agent.name || "");
@@ -55,35 +75,34 @@ export function JoinWizard({ tenant }) {
         setBriefOn(agent.brief_enabled !== false);
         setBriefTime(String(agent.brief_time || "07:30").slice(0, 5));
         if (calendarResult === "connected" || calendarResult === "error") {
+          setPath(body.tenant?.whatsapp_connected ? "whatsapp" : "console");
           setStep(2);
-        } else {
-          setStep(body.tenant?.whatsapp_connected ? 1 : 0);
+        } else if (body.tenant?.whatsapp_connected && !previewChoice) {
+          setPath("whatsapp");
+          setStep(1);
         }
       })
-      .catch((err) => setError(err.message));
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
 
-    fetch("/api/console/calendar")
-      .then(async (res) => {
-        const body = await res.json().catch(() => ({}));
-        if (res.ok) setCalendar(body);
-      })
+    consoleJson(base, "/api/console/calendar", {
+      fallback: "Could not load calendar.",
+    })
+      .then((body) => setCalendar(body))
       .catch(() => {});
-  }, []);
+  }, [base, previewChoice]);
 
-  const ticks = profile?.tenant?.whatsapp_connected ? [1, 2, 3] : [0, 1, 2, 3];
+  const connected = Boolean(profile?.tenant?.whatsapp_connected);
+  const total = path === "whatsapp" ? 4 : 3;
+  const stepNo = step === 1 ? 2 : step === 2 ? 3 : 4;
   const stepLabel =
-    step === 0
-      ? "Connect WhatsApp"
-      : step === 1
-        ? "About you"
-        : step === 2
-          ? "Calendar"
-          : "Morning brief";
+    step === 1 ? "ABOUT YOU" : step === 2 ? "CALENDAR" : "MORNING BRIEF";
 
   async function saveProfile(extra = {}) {
-    const res = await fetch("/api/console/profile", {
+    return consoleJson(base, "/api/console/profile", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
+      fallback: "Could not save.",
       body: JSON.stringify({
         name,
         team,
@@ -96,31 +115,29 @@ export function JoinWizard({ tenant }) {
         ...extra,
       }),
     });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error || "Could not save.");
-    return body;
   }
 
   async function uploadFiles(files) {
     for (const file of files) {
-      const form = new FormData();
-      form.set("file", file);
-      form.set("scope", "tenant");
-      const res = await fetch("/api/console/kb", { method: "POST", body: form });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Upload failed.");
+      await uploadKnowledgeFile(base, file, "tenant");
     }
   }
 
+  async function reloadProfile() {
+    const body = await consoleJson(base, "/api/console/profile", {
+      fallback: "Could not load profile.",
+    });
+    setProfile(body);
+  }
+
   async function hideDoc(id, hide) {
-    await fetch(`/api/console/kb/${id}`, {
+    await consoleJson(base, `/api/console/kb/${id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
+      fallback: "Update failed.",
       body: JSON.stringify({ hide }),
     });
-    const res = await fetch("/api/console/profile");
-    const body = await res.json();
-    if (res.ok) setProfile(body);
+    await reloadProfile();
   }
 
   async function sendBrief() {
@@ -128,10 +145,12 @@ export function JoinWizard({ tenant }) {
     setError("");
     try {
       await saveProfile({ onboarded: true });
-      const res = await fetch("/api/console/brief/send-now", { method: "POST" });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Could not send the brief.");
-      setSent(body);
+      setSent(
+        await consoleJson(base, "/api/console/brief/send-now", {
+          method: "POST",
+          fallback: "Could not send the brief.",
+        })
+      );
     } catch (err) {
       setError(err.message);
     } finally {
@@ -139,53 +158,208 @@ export function JoinWizard({ tenant }) {
     }
   }
 
-  const waLink = waDeepLink(profile?.tenant?.display_phone || profile?.agent?.wa_id);
+  async function finishConsole() {
+    setSaving(true);
+    setError("");
+    try {
+      await saveProfile({ onboarded: true, brief_enabled: false });
+      router.push(base);
+    } catch (err) {
+      setError(err.message);
+      setSaving(false);
+    }
+  }
+
+  const waLink = tenantWhatsAppLink({
+    connected: connected,
+    displayPhone: profile?.tenant?.display_phone,
+  });
 
   return (
-    <ConsoleShell bare tenant={tenant} title={stepLabel}>
-      <div className="mb-6 flex gap-2">
-        {ticks.map((tick) => (
-          <span
-            className={`h-1.5 flex-1 ${tick <= step ? "bg-live" : "bg-rule-2"}`}
-            key={tick}
-          />
-        ))}
-      </div>
+    <ConsoleShell bare footer={false} tenant={tenant} width={step === -1 ? 1040 : 620}>
+      {loading ? (
+        <div className="az-eyebrow mb-4 block">LOADING WORKSPACE</div>
+      ) : step === -1 ? (
+        <div className="mb-9">
+          <div className="az-eyebrow mb-4 block">CHOOSE YOUR SETUP</div>
+          <h1 className="az-h1 mb-3.5 max-w-[720px] text-fg">
+            How do you want to use AgentZero?
+          </h1>
+          <p className="max-w-[680px] text-lg leading-snug text-fg-2 [text-wrap:pretty]">
+            Start with WhatsApp intelligence or run everything from the console.
+            You can connect WhatsApp later from Settings.
+          </p>
+        </div>
+      ) : (
+        <div className="az-eyebrow mb-4 block">
+          STEP {stepNo} OF {total} · {stepLabel}
+        </div>
+      )}
+
+      {step === 1 ? (
+        <>
+          <h1 className="az-h1 mb-3.5 text-fg">A little about you</h1>
+          <p className="mb-9 text-lg leading-snug text-fg-2 [text-wrap:pretty]">
+            {path === "whatsapp"
+              ? "So calls and briefs sound like you, not a call centre. Every field here changes what AgentZero says — skip anything that does not."
+              : "Set up the basics for your calls and console. Every field changes what AgentZero says — skip anything that does not."}
+          </p>
+        </>
+      ) : null}
+
+      {step === 2 ? (
+        <>
+          <h1 className="az-h1 mb-3.5 text-fg">Your viewing diary</h1>
+          <p className="mb-9 text-lg leading-snug text-fg-2 [text-wrap:pretty]">
+            Connect the Google Calendar this agent uses for viewings. AgentZero
+            owns the connection and uses it on calls. Skip if you will connect
+            later in Settings.
+          </p>
+        </>
+      ) : null}
+
+      {step === 3 ? (
+        <>
+          <h1 className="az-h1 mb-3.5 text-fg">Your morning brief</h1>
+          <p className="mb-9 text-lg leading-snug text-fg-2 [text-wrap:pretty]">
+            Each morning AgentZero scans the overnight pipeline, ranks who is
+            worth a call, and texts you the short list. One toggle, one time.
+          </p>
+        </>
+      ) : null}
 
       {error ? (
-        <Strip className="mb-4" tone="markup">
+        <Strip className="mb-6" tone="markup">
           <span>{error}</span>
         </Strip>
-      ) : null}
-      {notice ? (
-        <Strip className="mb-4" tone="live">
+      ) : notice ? (
+        <Strip className="mb-6" tone="live">
           <span>{notice}</span>
         </Strip>
       ) : null}
 
-      {step === 0 ? (
-        <WhatsAppConnect
-          onConnected={async () => {
-            const res = await fetch("/api/console/profile");
-            const body = await res.json();
-            if (res.ok) {
-              setProfile(body);
-              setStep(1);
-            }
-          }}
-          tenantSlug={tenant}
-        />
+      {loading ? (
+        <div className="az-card p-6 text-sm text-dim">Loading your workspace…</div>
       ) : null}
 
-      {step === 1 ? (
+      {!loading && step === -1 ? (
+        <div className="grid items-stretch gap-5 md:grid-cols-2">
+          <section className="az-card-live flex flex-col p-7 sm:p-8">
+            <div className="mb-5">
+              <span className="az-pill-live">FULL EXPERIENCE</span>
+            </div>
+            <h2 className="text-[28px] font-semibold tracking-[-.025em] text-fg">
+              AgentZero + WhatsApp
+            </h2>
+            <p className="mt-2 text-lg font-medium text-az">
+              You do the closing. AgentZero handles the rest.
+            </p>
+            <p className="mt-5 text-[15px] leading-relaxed text-fg-2">
+              Connects securely to your WhatsApp Business through Meta. No new
+              app, no ChatGPT.
+            </p>
+            <ul className="my-7 grid gap-4">
+              <ChoicePoint>
+                <strong className="text-fg">Thousands of calls a week.</strong>{" "}
+                AgentZero calls your leads in any accent or language, so only
+                the qualified ones land on your WhatsApp.
+              </ChoicePoint>
+              <ChoicePoint>
+                <strong className="text-fg">Calls with context.</strong> The AI
+                already knows the budget, area, property type and timeline a
+                lead shared on WhatsApp, so the conversation picks up naturally.
+              </ChoicePoint>
+              <ChoicePoint>
+                <strong className="text-fg">Run it all from WhatsApp.</strong>{" "}
+                Message AgentZero who to call or which campaign to launch, with
+                no dashboard needed.
+              </ChoicePoint>
+              <ChoicePoint>
+                <strong className="text-fg">Revive leads going cold.</strong> It
+                spots conversations that went quiet and tells you who&apos;s worth
+                calling back.
+              </ChoicePoint>
+            </ul>
+            <p className="mb-5 mt-auto text-[13px] leading-relaxed text-dim">
+              AgentZero never sends WhatsApp messages on your behalf.
+            </p>
+            <WhatsAppConnect
+              onConnected={async () => {
+                try {
+                  setPath("whatsapp");
+                  await reloadProfile();
+                  setStep(1);
+                } catch (err) {
+                  setError(err.message);
+                }
+              }}
+              showDetails={false}
+              tenantSlug={tenant}
+            />
+          </section>
+
+          <section className="az-card flex flex-col p-7 sm:p-8">
+            <div className="mb-5">
+              <span className="az-pill-quiet">CONSOLE ONLY</span>
+            </div>
+            <h2 className="text-[28px] font-semibold tracking-[-.025em] text-fg">
+              AgentZero Console
+            </h2>
+            <p className="mt-2 text-lg font-medium text-fg-soft">
+              Powerful AI calling, without connecting WhatsApp.
+            </p>
+            <p className="mt-5 text-[15px] leading-relaxed text-fg-2">
+              Plan, launch and review your calling from the AgentZero web app.
+              Your WhatsApp conversations stay completely separate.
+            </p>
+            <ul className="my-7 grid gap-4">
+              <ChoicePoint>
+                <strong className="text-fg">Build calls your way.</strong> Create
+                scripts for different lead types, languages and campaigns.
+              </ChoicePoint>
+              <ChoicePoint>
+                <strong className="text-fg">Launch on your schedule.</strong>{" "}
+                Upload lead lists and run calls now or schedule them for later.
+              </ChoicePoint>
+              <ChoicePoint>
+                <strong className="text-fg">Add brokerage knowledge.</strong>{" "}
+                Upload brochures, payment plans and area information for the AI
+                to use.
+              </ChoicePoint>
+              <ChoicePoint>
+                <strong className="text-fg">See every result.</strong> Review
+                call outcomes, transcripts and qualified leads in one console.
+              </ChoicePoint>
+            </ul>
+            <p className="mb-5 mt-auto text-[13px] leading-relaxed text-dim">
+              No WhatsApp access or conversation intelligence. Connect later
+              from Settings whenever you&apos;re ready.
+            </p>
+            <Button
+              className="self-start"
+              onClick={() => {
+                setPath("console");
+                setStep(1);
+              }}
+              variant="secondary"
+            >
+              Continue with Console
+            </Button>
+          </section>
+        </div>
+      ) : null}
+
+      {!loading && step === 1 ? (
         <form
-          className="space-y-4"
+          className="grid gap-5"
           onSubmit={async (event) => {
             event.preventDefault();
             setSaving(true);
             setError("");
             try {
-              await saveProfile();
+              await saveProfile(
+                path === "console" ? { brief_enabled: false } : {}
+              );
               setStep(2);
             } catch (err) {
               setError(err.message);
@@ -194,28 +368,34 @@ export function JoinWizard({ tenant }) {
             }
           }}
         >
-          <p className="text-sm leading-6 text-ink-2">
-            Every field here changes what AgentZero says. Skip anything that
-            does not.
-          </p>
-          <div>
-            <Label htmlFor="name">Name</Label>
-            <Field id="name" onChange={(e) => setName(e.target.value)} value={name} />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="name">Your name</Label>
+              <Field id="name" onChange={(e) => setName(e.target.value)} value={name} />
+            </div>
+            <div>
+              <Label htmlFor="team">Team</Label>
+              <Field id="team" onChange={(e) => setTeam(e.target.value)} value={team} />
+            </div>
           </div>
+
           <div>
-            <Label htmlFor="team">Team</Label>
-            <Field id="team" onChange={(e) => setTeam(e.target.value)} value={team} />
-          </div>
-          <div>
-            <Label htmlFor="areas">Areas you cover</Label>
+            <Label className="flex items-center gap-2" htmlFor="areas">
+              Areas you work
+              <Tooltip>
+                AgentZero uses this to judge which overnight leads are actually
+                worth your morning. Comma-separated is fine.
+              </Tooltip>
+            </Label>
             <Field
               id="areas"
               onChange={(e) => setAreas(e.target.value)}
-              placeholder="Marina, JVC, Downtown"
+              placeholder="Dubai Marina, JVC, Downtown"
               value={areas}
             />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+
+          <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <Label htmlFor="tmin">Typical ticket min (AED)</Label>
               <Field
@@ -235,6 +415,7 @@ export function JoinWizard({ tenant }) {
               />
             </div>
           </div>
+
           <div>
             <Label htmlFor="langs">Languages</Label>
             <Field
@@ -243,37 +424,67 @@ export function JoinWizard({ tenant }) {
               value={languages}
             />
           </div>
-          <Label>Tenant material</Label>
-          <Drop accept=".pdf,.txt,.md,.csv,.png,.jpg" onFiles={(files) => uploadFiles(files).catch((err) => setError(err.message))}>
-            Price lists, payment plans, brochures.
-          </Drop>
-          {(profile?.inherited_docs || []).map((doc) => (
-            <Check
-              checked={!doc.hidden}
-              key={doc.id}
-              onChange={(checked) => hideDoc(doc.id, !checked)}
+
+          <div>
+            <Label>Team material</Label>
+            <Drop
+              accept={KB_ACCEPT}
+              hint="Price lists, payment plans, brochures. PDF, TXT, MD, CSV, PNG, or JPG. Up to 20 MB."
+              onFiles={(files) =>
+                uploadFiles(files).catch((err) => setError(err.message))
+              }
             >
-              {doc.filename} · inherited
-            </Check>
-          ))}
-          <div className="flex gap-2 pt-2">
+              Drop files here
+            </Drop>
+          </div>
+
+          {(profile?.inherited_docs || []).length ? (
+            <div className="az-card px-5 py-1">
+              {(profile?.inherited_docs || []).map((doc) => (
+                <Check
+                  checked={!doc.hidden}
+                  key={doc.id}
+                  onChange={(checked) =>
+                    hideDoc(doc.id, !checked).catch((err) => setError(err.message))
+                  }
+                >
+                  {doc.filename} · inherited
+                </Check>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="flex flex-wrap gap-2.5 pt-2">
             <Button disabled={saving} type="submit">
               {saving ? "Saving…" : "Continue"}
             </Button>
-            <Button onClick={() => setStep(2)} type="button" variant="ghost">
+            <Button
+              disabled={saving}
+              onClick={() => setStep(2)}
+              type="button"
+              variant="quiet"
+            >
               Skip
             </Button>
+            {path === "console" ? (
+              <Button
+                disabled={saving}
+                onClick={() => {
+                  setPath(null);
+                  setStep(-1);
+                }}
+                type="button"
+                variant="quiet"
+              >
+                Back
+              </Button>
+            ) : null}
           </div>
         </form>
       ) : null}
 
-      {step === 2 ? (
-        <div className="space-y-5">
-          <p className="text-sm leading-6 text-ink-2">
-            Connect the Google Calendar this agent uses for viewings. AgentZero
-            owns the connection and uses it on calls. Skip if you will connect
-            later in Settings.
-          </p>
+      {!loading && step === 2 ? (
+        <div className="grid gap-5">
           {calendar?.unavailable ? (
             <Strip tone="markup">
               <span>
@@ -282,67 +493,128 @@ export function JoinWizard({ tenant }) {
               </span>
             </Strip>
           ) : null}
-          {calendar?.connected ? (
-            <p className="text-sm text-ink-2">
-              {calendar.label || calendar.email || "Google Calendar"}
-              {calendar.timezone ? ` · ${calendar.timezone}` : ""}
-              {" · connected"}
-            </p>
-          ) : (
-            <CalendarConnect
-              disabled={Boolean(calendar?.unavailable)}
-              next="join"
-            />
-          )}
-          <div className="flex gap-2 pt-2">
-            <Button onClick={() => setStep(3)} type="button">
-              Continue
+          <div className="az-card px-6.5 py-6">
+            {calendar?.connected ? (
+              <p className="text-[15px] leading-snug text-fg-2">
+                {calendar.label || calendar.email || "Google Calendar"}
+                {calendar.timezone ? ` · ${calendar.timezone}` : ""}
+                {" · connected"}
+              </p>
+            ) : (
+              <CalendarConnect
+                disabled={Boolean(calendar?.unavailable)}
+                next="join"
+              />
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2.5 pt-2">
+            <Button
+              disabled={saving}
+              onClick={() => {
+                if (path === "console") {
+                  void finishConsole();
+                } else {
+                  setStep(3);
+                }
+              }}
+              type="button"
+            >
+              {saving
+                ? "Saving…"
+                : path === "console"
+                  ? "Enter AgentZero Console"
+                  : "Continue"}
             </Button>
-            <Button onClick={() => setStep(3)} type="button" variant="ghost">
+            <Button
+              disabled={saving}
+              onClick={() => {
+                if (path === "console") {
+                  void finishConsole();
+                } else {
+                  setStep(3);
+                }
+              }}
+              type="button"
+              variant="quiet"
+            >
               Skip
             </Button>
           </div>
         </div>
       ) : null}
 
-      {step === 3 ? (
-        <div className="space-y-5">
-          <p className="text-sm leading-6 text-ink-2">
-            Each morning AgentZero scans the overnight pipeline, ranks who is
-            worth a call, and texts you the short list. One toggle, one time.
-            Then open WhatsApp on this phone and text AgentZero from the
-            number we registered. Only that number can see this inbox.
-          </p>
-          <div className="flex items-center justify-between gap-4 border-b border-rule py-3">
-            <span className="text-sm">Send the morning brief</span>
-            <Toggle checked={briefOn} onChange={setBriefOn} />
+      {!loading && step === 3 ? (
+        <>
+          <div className="az-card px-6.5 py-6">
+            <div className="flex flex-wrap items-start justify-between gap-5">
+              <div>
+                <div className="mb-1.5 text-[17px] font-medium text-fg">
+                  One text every morning at {briefTime}
+                </div>
+                <div className="text-sm leading-snug text-dim">
+                  Overnight leads, who is worth a call, who went quiet. On your
+                  phone, before your first coffee.
+                </div>
+              </div>
+              <Toggle checked={briefOn} label="Morning brief" onChange={setBriefOn} />
+            </div>
+            <div className="mt-5">
+              <Label htmlFor="brief">
+                Time ({profile?.agent?.tz || "Asia/Dubai"})
+              </Label>
+              <Field
+                id="brief"
+                onChange={(e) => setBriefTime(e.target.value)}
+                type="time"
+                value={briefTime}
+              />
+            </div>
+            {sent ? (
+              <Strip className="mt-5" tone="live">
+                <span>Notification sent. Open WhatsApp and tap Send brief.</span>
+              </Strip>
+            ) : (
+              <Button
+                className="mt-5"
+                disabled={saving}
+                onClick={sendBrief}
+                variant="secondary"
+              >
+                {saving ? "Sending…" : "Send me one right now"}
+              </Button>
+            )}
           </div>
-          <div>
-            <Label htmlFor="brief">Time ({profile?.agent?.tz || "Asia/Dubai"})</Label>
-            <Field
-              id="brief"
-              onChange={(e) => setBriefTime(e.target.value)}
-              type="time"
-              value={briefTime}
-            />
-          </div>
-          {sent ? (
-            <Strip tone="live">
-              <span>Brief sent. Open WhatsApp to read it.</span>
-            </Strip>
-          ) : (
-            <Button disabled={saving} onClick={sendBrief}>
-              {saving ? "Sending…" : "Send me one now →"}
-            </Button>
-          )}
-          {sent || profile?.agent?.onboarded_at ? (
-            <p>
-              <a className="text-sm underline underline-offset-2" href={waLink}>
-                Open WhatsApp
-              </a>
+
+          <div className="az-card-live mt-11 p-7">
+            <div className="mb-2 text-[19px] font-semibold text-fg">
+              That is the whole setup.
+            </div>
+            <p className="mb-5 text-[15px] leading-snug text-fg-2">
+              Everything else happens in WhatsApp. Text AgentZero from the
+              number we registered — only that number can see this inbox. Come
+              back here only to upload a list, edit a script, or change a
+              setting.
             </p>
-          ) : null}
-        </div>
+            <div className="flex flex-wrap gap-3">
+              {waLink ? (
+                <a
+                  className="rounded-[10px] bg-az px-6 py-3.5 text-base font-semibold text-az-ink hover:bg-az-hover"
+                  href={waLink}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  Open WhatsApp and say hi
+                </a>
+              ) : null}
+              <Link
+                className="rounded-[10px] border border-line-2 px-5 py-3.5 text-base font-medium text-dim hover:text-fg"
+                href={base}
+              >
+                Look around the console
+              </Link>
+            </div>
+          </div>
+        </>
       ) : null}
     </ConsoleShell>
   );

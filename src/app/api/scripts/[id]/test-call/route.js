@@ -14,7 +14,7 @@ import {
 } from "@/lib/scripts/http";
 import { loadLatestVersion, loadVersionByNo } from "@/lib/scripts/publish";
 import { parseScriptConfig } from "@/lib/scripts/schema";
-import { startLeadCall, startWebCall, VAPI_ASSISTANT_LOCK } from "@/lib/vapi/dial";
+import { startLeadCall, startWebCall } from "@/lib/vapi/dial";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -99,7 +99,7 @@ export async function POST(request, { params }) {
       assistantId,
       prompt,
       voiceId: parsed.data.voice_id,
-      firstMessage: VAPI_ASSISTANT_LOCK.firstMessage,
+      firstMessage: parsed.data.first_message,
       variableValues: applyCalendarVariableValues(
         {
           leadName: agentName,

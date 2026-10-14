@@ -1,4 +1,6 @@
+import { nextAssignedAgentId } from "@/lib/leads/assigned-agent";
 import { normalizePhone, phoneToWaId } from "@/lib/leads/normalize";
+import { applyCampaignAgentScope } from "@/lib/jarvis/visibility";
 
 export function foldListKey(value) {
   return String(value || "")
@@ -69,7 +71,14 @@ export function normalizeListName(raw) {
   return name;
 }
 
-export async function upsertListContacts(supabase, tenantId, { name, contacts }) {
+export async function upsertListContacts(
+  supabase,
+  tenantId,
+  { name, contacts, agentId }
+) {
+  const ownerId = String(agentId || "").trim();
+  if (!ownerId) throw new Error("agentId is required to save list contacts.");
+
   const listName = normalizeListName(name);
   const rows = Array.isArray(contacts) ? contacts : [];
   const ids = [];
@@ -86,7 +95,7 @@ export async function upsertListContacts(supabase, tenantId, { name, contacts })
     const pushName = String(contact.name || "").trim() || null;
     const { data: existing } = await supabase
       .from("leads")
-      .select("id, opted_out, push_name")
+      .select("id, opted_out, push_name, assigned_agent_id")
       .eq("tenant_id", tenantId)
       .eq("wa_id", waId)
       .maybeSingle();
@@ -95,13 +104,25 @@ export async function upsertListContacts(supabase, tenantId, { name, contacts })
       continue;
     }
     if (existing) {
+      if (
+        existing.assigned_agent_id &&
+        existing.assigned_agent_id !== ownerId
+      ) {
+        skipped += 1;
+        continue;
+      }
+      const patch = {
+        source: listName,
+        push_name: pushName || existing.push_name || null,
+        last_message_at: now,
+      };
+      const nextOwner = nextAssignedAgentId(existing.assigned_agent_id, ownerId);
+      if (nextOwner && nextOwner !== existing.assigned_agent_id) {
+        patch.assigned_agent_id = nextOwner;
+      }
       const { error } = await supabase
         .from("leads")
-        .update({
-          source: listName,
-          push_name: pushName || existing.push_name || null,
-          last_message_at: now,
-        })
+        .update(patch)
         .eq("id", existing.id);
       if (error) throw new Error(`Lead update failed: ${error.message}`);
       ids.push(existing.id);
@@ -116,6 +137,7 @@ export async function upsertListContacts(supabase, tenantId, { name, contacts })
         source: listName,
         first_seen: now,
         last_message_at: now,
+        assigned_agent_id: ownerId,
       })
       .select("id")
       .single();
@@ -126,14 +148,17 @@ export async function upsertListContacts(supabase, tenantId, { name, contacts })
   return { name: listName, saved: ids.length, skipped, leadIds: ids };
 }
 
-export async function listSavedLists(supabase, tenantId) {
-  const { data, error } = await supabase
+export async function listSavedLists(supabase, tenantId, agentId = null) {
+  let query = supabase
     .from("leads")
     .select("source")
-    .eq("tenant_id", tenantId)
     .eq("opted_out", false)
     .not("source", "is", null)
     .limit(8000);
+  query = agentId
+    ? applyCampaignAgentScope(query, { tenantId, agentId })
+    : query.eq("tenant_id", tenantId);
+  const { data, error } = await query;
   if (error) throw new Error(`List lookup failed: ${error.message}`);
 
   const counts = new Map();

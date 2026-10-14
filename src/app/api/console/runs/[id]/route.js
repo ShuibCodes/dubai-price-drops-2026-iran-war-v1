@@ -1,27 +1,57 @@
 import { consoleContext, jsonError } from "@/lib/console/http";
+import { quotedSentence, worthScore } from "@/lib/console/run-status";
+import { summarizeCallOneLine } from "@/lib/calls/qualification";
 import { routeId } from "@/lib/scripts/http";
+import { callHasPlayableRecording } from "@/lib/console/recording-playback";
+
+const HEADLINE_FILL_LIMIT = 20;
+
+function needsHeadline(call) {
+  const qualification =
+    call?.qualification && typeof call.qualification === "object" ? call.qualification : {};
+  return (
+    String(call?.transcript || "").trim() &&
+    !Object.prototype.hasOwnProperty.call(qualification, "headline")
+  );
+}
+
+/** One-time recap for calls saved before headlines existed. Failures stay unset and retry next load. */
+async function fillMissingHeadlines(supabase, tenantId, calls) {
+  const missing = (calls || [])
+    .filter(needsHeadline)
+    .sort((a, b) => worthScore(b) - worthScore(a))
+    .slice(0, HEADLINE_FILL_LIMIT);
+
+  await Promise.all(
+    missing.map(async (call) => {
+      const headline = await summarizeCallOneLine({
+        transcript: call.transcript,
+        summary: call.summary,
+      });
+      if (headline === null) return;
+
+      const qualification = {
+        ...(call.qualification && typeof call.qualification === "object"
+          ? call.qualification
+          : {}),
+        headline,
+      };
+      const { error } = await supabase
+        .from("calls")
+        .update({ qualification })
+        .eq("id", call.id)
+        .eq("tenant_id", tenantId);
+      if (error) {
+        console.error("[runs] headline save failed:", error.message);
+        return;
+      }
+      call.qualification = qualification;
+    })
+  );
+}
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-function worthScore(call) {
-  const q = call.qualification && typeof call.qualification === "object" ? call.qualification : {};
-  if (q.outcome === "qualified") return 50;
-  if (q.outcome === "callback") return 40;
-  if (q.lead_engaged) return 30;
-  if (q.outcome === "not_interested") return 10;
-  return 0;
-}
-
-function quotedSentence(call) {
-  const transcript = String(call.transcript || "");
-  const lines = transcript
-    .split("\n")
-    .map((line) => line.replace(/^(User|Lead|Customer)\s*:\s*/i, "").trim())
-    .filter((line) => line && !/^(AI|Assistant|Agent)\s*:/i.test(line));
-  const sentence = lines.find((line) => line.length > 12) || call.summary || "";
-  return sentence.slice(0, 240);
-}
 
 function extractedSub(call, findOut) {
   const q = call.qualification && typeof call.qualification === "object" ? call.qualification : {};
@@ -63,7 +93,7 @@ export async function GET(request, { params }) {
     const { data: batch, error } = await supabase
       .from("call_batches")
       .select(
-        "id, tenant_id, status, source_type, created_at, counts, est_cost_aed, window_start, window_end, script_id, script_version_id, scripts(display_name), script_versions(config_json)"
+        "id, tenant_id, status, source_type, created_at, counts, est_cost_aed, window_start, window_end, script_id, script_version_id, filter, scripts(display_name), script_versions(config_json)"
       )
       .eq("id", id)
       .maybeSingle();
@@ -77,7 +107,7 @@ export async function GET(request, { params }) {
         supabase
           .from("calls")
           .select(
-            "id, lead_id, jarvis_lead_id, status, summary, transcript, recording_url, qualification, created_at, ended_at, duration_seconds, leads(push_name, wa_id), jarvis_leads(push_name, wa_id)"
+            "id, lead_id, jarvis_lead_id, vapi_call_id, status, summary, transcript, recording_url, qualification, created_at, ended_at, duration_seconds, leads(push_name, wa_id), jarvis_leads(push_name, wa_id)"
           )
           .eq("tenant_id", session.tenantId)
           .eq("batch_id", id)
@@ -94,6 +124,8 @@ export async function GET(request, { params }) {
     if (callsError) throw new Error(callsError.message);
     if (queueError) throw new Error(queueError.message);
 
+    await fillMissingHeadlines(supabase, session.tenantId, calls);
+
     const findOut = batch.script_versions?.config_json?.find_out || [];
     const callRows = (calls || []).map((call) => {
       const person = call.leads || call.jarvis_leads || {};
@@ -105,7 +137,7 @@ export async function GET(request, { params }) {
         phone: person.wa_id ? `+${person.wa_id}` : null,
         status: call.status,
         quote: quotedSentence(call),
-        recording_url: call.recording_url || null,
+        has_recording: callHasPlayableRecording(call),
         transcript: call.transcript || null,
         extracted: extractedSub(call, findOut),
         worth: worthScore(call),
@@ -128,7 +160,7 @@ export async function GET(request, { params }) {
           phone: person.wa_id ? `+${person.wa_id}` : null,
           status: failed ? "failed" : row.processed ? "dialed" : "queued",
           quote: row.failure_reason || null,
-          recording_url: null,
+          has_recording: false,
           transcript: null,
           extracted: row.scheduled_for
             ? `Scheduled ${new Date(row.scheduled_for).toLocaleString("en-GB", {
@@ -154,6 +186,7 @@ export async function GET(request, { params }) {
         created_at: batch.created_at,
         script_id: batch.script_id,
         script_name: batch.scripts?.display_name || "Untitled script",
+        list_name: String(batch.filter?.list_name || "").trim(),
         counts,
         est_cost_aed: batch.est_cost_aed,
         window_start: batch.window_start,

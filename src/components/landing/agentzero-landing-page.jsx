@@ -1,35 +1,42 @@
 "use client";
 
-import { animate, useInView } from "framer-motion";
+import {
+  animate,
+  motion,
+  useInView,
+  useReducedMotion,
+  useScroll,
+  useTransform,
+} from "framer-motion";
 import Image from "next/image";
+import Link from "next/link";
+import Script from "next/script";
 import { useEffect, useRef, useState } from "react";
 import logo1416 from "@/app/images/1416-logo.png";
 import logoCondCity from "@/app/images/cond-city-logo.png";
 import logoMeta from "@/app/images/meta-logo-new.jpeg";
 import logoSterling from "@/app/images/sterling.jpg";
+import { TYPEFORM_ENQUIRY_URL } from "@/lib/typeform";
+
+const WISTIA_MEDIA_ID = "z4i1d3k6sc";
 
 const CLIENT_LOGOS = [
   {
     src: logoSterling,
     alt: "Sterling Boulevard",
     name: "Sterling Boulevard",
-    className: "h-10 w-10 rounded-md object-cover sm:h-12 sm:w-12",
   },
   {
     src: logo1416,
     alt: "14:16",
     name: "14:16",
-    className: "h-8 w-auto max-h-10 object-contain sm:h-10",
   },
   {
     src: logoCondCity,
     alt: "Cond City",
     name: "Cond City",
-    className: "h-8 w-auto max-h-10 max-w-[9.5rem] object-contain sm:h-10 sm:max-w-[11rem]",
   },
 ];
-
-const WHATSAPP_URL = "https://wa.me/971585690693";
 
 function CountUp({ to, duration = 2, format }) {
   const ref = useRef(null);
@@ -47,6 +54,91 @@ function CountUp({ to, duration = 2, format }) {
   }, [inView, to, duration]);
 
   return <span ref={ref}>{format ? format(value) : Math.round(value)}</span>;
+}
+
+function HeroVideo() {
+  const ref = useRef(null);
+  const reduceMotion = useReducedMotion();
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    offset: ["start start", "end end"],
+  });
+
+  const scale = useTransform(scrollYProgress, [0, 0.7], [0.86, 1]);
+  const radius = useTransform(scrollYProgress, [0, 0.7], [28, 12]);
+  const headlineOpacity = useTransform(scrollYProgress, [0, 0.45], [1, 0]);
+  const headlineY = useTransform(scrollYProgress, [0, 0.45], [0, -60]);
+  const glowOpacity = useTransform(scrollYProgress, [0, 0.7], [0.35, 0.8]);
+
+  return (
+    <section ref={ref} className="relative h-[170vh] sm:h-[190vh]">
+      <div className="sticky top-0 flex min-h-[100svh] flex-col items-center justify-center overflow-hidden px-4 py-10 sm:px-6 lg:px-8">
+        <motion.div
+          style={reduceMotion ? undefined : { opacity: headlineOpacity, y: headlineY }}
+          className="mx-auto max-w-3xl text-center"
+        >
+          <h1 className="text-balance text-[2rem] font-semibold leading-[1.15] tracking-tight sm:text-5xl sm:leading-[1.1]">
+            Your CRM has 4,000 leads.{" "}
+            <em className="italic text-[#ff2d55]">When did you last call one?</em>
+          </h1>
+          <p className="mx-auto mt-4 max-w-xl text-base leading-7 text-white/70 sm:text-lg">
+            AI calls your leads and sends the good ones to your WhatsApp.
+          </p>
+          <a
+            href={TYPEFORM_ENQUIRY_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-6 inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
+          >
+            Get Started
+          </a>
+        </motion.div>
+
+        <div className="relative mt-8 w-[calc(100%+2rem)] max-w-5xl sm:mt-10 sm:w-full sm:max-w-[min(64rem,max(20rem,calc((100svh_-_24rem)*16/9)))]">
+          <motion.div
+            aria-hidden
+            style={reduceMotion ? undefined : { opacity: glowOpacity }}
+            className="pointer-events-none absolute -inset-6 rounded-[40px] bg-[#ff2d55]/25 blur-3xl sm:-inset-10"
+          />
+          <motion.div
+            style={reduceMotion ? { borderRadius: 20 } : { scale, borderRadius: radius }}
+            className="relative aspect-video w-full overflow-hidden border border-white/10 bg-[#0b0b0b]"
+          >
+            <Script src="https://fast.wistia.com/player.js" strategy="afterInteractive" />
+            <Script
+              src={`https://fast.wistia.com/embed/${WISTIA_MEDIA_ID}.js`}
+              type="module"
+              strategy="afterInteractive"
+            />
+            <style>{`wistia-player[media-id=${WISTIA_MEDIA_ID}]:not(:defined) { background: center / contain no-repeat url(https://fast.wistia.com/embed/medias/${WISTIA_MEDIA_ID}/swatch); display: block; filter: blur(5px); padding-top: 56.25%; }`}</style>
+            <wistia-player
+              media-id={WISTIA_MEDIA_ID}
+              aspect="1.7777777777777777"
+              player-color="ff2d55"
+              autoplay="true"
+              silent-autoplay="allow"
+              className="block h-full w-full"
+            />
+          </motion.div>
+        </div>
+
+        <div className="mt-8 flex items-center justify-center gap-3 sm:mt-10 sm:gap-4">
+          {CLIENT_LOGOS.map((logo) => (
+            <div
+              key={logo.name}
+              className="flex h-11 w-24 items-center justify-center rounded-xl bg-white px-3 sm:h-14 sm:w-32"
+            >
+              <Image
+                src={logo.src}
+                alt={logo.alt}
+                className="h-auto max-h-7 w-auto max-w-full rounded object-contain sm:max-h-9"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
 }
 
 const BROKERAGE_FEATURES = [
@@ -137,21 +229,37 @@ const BEFORE_AFTER_ROWS = [
   },
 ];
 
+const AGENT_PLAN_SPECS = [
+  { label: "Conversations per day", value: "Up to 50" },
+  { label: "Calling days", value: "Mon–Fri" },
+  { label: "Conversations per month", value: "Up to 1,100" },
+  { label: "Talk time included", value: "Up to 800 min" },
+  { label: "Extra minutes", value: "AED 2.95 /min" },
+];
+
 const AGENT_PLAN_FEATURES = [
   "7–10 qualified leads a week, handed straight to you",
   "Every portal enquiry called and qualified within 60 seconds",
   "Outbound AI calling, every working day",
+  "Speaks 15 languages, with 5 accents to choose from",
   "Dead WhatsApp leads revived and re-engaged",
   "No CRM, no app, no login. It all runs on your WhatsApp",
 ];
 
+const BROKERAGE_PLAN_SPECS = [
+  { label: "Dials per day", value: "200" },
+  { label: "Calling days", value: "Mon–Fri" },
+  { label: "Calls per month", value: "4,400" },
+  { label: "Talk time included", value: "1,450 min" },
+  { label: "Extra minutes", value: "AED 4 /min" },
+];
+
 const BROKERAGE_PLAN_FEATURES = [
-  "200 AI calls a day, across your entire roster",
-  "40–55 qualified leads a week, distributed to your agents",
-  "Every portal enquiry called and qualified within 60 seconds",
-  "Your whole database revived, not just this month's leads",
-  "Team-wide reporting: who's converting, what's stalling",
-  "No CRM, no app, no login. It all runs on WhatsApp",
+  "Outbound calling across your full contact list",
+  "Speaks 15 languages, with 5 accents to choose from",
+  "Property Finder enquiries answered in under a minute, day or night",
+  "Runs on your existing WhatsApp number — no new number, nothing changes for your clients",
+  "Qualified leads handed over with a full transcript",
 ];
 
 const FAQS = [
@@ -181,7 +289,7 @@ const FAQS = [
   },
   {
     q: "What does it cost?",
-    a: "AED 750 per agent / month, or a custom plan for the whole roster. 15 qualified conversations in your first month, or that month is free.",
+    a: "AED 750 per agent / month, which you can split into 3 payments of AED 250. For a whole brokerage it's AED 5,000 / month. 15 qualified conversations in your first month, or that month is free.",
   },
 ];
 
@@ -270,69 +378,50 @@ export default function AgentZeroLandingPage() {
   return (
     <main className="min-h-screen bg-black font-medium text-white">
       <section className="border-b border-white/5">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-5 sm:px-6 lg:px-8">
-          <div>
-            <div className="mono text-[10px] uppercase tracking-[0.34em] text-white">
-              AgentZero
-            </div>
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-5 sm:px-6 lg:px-8">
+          <Link href="/" aria-label="AgentZero home" className="shrink-0">
+            <Image
+              src="/brand/agentzero-lockup-horizontal.svg"
+              alt="AgentZero"
+              width={417}
+              height={88}
+              priority
+              unoptimized
+              className="h-6 w-auto sm:h-7"
+            />
+          </Link>
+          <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
+            <Link
+              href="/live-updates"
+              className="rounded-full border border-white/10 px-3 py-2 text-sm text-white transition hover:text-white sm:px-4"
+            >
+              Distressed deals
+            </Link>
+            <a
+              href={TYPEFORM_ENQUIRY_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-full border border-white/10 px-3 py-2 text-sm text-white transition hover:text-white sm:px-4"
+            >
+              Get Started
+            </a>
+            <Link
+              href="/copilot"
+              className="rounded-full border border-white/10 px-3 py-2 text-sm text-white transition hover:text-white sm:px-4"
+            >
+              Log in
+            </Link>
           </div>
-          <a
-            href={WHATSAPP_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-full border border-white/10 px-4 py-2 text-sm text-white transition hover:text-white"
-          >
-            Book a call
-          </a>
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
-        <div>
-          <div className="inline-flex max-w-full rounded-full border border-[#ff2d55]/25 bg-[#ff2d55]/10 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-[#ff9ab0] sm:px-4 sm:text-[11px] sm:tracking-[0.28em]">
-            For Dubai real estate brokerages
-          </div>
-          <h1 className="mt-6 text-balance text-[1.9rem] font-semibold leading-[1.18] tracking-tight sm:mt-8 sm:text-5xl sm:leading-[1.12] lg:text-[4.25rem] lg:leading-[1.08]">
-            Nobody Got Into Real Estate To{" "}
-            <em className="italic text-[#ff2d55]">Dial 200 Numbers.</em>
-          </h1>
-          <p className="mt-5 max-w-4xl text-base leading-7 text-white sm:mt-6 sm:text-lg sm:leading-8">
-            AgentZero makes the cold calls and does the admin after them —
-            qualifying, logging, following up — and hands your agents only the
-            leads with budget, timeline and intent, straight to their WhatsApp.
-          </p>
-          <div className="mt-7 flex flex-wrap gap-3 sm:mt-8">
-            <a
-              href={WHATSAPP_URL}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
-            >
-              Book a call
-            </a>
-          </div>
-        </div>
-      </section>
+      <HeroVideo />
 
       <section className="mx-auto max-w-7xl px-4 pb-14 sm:px-6 sm:pb-20 lg:px-8">
         <div className="mb-6 sm:mb-8">
           <div className="text-sm font-bold uppercase tracking-[0.18em] text-white sm:text-base">
             Proven in the market
           </div>
-        </div>
-        <div className="mb-8 flex flex-col items-center gap-3 sm:mb-10 sm:flex-row sm:items-center sm:gap-5">
-          {CLIENT_LOGOS.map((logo) => (
-            <div
-              key={logo.name}
-              className="flex h-20 w-40 shrink-0 items-center justify-center rounded-2xl bg-white p-5 sm:h-28 sm:w-52 sm:rounded-[20px] sm:p-7"
-            >
-              <Image
-                src={logo.src}
-                alt={logo.alt}
-                className={logo.className}
-              />
-            </div>
-          ))}
         </div>
         <div className="grid gap-4 sm:gap-6 lg:grid-cols-3">
           <article className="rounded-[28px] border border-[#ff2d55]/20 bg-[#ff2d55]/[0.06] p-6 sm:rounded-[32px] sm:p-10">
@@ -400,12 +489,12 @@ export default function AgentZeroLandingPage() {
             </p>
             <div className="mt-7 flex flex-wrap gap-3 sm:mt-8">
               <a
-                href={WHATSAPP_URL}
+                href={TYPEFORM_ENQUIRY_URL}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
               >
-                Request access
+                Get Started
               </a>
             </div>
           </div>
@@ -461,12 +550,12 @@ export default function AgentZeroLandingPage() {
             </p>
             <div className="mt-7 flex flex-wrap gap-3 sm:mt-8">
               <a
-                href={WHATSAPP_URL}
+                href={TYPEFORM_ENQUIRY_URL}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
               >
-                Get access
+                Get Started
               </a>
             </div>
           </div>
@@ -540,12 +629,12 @@ export default function AgentZeroLandingPage() {
 
         <div className="mt-8 flex flex-wrap justify-center gap-3 sm:mt-10">
           <a
-            href={WHATSAPP_URL}
+            href={TYPEFORM_ENQUIRY_URL}
             target="_blank"
             rel="noreferrer"
             className="inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
           >
-            Book a call
+            Get Started
           </a>
         </div>
       </section>
@@ -600,7 +689,7 @@ export default function AgentZeroLandingPage() {
         <div className="grid items-stretch gap-4 sm:gap-6 lg:grid-cols-2">
           <article className="flex flex-col rounded-[28px] border border-[#ffd60a]/40 bg-white/[0.03] p-6 transition hover:-translate-y-1 sm:rounded-[32px] sm:p-10">
             <div className="flex flex-wrap items-center gap-3">
-              <h3 className="text-xl font-semibold text-white">Per Agent</h3>
+              <h3 className="text-xl font-semibold text-white">Individual agent</h3>
               <span className="rounded-full bg-[#ffd60a] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-black">
                 Most popular
               </span>
@@ -610,7 +699,22 @@ export default function AgentZeroLandingPage() {
                 AED 750
               </span>
             </div>
-            <p className="mt-2 text-sm text-white">/ agent / month</p>
+            <p className="mt-2 text-sm text-white">/ month</p>
+            <p className="mt-3 inline-flex w-fit rounded-full border border-[#ffd60a]/30 bg-[#ffd60a]/10 px-3 py-1 text-xs font-medium text-[#ffd60a]">
+              Or pay in 3 × AED 250
+            </p>
+            <p className="mt-4 text-sm leading-6 text-white/70">
+              For one agent who would rather be in viewings than on the phone.
+            </p>
+
+            <dl className="mt-6 divide-y divide-white/10 rounded-2xl border border-white/10">
+              {AGENT_PLAN_SPECS.map((spec) => (
+                <div key={spec.label} className="flex items-center justify-between px-4 py-3">
+                  <dt className="text-sm text-white/70">{spec.label}</dt>
+                  <dd className="text-sm font-semibold text-white">{spec.value}</dd>
+                </div>
+              ))}
+            </dl>
 
             <ul className="mt-7 space-y-4 sm:mt-8">
               {AGENT_PLAN_FEATURES.map((feature) => (
@@ -623,12 +727,12 @@ export default function AgentZeroLandingPage() {
 
             <div className="mt-auto pt-8 sm:pt-10">
               <a
-                href={WHATSAPP_URL}
+                href={TYPEFORM_ENQUIRY_URL}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex w-full justify-center rounded-full bg-[#ffd60a] px-6 py-3.5 text-sm font-semibold text-black transition hover:opacity-90 sm:py-3"
               >
-                Get started
+                Get Started
               </a>
             </div>
           </article>
@@ -637,10 +741,22 @@ export default function AgentZeroLandingPage() {
             <h3 className="text-xl font-semibold text-white">Brokerage</h3>
             <div className="mt-5 flex items-baseline gap-2 sm:mt-6">
               <span className="text-4xl font-semibold leading-none text-white sm:text-5xl">
-                Custom
+                AED 5,000
               </span>
             </div>
-            <p className="mt-2 text-sm text-white">tailored to your roster</p>
+            <p className="mt-2 text-sm text-white">/ month</p>
+            <p className="mt-4 text-sm leading-6 text-white/70">
+              For a team that wants its whole database worked, every working day.
+            </p>
+
+            <dl className="mt-6 divide-y divide-white/10 rounded-2xl border border-white/10">
+              {BROKERAGE_PLAN_SPECS.map((spec) => (
+                <div key={spec.label} className="flex items-center justify-between px-4 py-3">
+                  <dt className="text-sm text-white/70">{spec.label}</dt>
+                  <dd className="text-sm font-semibold text-white">{spec.value}</dd>
+                </div>
+              ))}
+            </dl>
 
             <ul className="mt-7 space-y-4 sm:mt-8">
               {BROKERAGE_PLAN_FEATURES.map((feature) => (
@@ -653,12 +769,12 @@ export default function AgentZeroLandingPage() {
 
             <div className="mt-auto pt-8 sm:pt-10">
               <a
-                href={WHATSAPP_URL}
+                href={TYPEFORM_ENQUIRY_URL}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex w-full justify-center rounded-full border border-[#ffd60a]/60 px-6 py-3.5 text-sm font-semibold text-[#ffd60a] transition hover:bg-[#ffd60a]/10 sm:py-3"
               >
-                Request pricing
+                Get Started
               </a>
             </div>
           </article>
@@ -677,7 +793,7 @@ export default function AgentZeroLandingPage() {
             FAQ
           </div>
           <h2 className="mt-4 text-[1.7rem] font-semibold leading-tight text-white sm:text-4xl">
-            Straight answers, before you book a call.
+            Straight answers, before you get started.
           </h2>
         </div>
 
@@ -691,12 +807,12 @@ export default function AgentZeroLandingPage() {
           </p>
           <div className="mt-7 sm:mt-8">
             <a
-              href={WHATSAPP_URL}
+              href={TYPEFORM_ENQUIRY_URL}
               target="_blank"
               rel="noreferrer"
               className="inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-8 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
             >
-              Book a call
+              Get Started
             </a>
           </div>
         </div>

@@ -2,7 +2,7 @@ export function Row({ title, sub, right, leading, onClick, className = "" }) {
   const interactive = typeof onClick === "function";
   return (
     <div
-      className={`flex w-full items-center gap-3 border-b border-rule px-0 py-4 text-left last:border-b-0 ${interactive ? "cursor-pointer hover:bg-surface-2/60" : ""} ${className}`}
+      className={`az-row last:border-b-0 ${interactive ? "cursor-pointer hover:bg-panel" : ""} ${className}`}
       onClick={onClick}
       onKeyDown={
         interactive
@@ -19,14 +19,14 @@ export function Row({ title, sub, right, leading, onClick, className = "" }) {
     >
       {leading ? <div className="shrink-0">{leading}</div> : null}
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[15px] font-medium text-ink">{title}</div>
+        <div className="truncate text-[17px] font-medium text-fg">{title}</div>
         {sub ? (
-          <div className="mt-0.5 truncate font-mono text-[11px] text-ink-3">
-            {sub}
-          </div>
+          <div className="mt-1 truncate text-sm text-dim">{sub}</div>
         ) : null}
       </div>
-      {right ? <div className="flex shrink-0 items-center gap-2">{right}</div> : null}
+      {right ? (
+        <div className="flex shrink-0 items-center gap-2.5">{right}</div>
+      ) : null}
     </div>
   );
 }

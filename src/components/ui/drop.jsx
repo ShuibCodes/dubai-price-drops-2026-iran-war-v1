@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-export function Drop({ accept, onFiles, children, className = "" }) {
+export function Drop({ accept, onFiles, children, hint, className = "" }) {
   const [over, setOver] = useState(false);
 
   function take(fileList) {
@@ -12,8 +12,8 @@ export function Drop({ accept, onFiles, children, className = "" }) {
 
   return (
     <label
-      className={`relative flex cursor-pointer flex-col items-center justify-center border border-dashed px-4 py-8 text-center text-sm transition ${
-        over ? "border-live bg-live/5 text-ink" : "border-rule-2 bg-surface text-ink-2"
+      className={`relative flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed px-6 py-12 text-center transition ${
+        over ? "border-az-hover bg-az-wash" : "border-az bg-az-wash"
       } ${className}`}
       onDragEnter={(event) => {
         event.preventDefault();
@@ -37,8 +37,16 @@ export function Drop({ accept, onFiles, children, className = "" }) {
         }}
         type="file"
       />
-      <span className="pointer-events-none">
-        {children || "Drop files here, or click to choose."}
+      <span className="pointer-events-none text-[21px] font-semibold text-fg">
+        {children || "Drop files here"}
+      </span>
+      {hint ? (
+        <span className="pointer-events-none mt-2 text-[15px] text-dim">
+          {hint}
+        </span>
+      ) : null}
+      <span className="pointer-events-none mt-5 az-btn-primary">
+        Choose files
       </span>
     </label>
   );

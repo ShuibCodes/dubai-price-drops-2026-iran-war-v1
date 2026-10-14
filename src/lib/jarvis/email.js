@@ -27,14 +27,14 @@ function formatThread(events = []) {
     .join("\n");
 }
 
-async function resolveLead(tenantId, { leadId, name }) {
+async function resolveLead(tenantId, agentId, { leadId, name }) {
   if (leadId) {
-    const story = await getJarvisLeadStory(tenantId, leadId);
+    const story = await getJarvisLeadStory(tenantId, agentId, leadId);
     if (!story?.lead) throw new Error("Lead not found");
     return story;
   }
 
-  const matches = await searchJarvisLeadByName(tenantId, name);
+  const matches = await searchJarvisLeadByName(tenantId, agentId, name);
   if (!matches.length) throw new Error(`No lead found matching "${name}"`);
   if (matches.length > 1) {
     return {
@@ -48,11 +48,15 @@ async function resolveLead(tenantId, { leadId, name }) {
     };
   }
 
-  return getJarvisLeadStory(tenantId, matches[0].id);
+  return getJarvisLeadStory(tenantId, agentId, matches[0].id);
 }
 
-export async function draftLeadEmail(tenantId, { leadId, name, to, subject, body, intent }) {
-  const resolved = await resolveLead(tenantId, { leadId, name });
+export async function draftLeadEmail(
+  tenantId,
+  agentId,
+  { leadId, name, to, subject, body, intent }
+) {
+  const resolved = await resolveLead(tenantId, agentId, { leadId, name });
   if (resolved?.ambiguous) return resolved;
 
   const lead = resolved.lead;

@@ -5,17 +5,24 @@ import {
   updateRelayCallFromWebhook,
   upsertRelayIntoCallsTable,
 } from "@/lib/jarvis/relay";
-import { phoneToWaId } from "@/lib/leads/normalize";
 import { sendAgentSummary } from "@/lib/notify/agent";
 import { postCallResult } from "@/lib/notify/results-hook";
 import { bumpBatchCount } from "@/lib/console/batches";
+import {
+  CALL_SOURCE as EGM_CALL_SOURCE,
+  egmCallbackRef,
+  getEgmSupabase,
+  handleCallbackCallEnded,
+} from "@/lib/callbacks/egm";
 import {
   markLeadOptedOut,
   qualificationLooksLikeOptOut,
 } from "@/lib/console/opt-out";
 import { handleVapiCalendarToolCalls } from "@/lib/calendar/tools";
-import { timingSafeEqual } from "@/lib/security/timing-safe";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { verifyConfiguredWebhookSecret } from "@/lib/security/webhook-secret";
+import { resolveCompletedCallContext } from "@/lib/vapi/webhook-leads";
+import { agentZeroWhatsAppFromAddress } from "@/lib/jarvis/self-chat";
 import {
   extractVapiToolCalls,
   isVapiToolCallsMessage,
@@ -40,13 +47,14 @@ const PERSISTED_EVENT_TYPES = new Set([
 ]);
 
 function verifySecret(request) {
-  const expected = process.env.VAPI_WEBHOOK_SECRET;
-  if (!expected) return true;
   const provided =
     request.headers.get("x-vapi-secret") ||
     request.headers.get("x-vapi-signature") ||
     request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
-  return timingSafeEqual(provided, expected);
+  return verifyConfiguredWebhookSecret({
+    expected: process.env.VAPI_WEBHOOK_SECRET,
+    provided,
+  });
 }
 
 function clean(value) {
@@ -127,45 +135,22 @@ function extractVapiCallDetails(payload = {}) {
   };
 }
 
-async function findLeadByPhone(supabase, tenantId, phone) {
-  const waId = phoneToWaId(phone);
-  if (!waId) return null;
-
-  let query = supabase.from("leads").select("*").eq("wa_id", waId);
-  if (tenantId) query = query.eq("tenant_id", tenantId);
-
-  const { data } = await query.maybeSingle();
-  if (data) return data;
-
-  // Fallback: match last 9 digits for UAE numbers
-  const suffix = waId.slice(-9);
-  if (suffix.length < 8) return null;
-
-  let suffixQuery = supabase.from("leads").select("*").like("wa_id", `%${suffix}`);
-  if (tenantId) suffixQuery = suffixQuery.eq("tenant_id", tenantId);
-
-  const { data: matches } = await suffixQuery.limit(1);
-  return matches?.[0] || null;
-}
-
 async function upsertCompletedCall(details, qualification) {
   const supabase = getSupabaseServerClient();
   if (!supabase || !details.callId) return null;
 
-  const tenantId = details.metadata?.tenantId || null;
-  const leadIdHint = details.metadata?.leadId || null;
+  const { tenantId, lead, existing } = await resolveCompletedCallContext(
+    supabase,
+    details
+  );
 
-  let lead = null;
-  if (leadIdHint) {
-    const { data } = await supabase.from("leads").select("*").eq("id", leadIdHint).maybeSingle();
-    lead = data;
-  }
-  if (!lead) {
-    lead = await findLeadByPhone(supabase, tenantId, details.customerNumber);
+  if (!tenantId) {
+    console.warn(`[vapi/webhook] no tenant context for call ${details.callId}, skipping DB upsert`);
+    return null;
   }
 
   const row = {
-    tenant_id: lead?.tenant_id || tenantId,
+    tenant_id: tenantId,
     lead_id: lead?.id || null,
     vapi_call_id: details.callId,
     direction: "outbound",
@@ -180,18 +165,13 @@ async function upsertCompletedCall(details, qualification) {
     raw: details.raw,
   };
 
-  const { data: existing } = await supabase
-    .from("calls")
-    .select("id, tenant_id, results_synced")
-    .eq("vapi_call_id", details.callId)
-    .maybeSingle();
-
   let callRecord;
   if (existing) {
     const { data, error } = await supabase
       .from("calls")
       .update(row)
       .eq("id", existing.id)
+      .eq("tenant_id", tenantId)
       .select("*")
       .single();
     if (error) {
@@ -214,18 +194,6 @@ async function upsertCompletedCall(details, qualification) {
   return { call: callRecord, lead };
 }
 
-function twilioWhatsAppFrom() {
-  const configured = String(process.env.TWILIO_WHATSAPP_FROM || "").trim();
-  if (configured) {
-    return configured.startsWith("whatsapp:")
-      ? configured
-      : `whatsapp:${configured}`;
-  }
-  const phone = String(process.env.TWILIO_PHONE_NUMBER || "").trim();
-  if (!phone) return null;
-  return phone.startsWith("whatsapp:") ? phone : `whatsapp:${phone}`;
-}
-
 async function processRelayCallEnd(details) {
   const relay = await updateRelayCallFromWebhook({
     vapiCallId: details.callId,
@@ -243,7 +211,7 @@ async function processRelayCallEnd(details) {
   }
 
   if (twilioRestConfigured() && relay.sender_phone) {
-    const from = twilioWhatsAppFrom();
+    const from = agentZeroWhatsAppFromAddress();
     const to = `whatsapp:+${String(relay.sender_phone).replace(/\D/g, "")}`;
     if (from && to) {
       const summaryLine =
@@ -271,6 +239,16 @@ async function processRelayCallEnd(details) {
 async function processPipelineCall(payload) {
   const details = extractVapiCallDetails(payload);
   if (!details.callId) return { processed: false, reason: "missing_call_id" };
+
+  // EGM Trading website callbacks live in the client's Supabase, not `calls`.
+  const egmRef = egmCallbackRef(payload);
+  if (egmRef) {
+    const egmSupabase = getEgmSupabase();
+    if (!egmSupabase) {
+      return { processed: false, kind: EGM_CALL_SOURCE, reason: "egm_supabase_not_configured" };
+    }
+    return handleCallbackCallEnded(egmSupabase, details, egmRef);
+  }
 
   // Relay path first — do not run lead-qualification CRM sync for these.
   try {
@@ -436,7 +414,8 @@ export async function POST(request) {
 
     let fileName = null;
     let fullPath = null;
-    if (record.summary || record.transcript) {
+    // EGM car-sales calls must not land in the property knowledge base.
+    if ((record.summary || record.transcript) && !egmCallbackRef(payload)) {
       try {
         const written = writeCallRecord(record);
         fileName = written.fileName;

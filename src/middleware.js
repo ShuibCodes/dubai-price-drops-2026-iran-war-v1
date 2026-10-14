@@ -13,9 +13,23 @@ import {
   tenantSlugFromCopilotPath,
   verifyCopilotSessionTokenEdge,
 } from "@/lib/copilot-auth-edge";
+import { tenantSlugFromClaims } from "@/lib/copilot/auth-claims";
+import {
+  carryAuthCookies,
+  createMiddlewareAuthClient,
+  isSupabaseAuthConfigured,
+} from "@/lib/supabase/auth-server";
+
+function isStaffLoginPath(pathname) {
+  return (
+    pathname === "/onboard/login" ||
+    pathname === "/internal/login" ||
+    pathname === "/api/onboard/auth"
+  );
+}
 
 async function handleOnboard(request, pathname, isApi) {
-  if (pathname === "/onboard/login" || pathname === "/api/onboard/auth") {
+  if (isStaffLoginPath(pathname)) {
     return NextResponse.next();
   }
 
@@ -28,59 +42,104 @@ async function handleOnboard(request, pathname, isApi) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
-  const loginUrl = new URL("/onboard/login", request.url);
+  const loginPath = pathname.startsWith("/internal")
+    ? "/internal/login"
+    : "/onboard/login";
+  const loginUrl = new URL(loginPath, request.url);
   loginUrl.searchParams.set("from", pathname);
   return NextResponse.redirect(loginUrl);
 }
 
 async function handleCopilot(request, pathname, isApi) {
-  if (pathname === "/api/copilot/auth") {
+  // Password auth and the Google/Facebook OAuth routes all run pre-session.
+  if (pathname.startsWith("/api/copilot/auth")) {
     return NextResponse.next();
   }
 
-  const token = request.cookies.get(COPILOT_SESSION_COOKIE)?.value;
-  const session = token ? await verifyCopilotSessionTokenEdge(token) : null;
+  let response = NextResponse.next();
+  let tenantFromSession = null;
+  let authenticated = false;
+
+  if (isSupabaseAuthConfigured()) {
+    try {
+      const { supabase, holder } = createMiddlewareAuthClient(request, NextResponse);
+      const { data } = await supabase.auth.getUser();
+      response = holder.response;
+      if (data?.user) {
+        authenticated = true;
+        tenantFromSession = tenantSlugFromClaims(data.user);
+      }
+    } catch (error) {
+      console.error("[middleware] supabase auth check failed", error?.message);
+    }
+  }
+
+  if (!authenticated) {
+    const token = request.cookies.get(COPILOT_SESSION_COOKIE)?.value;
+    const session = token ? await verifyCopilotSessionTokenEdge(token) : null;
+    if (session) {
+      authenticated = true;
+      tenantFromSession = session.tenantSlug;
+    }
+  }
 
   if (isCopilotLoginPath(pathname)) {
-    if (session) {
+    // A signed-in agent skips the login screen — but only when the session
+    // already knows its tenant. A Supabase JWT that predates its claims would
+    // otherwise redirect to "/copilot" and loop straight back here.
+    if (authenticated && tenantFromSession) {
       const next = safeCopilotNextPath(
         request.nextUrl.searchParams.get("next"),
-        session.tenantSlug
+        tenantFromSession
       );
-      return NextResponse.redirect(new URL(next, request.url));
+      return carryAuthCookies(
+        response,
+        NextResponse.redirect(new URL(next, request.url))
+      );
     }
     if (pathname === "/copilot/login") {
       const loginUrl = new URL(COPILOT_LOGIN_PATH, request.url);
       const next = request.nextUrl.searchParams.get("next");
       if (next) loginUrl.searchParams.set("next", next);
-      return NextResponse.redirect(loginUrl);
+      return carryAuthCookies(response, NextResponse.redirect(loginUrl));
     }
-    return NextResponse.next();
+    return response;
   }
 
-  if (!session) {
+  if (!authenticated) {
     if (isApi) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+      return carryAuthCookies(
+        response,
+        NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 })
+      );
     }
     const loginUrl = new URL(COPILOT_LOGIN_PATH, request.url);
     loginUrl.searchParams.set("next", pathname);
-    return NextResponse.redirect(loginUrl);
+    return carryAuthCookies(response, NextResponse.redirect(loginUrl));
   }
 
   const pathTenant = tenantSlugFromCopilotPath(pathname);
-  if (pathTenant && pathTenant !== session.tenantSlug) {
+  // A null slug means the JWT predates its claims. getSession() re-checks the
+  // tenant against the agents row on every request, so defer rather than loop.
+  if (pathTenant && tenantFromSession && pathTenant !== tenantFromSession) {
     if (isApi) {
-      return NextResponse.json(
-        { ok: false, error: "Forbidden for this tenant." },
-        { status: 403 }
+      return carryAuthCookies(
+        response,
+        NextResponse.json(
+          { ok: false, error: "Forbidden for this tenant." },
+          { status: 403 }
+        )
       );
     }
-    return NextResponse.redirect(
-      new URL(`/copilot/${encodeURIComponent(session.tenantSlug)}`, request.url)
+    return carryAuthCookies(
+      response,
+      NextResponse.redirect(
+        new URL(`/copilot/${encodeURIComponent(tenantFromSession)}`, request.url)
+      )
     );
   }
 
-  return NextResponse.next();
+  return response;
 }
 
 export async function middleware(request) {
@@ -89,8 +148,15 @@ export async function middleware(request) {
   const isOnboardPage =
     pathname === "/onboard" || pathname.startsWith("/onboard/");
   const isOnboardApi = pathname.startsWith("/api/onboard");
-  if (isOnboardPage || isOnboardApi) {
-    return handleOnboard(request, pathname, isOnboardApi);
+  const isInternalPage =
+    pathname === "/internal" || pathname.startsWith("/internal/");
+  const isInternalApi = pathname.startsWith("/api/internal");
+  if (isOnboardPage || isOnboardApi || isInternalPage || isInternalApi) {
+    return handleOnboard(
+      request,
+      pathname,
+      isOnboardApi || isInternalApi
+    );
   }
 
   const isCopilotPage =
@@ -119,5 +185,9 @@ export const config = {
     "/api/scripts/:path*",
     "/api/console",
     "/api/console/:path*",
+    "/internal",
+    "/internal/:path*",
+    "/api/internal",
+    "/api/internal/:path*",
   ],
 };

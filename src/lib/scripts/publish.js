@@ -180,6 +180,7 @@ export async function publishVersion({
       name: assistantName(tenant, script),
       prompt,
       voiceId: parsed.data.voice_id,
+      firstMessage: parsed.data.first_message,
     });
   } catch (error) {
     console.error("[scripts/publish] vapi upsert failed", {

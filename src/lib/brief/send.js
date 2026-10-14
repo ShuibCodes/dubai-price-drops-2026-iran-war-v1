@@ -1,5 +1,6 @@
 import {
-  sendAgentCloudMessage,
+  sendCloudTemplate,
+  sendCloudText,
   TEMPLATE_BRIEF,
 } from "@/lib/whatsapp/cloud";
 
@@ -12,10 +13,14 @@ function rankScore(lead) {
 }
 
 export async function buildMorningBrief(supabase, { tenantId, agent, limit = 5 }) {
+  if (!tenantId || !agent?.id) {
+    throw new Error("Brief requires tenant and agent scope");
+  }
   const { data: leads, error } = await supabase
     .from("leads")
     .select("id, push_name, wa_id, source, intent_score, budget, areas, last_message_at")
     .eq("tenant_id", tenantId)
+    .eq("assigned_agent_id", agent.id)
     .eq("opted_out", false)
     .order("last_message_at", { ascending: false })
     .limit(40);
@@ -44,7 +49,93 @@ export async function buildMorningBrief(supabase, { tenantId, agent, limit = 5 }
   return { body, count: top.length, leads: top };
 }
 
-export async function sendMorningBrief({ supabase, tenant, agent }) {
+function utcDate(now = new Date()) {
+  return now.toISOString().slice(0, 10);
+}
+
+async function claimNotificationDay(supabase, tenantId, agentId, today) {
+  const { data, error } = await supabase
+    .from("agents")
+    .update({ last_brief_sent_on: today })
+    .eq("id", agentId)
+    .eq("tenant_id", tenantId)
+    .or(`last_brief_sent_on.is.null,last_brief_sent_on.neq.${today}`)
+    .select("id, last_brief_sent_on")
+    .maybeSingle();
+  if (error) throw new Error(`Brief notification claim failed: ${error.message}`);
+  return Boolean(data?.id);
+}
+
+async function releaseNotificationDay(
+  supabase,
+  tenantId,
+  agentId,
+  today,
+  previousDay
+) {
+  await supabase
+    .from("agents")
+    .update({ last_brief_sent_on: previousDay || null })
+    .eq("id", agentId)
+    .eq("tenant_id", tenantId)
+    .eq("last_brief_sent_on", today);
+}
+
+export async function sendMorningBriefNotification({
+  supabase,
+  tenant,
+  agent,
+  now = new Date(),
+  sendTemplate = sendCloudTemplate,
+}) {
+  const toWaId = String(agent.wa_id || "").replace(/\D/g, "");
+  if (!toWaId) return { sent: false, reason: "no_agent_wa_id" };
+
+  const today = utcDate(now);
+  const claimed = await claimNotificationDay(
+    supabase,
+    tenant.id,
+    agent.id,
+    today
+  );
+  if (!claimed) {
+    return { sent: false, reason: "already_sent_today" };
+  }
+
+  try {
+    // Static product copy: "Your AgentZero morning brief is ready" +
+    // quick reply. Do not send body variables unless Shuayb's approved
+    // template actually defines them — then set them here, not guessed.
+    await sendTemplate({
+      phoneNumberId: tenant.phone_number_id,
+      businessToken: tenant.business_token,
+      toWaId,
+      name: TEMPLATE_BRIEF,
+      bodyParams: [],
+    });
+    return {
+      sent: true,
+      via: "template",
+      template: TEMPLATE_BRIEF,
+    };
+  } catch (error) {
+    await releaseNotificationDay(
+      supabase,
+      tenant.id,
+      agent.id,
+      today,
+      agent.last_brief_sent_on
+    );
+    return { sent: false, reason: error.message };
+  }
+}
+
+export async function sendRequestedMorningBrief({
+  supabase,
+  tenant,
+  agent,
+  sendText = sendCloudText,
+}) {
   const toWaId = String(agent.wa_id || "").replace(/\D/g, "");
   if (!toWaId) return { sent: false, reason: "no_agent_wa_id" };
 
@@ -52,22 +143,17 @@ export async function sendMorningBrief({ supabase, tenant, agent }) {
     tenantId: tenant.id,
     agent,
   });
-  const result = await sendAgentCloudMessage({
-    tenant,
-    toWaId,
-    body: built.body,
-    templateName: TEMPLATE_BRIEF,
-    templateParams: [agent.name || "there", String(built.count)],
-  });
-  if (result.sent) {
-    const today = new Date().toISOString().slice(0, 10);
-    await supabase
-      .from("agents")
-      .update({ last_brief_sent_on: today })
-      .eq("id", agent.id)
-      .eq("tenant_id", tenant.id);
+  try {
+    await sendText({
+      phoneNumberId: tenant.phone_number_id,
+      businessToken: tenant.business_token,
+      toWaId,
+      body: built.body,
+    });
+    return { sent: true, via: "text", count: built.count, body: built.body };
+  } catch (error) {
+    return { sent: false, reason: error.message, count: built.count };
   }
-  return { ...result, count: built.count, body: built.body };
 }
 
 export function briefDueToday(agent, now = new Date()) {

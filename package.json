@@ -11,6 +11,9 @@
     "seed:copilot-agents": "node scripts/seed-copilot-agents.mjs",
     "seed:scripts": "node scripts/seed-scripts.mjs",
     "brief:send": "node scripts/send-morning-briefs.mjs",
+    "qa:auth": "node scripts/qa-auth-migration.mjs",
+    "qa:social-auth": "node scripts/qa-social-auth-new-user.mjs",
+    "qa:feedback": "node scripts/qa-feedback-tickets.mjs",
     "simulate:meta": "node scripts/simulate-meta.mjs all",
     "migrate:whatsapp": "node scripts/apply-migration.mjs",
     "verify:coexistence": "node scripts/verify-coexistence.mjs",
@@ -19,6 +22,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.86.1",
     "@daily-co/daily-js": "^0.92.2",
+    "@supabase/ssr": "^0.12.6",
     "@supabase/supabase-js": "^2.110.0",
     "@vercel/functions": "^3.7.6",
     "cheerio": "^1.2.0",

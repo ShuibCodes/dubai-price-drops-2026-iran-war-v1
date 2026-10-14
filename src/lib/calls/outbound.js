@@ -15,8 +15,13 @@ import {
   scriptPointerForScript,
   scriptPointerForSource,
 } from "../scripts/pointers.js";
+import { parseScriptConfig } from "../scripts/schema.js";
 import { createCallBatch } from "../console/batches.js";
 import { assertLeadCallable } from "../console/opt-out.js";
+import {
+  FALLBACK_WHATSAPP_CONTEXT,
+  buildWhatsappCallBrief,
+} from "../jarvis/call-brief.js";
 
 /**
  * Hard max batch dials per tenant per Asia/Dubai day. Not overridable.
@@ -365,6 +370,8 @@ export async function dialLeadNow({
   scriptVersionId = null,
   batchId = null,
   agentId = null,
+  startCall = startLeadCall,
+  buildCallBrief = buildWhatsappCallBrief,
 }) {
   assertOutboundActive(tenant);
   if (!jarvisLead) assertLeadCallable(lead);
@@ -384,6 +391,7 @@ export async function dialLeadNow({
   }
 
   let scriptAssistantId = null;
+  let firstMessage;
   if (pointer.script_id) {
     const { data: script, error: scriptError } = await supabase
       .from("scripts")
@@ -393,6 +401,16 @@ export async function dialLeadNow({
       .maybeSingle();
     if (scriptError) throw new Error(`Script assistant lookup failed: ${scriptError.message}`);
     scriptAssistantId = String(script?.vapi_assistant_id || "").trim() || null;
+  }
+  if (pointer.script_version_id) {
+    const { data: version, error: versionError } = await supabase
+      .from("script_versions")
+      .select("config_json")
+      .eq("id", pointer.script_version_id)
+      .maybeSingle();
+    if (versionError) throw new Error(`Script version lookup failed: ${versionError.message}`);
+    const parsed = parseScriptConfig(version?.config_json);
+    if (parsed.ok) firstMessage = parsed.data.first_message;
   }
 
   // 1. script_version → its script's vapi_assistant_id
@@ -424,16 +442,27 @@ export async function dialLeadNow({
     }
   }
 
+  let whatsappContext = null;
+  if (jarvisLead) {
+    whatsappContext = await buildCallBrief({
+      supabase,
+      tenantId: tenant.id,
+      jarvisLeadId: lead.id,
+    }).catch(() => FALLBACK_WHATSAPP_CONTEXT);
+    if (!whatsappContext) whatsappContext = FALLBACK_WHATSAPP_CONTEXT;
+  }
+
   const calendar = await loadCalendarDialContext(supabase, {
     tenantId: tenant.id,
     agentId,
   });
 
-  const result = await startLeadCall({
+  const result = await startCall({
     name: leadName,
     phone,
     assistantId,
     phoneNumberId: tenant.vapi_phone_number_id,
+    firstMessage,
     variableValues: applyCalendarVariableValues(
       {
         leadName,
@@ -442,6 +471,7 @@ export async function dialLeadNow({
         campaignTopic: fields.campaignTopic || "",
         formWhen: fields.formWhen || "",
         ownsProperty: fields.ownsProperty || lead.owns_property || "",
+        ...(jarvisLead ? { whatsappContext } : {}),
       },
       calendar
     ),

@@ -23,6 +23,7 @@ export async function POST(request) {
     const result = await upsertListContacts(ctx.supabase, ctx.session.tenantId, {
       name: body.name,
       contacts: body.contacts,
+      agentId: ctx.session.agentId,
     });
     if (!result.saved) {
       return jsonError("No numbers could be saved from that file.", 400);

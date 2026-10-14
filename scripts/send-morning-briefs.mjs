@@ -1,6 +1,9 @@
 import { applyEnv, loadEnvFile } from "./load-env.mjs";
 import { createClient } from "@supabase/supabase-js";
-import { briefDueToday, sendMorningBrief } from "../src/lib/brief/send.js";
+import {
+  briefDueToday,
+  sendMorningBriefNotification,
+} from "../src/lib/brief/send.js";
 
 applyEnv(loadEnvFile());
 
@@ -15,19 +18,31 @@ async function main() {
   const { data: agents, error } = await supabase
     .from("agents")
     .select(
-      "id, name, wa_id, tenant_id, brief_enabled, brief_time, tz, last_brief_sent_on, tenants(id, phone_number_id, business_token, waba_id)"
+      "id, name, wa_id, tenant_id, brief_enabled, brief_time, tz, last_brief_sent_on"
     )
     .eq("brief_enabled", true);
   if (error) throw new Error(error.message);
+
+  const tenantIds = [...new Set((agents || []).map((agent) => agent.tenant_id).filter(Boolean))];
+  const tenantsById = new Map();
+  if (tenantIds.length) {
+    const { data: tenants, error: tenantError } = await supabase
+      .from("tenants")
+      .select("id, phone_number_id, business_token, waba_id")
+      .in("id", tenantIds);
+    if (tenantError) throw new Error(tenantError.message);
+    for (const tenant of tenants || []) tenantsById.set(tenant.id, tenant);
+  }
 
   const now = new Date();
   let sent = 0;
   for (const agent of agents || []) {
     if (!briefDueToday(agent, now)) continue;
-    const result = await sendMorningBrief({
+    const result = await sendMorningBriefNotification({
       supabase,
-      tenant: agent.tenants,
+      tenant: tenantsById.get(agent.tenant_id) || null,
       agent,
+      now,
     });
     console.log(`brief agent=${agent.id} sent=${result.sent} via=${result.via || result.reason}`);
     if (result.sent) sent += 1;

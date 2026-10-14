@@ -4,6 +4,23 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { copilotHomePath, safeCopilotNextPath } from "@/lib/copilot-auth-constants";
 
+// Error codes set by /api/copilot/auth/google and /api/copilot/auth/callback.
+const CALLBACK_ERRORS = {
+  social_unavailable:
+    "Social sign-in isn't set up yet. Use your username and password.",
+  social_failed: "Social sign-in didn't complete. Try again.",
+  social_unverified:
+    "That social account did not provide a verified email address.",
+  google_unavailable:
+    "Google sign-in isn't set up yet. Use your username and password.",
+  google_failed: "Google sign-in didn't complete. Try again.",
+  facebook_unavailable:
+    "Facebook sign-in isn't set up yet. Use your username and password.",
+  facebook_failed: "Facebook sign-in didn't complete. Try again.",
+  identity_conflict:
+    "That social identity conflicts with an existing account. Ask your admin.",
+};
+
 function IconUser() {
   return (
     <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" aria-hidden="true">
@@ -64,16 +81,32 @@ function IconEye({ off }) {
   );
 }
 
-export function CopilotLoginForm() {
+export function CopilotLoginForm({
+  googleEnabled = false,
+  facebookEnabled = false,
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedNext = searchParams.get("next");
+  const callbackError = CALLBACK_ERRORS[searchParams.get("error")] || "";
+
+  const googleHref =
+    requestedNext && requestedNext.startsWith("/copilot/")
+      ? `/api/copilot/auth/google?next=${encodeURIComponent(requestedNext)}`
+      : "/api/copilot/auth/google";
+  const facebookHref =
+    requestedNext && requestedNext.startsWith("/copilot/")
+      ? `/api/copilot/auth/facebook?next=${encodeURIComponent(requestedNext)}`
+      : "/api/copilot/auth/facebook";
+  const socialEnabled = googleEnabled || facebookEnabled;
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const shownError = error || callbackError;
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -124,7 +157,33 @@ export function CopilotLoginForm() {
         Welcome back. Sign in to continue.
       </p>
 
-      <form onSubmit={handleSubmit} className="mt-8">
+      {socialEnabled ? (
+        <div className="mt-8 space-y-3">
+          {googleEnabled ? (
+            <a
+              className="flex w-full items-center justify-center rounded-[10px] border border-[#E4E9F2] bg-white py-3 text-[15px] font-semibold text-[#0a0a0a] transition hover:border-hot"
+              href={googleHref}
+            >
+              Continue with Google
+            </a>
+          ) : null}
+          {facebookEnabled ? (
+            <a
+              className="flex w-full items-center justify-center rounded-[10px] border border-[#E4E9F2] bg-white py-3 text-[15px] font-semibold text-[#0a0a0a] transition hover:border-hot"
+              href={facebookHref}
+            >
+              Continue with Facebook
+            </a>
+          ) : null}
+          <div className="mt-6 flex items-center gap-3 text-xs uppercase tracking-[.14em] text-[#9AA3B2]">
+            <span className="h-px flex-1 bg-[#E4E9F2]" />
+            or
+            <span className="h-px flex-1 bg-[#E4E9F2]" />
+          </div>
+        </div>
+      ) : null}
+
+      <form onSubmit={handleSubmit} className={socialEnabled ? "mt-6" : "mt-8"}>
         <label className="block text-sm font-medium text-[#3D4A5C]">
           Username
           <span className="relative mt-1.5 block">
@@ -171,12 +230,12 @@ export function CopilotLoginForm() {
           </span>
         </label>
 
-        {error ? (
+        {shownError ? (
           <p
             className="mt-4 rounded-[10px] border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
             role="alert"
           >
-            {error}
+            {shownError}
           </p>
         ) : null}
 

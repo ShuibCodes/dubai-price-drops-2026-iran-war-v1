@@ -10,7 +10,7 @@ export function CalendarConnect({ disabled, next = "settings" }) {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm leading-6 text-ink-2">
+      <p className="text-sm leading-6 text-fg-2">
         Connect the Google Calendar this agent uses for viewings. AgentZero
         stores the connection against your account only — not the whole tenant,
         and never as a Vapi variable.

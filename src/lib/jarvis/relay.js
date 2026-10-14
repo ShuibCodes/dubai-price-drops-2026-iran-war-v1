@@ -7,6 +7,7 @@ import {
 } from "@/lib/jarvis/infer-name";
 import {
   isJarvisAffirmative,
+  isJarvisAmbiguousAck,
   isJarvisNegative,
 } from "@/lib/jarvis/confirm";
 import { clearPendingContact } from "@/lib/jarvis/pending-contact";
@@ -21,6 +22,11 @@ import {
   cleanJarvisSearchName,
   jarvisNameSearchTerms,
 } from "@/lib/jarvis/name-search";
+import {
+  assertJarvisActor,
+  getVisibleInboxLead,
+  listVisibleInboxLeadIds,
+} from "@/lib/jarvis/visibility";
 import { resolveJarvisSender } from "@/lib/jarvis/resolve-sender";
 import { isJarvisSenderAllowed } from "@/lib/jarvis/sender-allowlist";
 import { normalizePhone, phoneToWaId } from "@/lib/leads/normalize";
@@ -91,8 +97,8 @@ function isRelayWithinHours(date = new Date()) {
   return hour >= RELAY_HOURS_START && hour < RELAY_HOURS_END;
 }
 
-export async function isRelaySenderAllowed(senderPhone) {
-  return isJarvisSenderAllowed(senderPhone);
+export async function isRelaySenderAllowed(senderPhone, scope = {}) {
+  return isJarvisSenderAllowed(senderPhone, scope);
 }
 
 export function formatRelayNewContactConfirmation({ name, phone, task }) {
@@ -112,12 +118,16 @@ function normalizeTask(task) {
   return { ok: true, task: cleaned };
 }
 
-async function recentRelayToPhone(phoneE164) {
-  const supabase = db();
+export async function recentRelayToPhone(
+  tenantId,
+  phoneE164,
+  supabase = db()
+) {
   const since = new Date(Date.now() - COOLDOWN_MS).toISOString();
   const { data, error } = await supabase
     .from("relay_calls")
     .select("id, created_at, customer_name, task, status")
+    .eq("tenant_id", tenantId)
     .eq("phone_e164", phoneE164)
     .gte("created_at", since)
     .order("created_at", { ascending: false })
@@ -126,8 +136,15 @@ async function recentRelayToPhone(phoneE164) {
   return data?.[0] || null;
 }
 
-async function resolveRelayLead(tenantId, name, phoneHint) {
+async function resolveRelayLead(tenantId, agentId, name, phoneHint) {
   const supabase = db();
+  const visibleIds = await listVisibleInboxLeadIds(supabase, {
+    tenantId,
+    agentId,
+  });
+  if (!visibleIds.size) {
+    return { status: "not_found", matches: [] };
+  }
   const hintDigits = normalizeWaId(phoneHint);
   if (hintDigits) {
     const { data: byPhone, error } = await supabase
@@ -136,6 +153,7 @@ async function resolveRelayLead(tenantId, name, phoneHint) {
         "id, push_name, wa_id, inferred_name, inferred_name_confidence, inferred_name_at"
       )
       .eq("tenant_id", tenantId)
+      .in("id", [...visibleIds])
       .eq("wa_id", hintDigits)
       .maybeSingle();
     if (error) throw new Error(`Lead phone lookup failed: ${error.message}`);
@@ -173,6 +191,7 @@ async function resolveRelayLead(tenantId, name, phoneHint) {
       "id, push_name, wa_id, inferred_name, inferred_name_confidence, inferred_name_at, last_message_at"
     )
     .eq("tenant_id", tenantId)
+    .in("id", [...visibleIds])
     .or(orFilter)
     .order("last_message_at", { ascending: false })
     .limit(30);
@@ -292,6 +311,7 @@ async function dialAndLogRelay({
  */
 export async function placeRelayCall({
   tenantId,
+  agentId,
   senderPhone,
   name,
   task,
@@ -299,7 +319,10 @@ export async function placeRelayCall({
   forceAfterHours = false,
   forceCooldown = false,
 }) {
-  if (!(await isRelaySenderAllowed(senderPhone))) {
+  assertJarvisActor({ tenantId, agentId });
+  if (
+    !(await isRelaySenderAllowed(senderPhone, { tenantId, agentId }))
+  ) {
     return {
       status: "forbidden",
       error: "Relay calls are only available for AgentZero agents on this number.",
@@ -312,7 +335,7 @@ export async function placeRelayCall({
   }
   const spokenTask = taskCheck.task;
 
-  const resolved = await resolveRelayLead(tenantId, name, phone);
+  const resolved = await resolveRelayLead(tenantId, agentId, name, phone);
   let lead = null;
   let createContact = false;
 
@@ -374,7 +397,7 @@ export async function placeRelayCall({
     };
   }
 
-  const recent = await recentRelayToPhone(lead.phone);
+  const recent = await recentRelayToPhone(tenantId, lead.phone);
   if (recent && !forceCooldown) {
     return {
       status: "cooldown",
@@ -424,14 +447,17 @@ export async function placeRelayCall({
 /**
  * Confirm + dial a pending relay (WhatsApp "yes" path).
  * Returns null if there was no pending relay, or if the message is neither
- * yes nor no (pending is left intact so a later "yes" still works).
+ * yes, no, nor an acknowledgement (pending is left intact so a later "yes" still works).
+ * "ok" / "okay" / "sure" ask for an explicit yes and do not dial or clear pending.
  * Clears pending only on no/cancel, success, failure, or expiry (via get).
  */
 export async function handleRelayConfirmationMessage({
   tenantId,
+  agentId,
   senderPhone,
   message,
 }) {
+  assertJarvisActor({ tenantId, agentId });
   const pending = await getPendingRelay(senderPhone);
   if (!pending) return null;
   if (pending.tenant_id && tenantId && pending.tenant_id !== tenantId) {
@@ -447,11 +473,20 @@ export async function handleRelayConfirmationMessage({
     };
   }
 
+  if (isJarvisAmbiguousAck(message)) {
+    return {
+      handled: true,
+      text: "Reply yes to place that call.",
+    };
+  }
+
   if (!isJarvisAffirmative(message, { allowCall: true })) {
     return null;
   }
 
-  if (!(await isRelaySenderAllowed(senderPhone))) {
+  if (
+    !(await isRelaySenderAllowed(senderPhone, { tenantId, agentId }))
+  ) {
     await clearPendingRelay(senderPhone);
     return {
       handled: true,
@@ -465,12 +500,26 @@ export async function handleRelayConfirmationMessage({
     const phoneE164 = pending.phone_e164;
     const tid = pending.tenant_id || tenantId;
 
+    if (leadId && !pending.create_contact) {
+      const visibleLead = await getVisibleInboxLead(db(), {
+        tenantId: tid,
+        agentId,
+        leadId,
+        select: "id",
+      });
+      if (!visibleLead) {
+        throw new Error("Contact not found");
+      }
+    }
+
     if (pending.create_contact) {
       const saved = await upsertCallableJarvisContact({
         tenantId: tid,
         name: customerName,
         phoneE164,
         waId: phoneToWaId(phoneE164),
+        senderPhone,
+        assignedAgentId: agentId,
       });
       leadId = saved.id;
       customerName = saved.name;

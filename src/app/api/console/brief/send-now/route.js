@@ -1,4 +1,4 @@
-import { sendMorningBrief } from "@/lib/brief/send";
+import { sendMorningBriefNotification } from "@/lib/brief/send";
 import { consoleContext, jsonError } from "@/lib/console/http";
 
 export const runtime = "nodejs";
@@ -19,7 +19,7 @@ export async function POST(request) {
           .maybeSingle(),
         supabase
           .from("agents")
-          .select("id, name, wa_id, tz, brief_enabled")
+          .select("id, name, wa_id, tz, brief_enabled, last_brief_sent_on")
           .eq("id", session.agentId)
           .eq("tenant_id", session.tenantId)
           .maybeSingle(),
@@ -28,7 +28,17 @@ export async function POST(request) {
     if (agentError) throw new Error(agentError.message);
     if (!agent) return jsonError("Agent not found.", 404);
 
-    const result = await sendMorningBrief({ supabase, tenant, agent });
+    const result = await sendMorningBriefNotification({
+      supabase,
+      tenant,
+      agent,
+    });
+    if (result.reason === "already_sent_today") {
+      return Response.json({
+        ...result,
+        already: true,
+      });
+    }
     if (!result.sent) {
       return jsonError(result.reason || "Could not send the brief.", 502, result);
     }

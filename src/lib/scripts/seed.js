@@ -91,7 +91,7 @@ async function seedLivePointer(supabase, tenant, entry) {
   const prompt = composePrompt({
     config: COLD_LIST_CONFIG,
     tenant,
-    script: { display_name: entry.display_name },
+    script: { display_name: entry.display_name, seed_key: entry.seed_key },
   });
 
   const { data, error } = await supabase

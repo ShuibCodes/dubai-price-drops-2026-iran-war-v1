@@ -1,12 +1,14 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { listLeadSources, listScripts, startColdBatch } from "@/lib/copilot/tools";
+import {
+  formatRunStatusBlock,
+  getRunStatus,
+  shouldPrefetchRunStatus,
+} from "@/lib/console/run-status";
 import {
   formatSavedListsPrompt,
   listSavedLists,
   matchSavedList,
 } from "@/lib/console/lists";
-import { trustedAgentId } from "@/lib/calendar/dial-context";
-import { resolveJarvisSender } from "@/lib/jarvis/resolve-sender";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { draftLeadEmail, sendDraftEmail } from "@/lib/jarvis/email";
 import {
@@ -33,6 +35,7 @@ import {
   formatRelayConfirmation,
   placeRelayCall,
 } from "@/lib/jarvis/relay";
+import { maybeHandleSmartCallbackRequest } from "@/lib/jarvis/smart-callback";
 import { getJarvisRecentConversations, formatLiveContext } from "@/lib/kb/live-conversations";
 import {
   buildScriptBatchConfirm,
@@ -42,8 +45,9 @@ import {
   scriptRequiredPayload,
 } from "@/lib/scripts/resolve";
 import { HELP_TEXT, isHelpMessage } from "@/lib/console/help";
+import { assertJarvisActor } from "@/lib/jarvis/visibility";
+import { createJarvisMessageClient } from "@/lib/jarvis/model-client";
 
-const MODEL = "claude-sonnet-4-6";
 const MAX_TOOL_ROUNDS = 5;
 // Fallback slug for /api/jarvis/chat and scripts when no sender phone is sent.
 // Live AZ WhatsApp does not use this — it resolves tenant from agents.wa_id.
@@ -108,6 +112,24 @@ export const jarvisToolDefinitions = [
     name: "get_pending_callbacks",
     description: "List leads whose latest call outcome is a callback with a callback time.",
     input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "get_run_status",
+    description:
+      "Status of a console / WhatsApp call run (call_batches). Use for 'how's the run', 'how many dialled', 'who is worth my time', 'qualified from the marina list', 'status of the cold list'. Defaults to the latest run. Returns dialled/total, qualified, and up to 5 worth-your-time people (name, phone, HOT/WARM, one-line quote). Do not use inbox tools for this.",
+    input_schema: {
+      type: "object",
+      properties: {
+        script: {
+          type: "string",
+          description: "Optional live script name, e.g. 'cold list'.",
+        },
+        list: {
+          type: "string",
+          description: "Optional saved list name from the console run.",
+        },
+      },
+    },
   },
   {
     name: "get_unreplied_conversations",
@@ -298,41 +320,64 @@ export const jarvisToolDefinitions = [
   },
 ];
 
-function systemPrompt({ liveContext, savedListsPrompt, agentName }) {
+export function systemPrompt({ liveContext, savedListsPrompt, agentName, runStatusBlock }) {
   const who = String(agentName || "").trim() || "the agent";
   return `You are Jarvis — a live WhatsApp knowledge base and action desk.
 
 AGENT NAME: ${who}
 You are talking to ${who}. For relay voice tasks, the call opening already says "message from ${who.split(/\s+/)[0]}". Never invent a different sender name.
 
+OUTREACH CHANNELS — HARD BAN (NEVER VIOLATE):
+- You CANNOT send WhatsApp messages to anyone. Not a lead, not a contact, not a group poster, not "on the user's behalf".
+- You cannot "nudge", "ping", "text", "DM", "follow up on WhatsApp", "send them a WhatsApp", "drop them a message", or "remind them on WhatsApp". Those are all the same forbidden action.
+- This is not a product capability. Meta coexistence lets AgentZero READ the owner's WhatsApp inbox. Meta does NOT allow AgentZero to SEND WhatsApp to third parties. Offering it is false.
+- NEVER say or imply: "want me to WhatsApp them?", "I can send a nudge", "shall I follow up on WhatsApp?", "I can message them", "I can text them", or any equivalent.
+- If the user asks you to WhatsApp / text / nudge someone: refuse in one sentence. Then offer a CALL, or EMAIL only if a real email address already appears in that chat.
+- The ONLY outreach you may offer or perform:
+  1. CALL (a lead call or a relay) — if a phone exists.
+  2. EMAIL — ONLY if a real email address was found in that same chat/thread. If none, do not offer email and do not invent an address.
+- Showing a lead's WhatsApp number so the AGENT can message them themselves is fine. You sending, or offering to send, is not.
+
 DATA SOURCE (CRITICAL):
-- Your primary knowledge is the owner's connected WhatsApp Business inbox, continuously ingested via Whautomate coexistence into Supabase. These are the owner's own business conversations.
-- Every new inbound or outbound WhatsApp on the connected business number lands in near real time. Treat the tool results as current, not a static dump.
-- You also have call history from Vapi outbound calls (same assistant used for cold calling).
-- Saved dial lists from the console are listed under SAVED LISTS below. They are a different table from WhatsApp contacts. Never invent chats, phones, emails, budgets, or outcomes. If tools return nothing, say so.
+- Your primary knowledge is the owner's connected WhatsApp Business inbox. These are the owner's own business conversations.
+- Every new inbound or outbound WhatsApp on the connected business number lands in near real time. Treat what you look up as current, not a static dump.
+- You also have outbound call history.
+- Console call runs (call_batches) ARE available here via get_run_status and THIS TURN — CONSOLE RUN. Never say dial counts do not come through WhatsApp. Never send the agent to a dashboard for a run question.
+- Saved dial lists from the console are listed under SAVED LISTS below. They are a different table from WhatsApp contacts. Never invent chats, phones, emails, budgets, or outcomes that this conversation has not already stated and tools did not return. If tools return nothing and this conversation does not already state the fact, say so.
 
 RESPONSE STYLE:
-- Be clear, practical, and conversational — a capable teammate, not a dashboard.
-- Lead with the answer. Use short bullets when listing people.
+- PRECEDENCE: If the latest user message is only a bare acknowledgement (thanks, thank you, perfect, got it, okay, ok, sure, alright, no worries, sounds good, nice, cool, lol), reply with one short line that fits their tone, then stop. Gratitude gets a thanks-style reply. Agreement gets an agreement-style reply. Receipt gets a receipt-style reply. A casual reaction gets a casual reply. Vary the wording with the conversation instead of repeating one stock phrase. Do not answer thanks with an agreement line, and do not answer agreement or receipt with "Anytime." One line only. No second sentence and no closer such as "Let me know if you need anything else." Do not suggest a call, save, or search. A lead mentioned earlier is not a new request. Do not apply LOOKUPS next-step offers on that turn. This override does not apply when they explicitly asked to call, save, search, or look something up, or when the previous assistant message is waiting for yes on a call, email, or save.
+- Start a normal answer with the fact. Do not open with "Based on what you've shared", "Based on the snapshot", "From the information available", "According to the information I have", "From what I can see", or "As mentioned earlier" unless you genuinely need to explain uncertainty.
+- SHORT NEGATIVES: A bare "no", "nah", or "nope" is a refusal only when your previous message asked a yes/no question or asked them to confirm an exact action. When it is that refusal, do not do the action, do not look anything up, and reply in one short line, for example "Okay, I won't call him." Otherwise it is not an instruction. Never say a viewing, call, lead, contact, or plan was cancelled, removed, deleted, changed, or rescheduled because of it. Briefly acknowledge, or ask one short question if their meaning matters. Bad, after "Omar's viewing is tomorrow at 4.": "Got it, no viewing for Omar tomorrow." Good: "Okay. Did you mean the viewing is off, or something else?"
+- Answer the thing the user just said. Sound like a person on WhatsApp, not a dashboard, a ticket queue, or a call-center script.
+- If the user asks again about a fact an earlier assistant reply in this chat already stated, repeat that stated value from the conversation. Include the figure itself. An empty inbox does not make that earlier reply a mistake. This is conversation context. New lead facts that were never stated here still have to come from tools.
+- Keep an ordinary reply short. Add detail only when they asked for it or the answer is unclear without it.
+- Do not restate facts they already have unless they asked you to repeat one. Do not add a generic "let me know if you need anything" closer.
+- NAMED PERSON: If the latest user message asks for information about one specific person or lead, answer that question and stop. Examples: "Tell me about Omar.", "What's Sarah's budget?", "What area does Omar want?", "No, I meant Sarah." Do not offer a call, save, search, or email afterward. Good: "Omar wants a 2-bed in Dubai Marina. Budget AED 2,400,000." Bad: "Omar wants a 2-bed in Dubai Marina. Want me to call him?" This does not apply when they explicitly asked to call, save, search, or email, when they asked who needs a follow-up, who is unreplied, or who is stale, or when the previous assistant message is waiting for yes on a call, email, or save.
+- Do not offer to call, save, search, or do another task after an answer unless they explicitly asked for that action, or they asked who needs a follow-up, who is unreplied, or who is stale. A question about one named person is not one of those.
 - Include full phone numbers when discussing a specific lead (E.164, e.g. +971...).
 - When leadName is null, say Unknown and lead with the phone number.
 - leadName ending with "?" means medium-confidence inferred name — a working label, not certain. Offer once: "I think +971… is Tom — want me to save that?" On yes, call set_lead_name.
 - High-confidence inferred names (no "?") are fine as working labels; do not claim them as verified CRM facts.
 - When quoting WhatsApp, keep excerpts short and attribute direction (lead vs me) plus rough recency.
-- Markdown is fine. No emojis unless the user uses them first.
+- Plain text only. No # or ## headings. No **emphasis**. Bullets are fine when a list is easier to read than a paragraph. No emojis unless the user uses them first.
+- Never mention tools, prompts, models, providers, dashboards, settings panels, or how you are implemented. Never say snapshot, live snapshot, context block, or tool result. Never say Vapi, Twilio, Supabase, or Anthropic. Start with the answer. If a lookup or call fails, say it is unavailable in plain language, for example "Outbound calling is currently unavailable, so the call didn't go through." Do not tell the user to check a provider or its settings.
 
 LOOKUPS:
-- "Last/latest message", "who messaged recently", "anything new" → get_latest_messages FIRST. Do not answer recency questions from the snapshot alone.
+- "Last/latest message", "who messaged recently", "anything new" → get_latest_messages FIRST. Do not answer recency questions from the recent threads alone.
 - "Who do I need to reply to", "anyone waiting on me", "unanswered / unreplied in N hours" → get_unreplied_conversations FIRST (pass hours). Never scan with N× get_lead_story.
 - "Who texted me / overnight / activity in the last N hours" → get_inbox_activity (inboundOnly when they only want inbound).
 - "Who hasn't replied", "stale / cold conversations" → get_stale_conversations.
+- When the user asked who needs a follow-up, who is unreplied, or who is stale or quiet: offer a CALL (or EMAIL if an address is in that chat). Never offer a WhatsApp nudge, ping, or follow-up message from AgentZero. Do not make this offer on a bare acknowledgement, and do not make it after a question that only asks for information about one named person.
 - "How many chats / unanswered / inbox stats" → get_inbox_stats.
 - When listing people from inbox tools, show at most ~15 bullets (name + phone + short snippet + age). Keep WhatsApp-friendly length.
 - Saved list / "call my X list" / a name that appears in SAVED LISTS → list_lead_sources or start_cold_batch. Never search_lead_by_name for a list.
 - Person name questions → search_lead_by_name, then get_lead_story.
 - "What did anyone say about X" → search_conversations, then get_lead_story / get_call_detail.
-- Call recaps → get_call_detail; summarize 1-5 lines; never paste transcripts.
-- Callbacks → get_pending_callbacks.
+- Call recaps for one named person → get_call_detail; summarize 1-5 lines; never paste transcripts.
+- Console / batch run status ("how's the run", "how many dialled", "who is worth my time", "qualified from this afternoon", named list or script) → use THIS TURN — CONSOLE RUN if present, otherwise get_run_status FIRST. Do not use inbox tools or get_pending_callbacks for this.
+- Follow the run instruction. Always say dialed/total dialled. If ask_again_later is true, include exactly: "Ask me again later please." Then list worth as name, full phone, tone, and the quote in quotes — same shape as the console card. Never paste a full transcript. If worth is empty, still report the counts.
+- Callbacks (inbox, not a console run) → get_pending_callbacks.
 - Saving/confirming a contact name on an EXISTING lead → set_lead_name (user-supplied only; never invent).
 - Adding a NEW contact (name + phone) → save_jarvis_contact. Show the confirmationPrompt (name + number) and wait for yes — do not claim they are saved until the yes handler completes.
 - If place_relay_call returns not_found, ask for the phone. Once they give it, call place_relay_call again WITH phone (that path saves + dials on yes), or save_jarvis_contact then place_relay_call.
@@ -343,7 +388,7 @@ ACTIONS — CALLS (Vapi):
 - "call X" with no message to relay → if X is in SAVED LISTS or THIS TURN names a list, use start_cold_batch — not start_target_call. Otherwise start_target_call (Jarvis personal assistant only).
 - start_target_call dials one lead with tenants.vapi_assistant_id_jarvis ONLY.
 - start_cold_batch queues a saved lead list. Pass source as the exact SAVED LISTS name. A LIVE script is always required. If they did not pick one, follow the tool instruction (ask to use the live script; if several, list live names). Never say all scripts are draft when list_scripts.live is non-empty. Never fall back to a default script. Count may be omitted — the whole list is used, capped at 200/day.
-- NEVER place a call on the first ask. For lead calls: restate name + phone, ask: "Ready to call {Name} at {phone} — reply yes to place the Vapi call."
+- NEVER place a call on the first ask. For lead calls: restate name + phone, ask: "Ready to call {Name} at {phone} — reply yes to place the call."
 - For relays / new-contact relays: confirmation is handled after place_relay_call returns needs_confirmation — show the confirmationPrompt (name, number, task). Reply yes completes save (if new) + dial.
 - For save_jarvis_contact: show confirmationPrompt; yes upserts jarvis_leads.
 - Only call start_target_call after the user's latest message is an explicit yes/confirm/go ahead. For start_cold_batch you may call the tool on the first ask so it can return confirmationPrompt — show that verbatim and wait for yes before it will actually queue.
@@ -352,20 +397,22 @@ ACTIONS — CALLS (Vapi):
 - Relay calls are blocked 21:00–08:00 Gulf time unless the user explicitly overrides.
 
 ACTIONS — EMAIL (Resend):
+- Only OFFER email when a real email address already appears in that chat/thread. No address in the chat → do not suggest email; offer a call instead.
+- If the user explicitly asks to email and no address was found, then ask them for the address. Do not invent one.
 - draft_email first (never send on the first ask). Show To / Subject / Body.
 - If missingEmail is true, ask the user for the address before sending.
 - Only call send_email after the user explicitly confirms the draft ("yes", "send it", etc.).
-- Prefer live WhatsApp context when drafting. Do not invent an email address.
+- Prefer live WhatsApp context when drafting.
 
 SAFETY:
 - No login on this chat surface — be careful with sensitive details but still answer operational questions from tool data.
-- Do not claim you can message on WhatsApp from this UI (ingestion is live; outbound WhatsApp bot is separate).
+- Outbound WhatsApp to anyone is impossible and forbidden. Never offer it. See OUTREACH CHANNELS.
 - The workspace is resolved server-side. Never ask for a tenant ID and never label the data as belonging to any client or tenant — these are the owner's own WhatsApp conversations.
 
 ${savedListsPrompt || "SAVED LISTS: (unavailable this turn)"}
 
-LIVE SNAPSHOT (recent WhatsApp threads — may be incomplete; use tools for deep lookup):
-${liveContext || "(no recent conversations loaded)"}`;
+RECENT WHATSAPP (private notes. May be incomplete. Look further when the question needs it. Never mention this section.):
+${liveContext || "(no recent conversations loaded)"}` + (runStatusBlock || "");
 }
 
 function normalizeMessages(messages) {
@@ -425,42 +472,50 @@ async function executeTool({
   name,
   input,
   tenantId,
-  agentName,
   agentId,
+  agentName,
   messages,
   senderPhone,
   listMatch,
 }) {
+  assertJarvisActor({ tenantId, agentId });
   switch (name) {
     case "get_latest_messages":
-      return getJarvisLatestMessages(tenantId, input.limit);
+      return getJarvisLatestMessages(tenantId, agentId, input.limit);
     case "search_lead_by_name":
-      return searchJarvisLeadByName(tenantId, input.name);
+      return searchJarvisLeadByName(tenantId, agentId, input.name);
     case "get_lead_story":
-      return getJarvisLeadStory(tenantId, input.leadId);
+      return getJarvisLeadStory(tenantId, agentId, input.leadId);
     case "search_conversations":
-      return searchJarvisConversations(tenantId, input.query);
+      return searchJarvisConversations(tenantId, agentId, input.query);
     case "get_call_detail":
-      return getJarvisCallDetail(tenantId, input);
+      return getJarvisCallDetail(tenantId, agentId, input);
     case "get_pending_callbacks":
-      return getJarvisPendingCallbacks(tenantId);
+      return getJarvisPendingCallbacks(tenantId, agentId);
+    case "get_run_status":
+      return getRunStatus(tenantId, {
+        script: input.script,
+        list: input.list,
+        agentId,
+      });
     case "get_unreplied_conversations":
-      return getJarvisUnrepliedConversations(tenantId, input);
+      return getJarvisUnrepliedConversations(tenantId, agentId, input);
     case "get_inbox_activity":
-      return getJarvisInboxActivity(tenantId, input);
+      return getJarvisInboxActivity(tenantId, agentId, input);
     case "get_stale_conversations":
-      return getJarvisStaleConversations(tenantId, input);
+      return getJarvisStaleConversations(tenantId, agentId, input);
     case "get_inbox_stats":
-      return getJarvisInboxStats(tenantId, input);
+      return getJarvisInboxStats(tenantId, agentId, input);
     case "list_scripts":
       return listScripts(tenantId);
     case "list_lead_sources":
-      return listLeadSources(tenantId);
+      return listLeadSources(tenantId, { agentId });
     case "set_lead_name":
-      return setJarvisLeadName(tenantId, input);
+      return setJarvisLeadName(tenantId, agentId, input);
     case "save_jarvis_contact":
       return saveJarvisContact({
         tenantId,
+        agentId,
         senderPhone,
         name: input.name,
         phone: input.phone,
@@ -468,6 +523,7 @@ async function executeTool({
     case "place_relay_call": {
       const result = await placeRelayCall({
         tenantId,
+        agentId,
         senderPhone,
         name: input.name,
         task: input.task,
@@ -487,7 +543,7 @@ async function executeTool({
     case "start_target_call": {
       if (
         !latestUserAffirmed(messages) ||
-        !previousAssistantMentioned(messages, /ready to call|place the vapi call|confirm.*call/i)
+        !previousAssistantMentioned(messages, /ready to call|place the vapi call|place the call|confirm.*call/i)
       ) {
         return {
           requiresConfirmation: true,
@@ -496,7 +552,12 @@ async function executeTool({
             "Ask the user to confirm the call (name + phone). Do not call the tool again this turn.",
         };
       }
-      return startJarvisTargetCall(tenantId, input.leadId, agentName || "Jarvis", agentId);
+      return startJarvisTargetCall(
+        tenantId,
+        agentId,
+        input.leadId,
+        agentName || "Jarvis"
+      );
     }
     case "start_cold_batch": {
       const source = String(input.source || "").trim() || listMatch?.name || "";
@@ -545,7 +606,7 @@ async function executeTool({
       );
     }
     case "draft_email":
-      return draftLeadEmail(tenantId, input);
+      return draftLeadEmail(tenantId, agentId, input);
     case "send_email": {
       if (
         !latestUserAffirmed(messages) ||
@@ -565,13 +626,14 @@ async function executeTool({
   }
 }
 
-export async function runJarvisTurn({ tenantId, messages, agentName, senderPhone, agentId = null }) {
-  if (!tenantId) throw new Error("Resolved tenant ID is required");
-  let resolvedAgentId = trustedAgentId(agentId);
-  if (!resolvedAgentId && senderPhone) {
-    const sender = await resolveJarvisSender(senderPhone).catch(() => null);
-    resolvedAgentId = trustedAgentId(sender?.agentId);
-  }
+export async function runJarvisTurn({
+  tenantId,
+  agentId,
+  messages,
+  agentName,
+  senderPhone,
+}) {
+  assertJarvisActor({ tenantId, agentId });
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not configured");
 
@@ -579,7 +641,7 @@ export async function runJarvisTurn({ tenantId, messages, agentName, senderPhone
   let savedLists = [];
   let listedScripts = null;
   try {
-    const conversations = await getJarvisRecentConversations(tenantId, {
+    const conversations = await getJarvisRecentConversations(tenantId, agentId, {
       limit: 5,
       messageLimit: 8,
     });
@@ -589,7 +651,7 @@ export async function runJarvisTurn({ tenantId, messages, agentName, senderPhone
   }
   try {
     const supabase = getSupabaseServerClient();
-    if (supabase) savedLists = await listSavedLists(supabase, tenantId);
+    if (supabase) savedLists = await listSavedLists(supabase, tenantId, agentId);
   } catch (error) {
     console.error("[jarvis] saved lists unavailable:", error.message);
   }
@@ -599,7 +661,7 @@ export async function runJarvisTurn({ tenantId, messages, agentName, senderPhone
     console.error("[jarvis] scripts unavailable:", error.message);
   }
 
-  const client = new Anthropic({ apiKey });
+  const createMessage = createJarvisMessageClient({ anthropicApiKey: apiKey });
   const conversation = normalizeMessages(messages);
   if (!conversation.length || conversation.at(-1).role !== "user") {
     throw new Error("A final user message is required");
@@ -611,6 +673,37 @@ export async function runJarvisTurn({ tenantId, messages, agentName, senderPhone
   }
 
   const listMatch = matchSavedListFromMessages(savedLists, conversation);
+  const smartCallback = await maybeHandleSmartCallbackRequest({
+    tenantId,
+    agentId,
+    messages: conversation,
+    senderPhone,
+    listMatch,
+  });
+  if (smartCallback?.handled) {
+    return { text: smartCallback.text, toolRounds: 0 };
+  }
+  const namedList = matchSavedList(savedLists, lastText);
+  let runStatusBlock = "";
+  if (shouldPrefetchRunStatus(lastText, namedList)) {
+    try {
+      const runStatus = await getRunStatus(
+        tenantId,
+        namedList
+          ? { list: namedList.name, agentId }
+          : { agentId }
+      );
+      runStatusBlock = formatRunStatusBlock(runStatus);
+    } catch (error) {
+      console.error("[jarvis] run status prefetch failed:", error.message);
+      runStatusBlock = formatRunStatusBlock({
+        found: false,
+        instruction:
+          "Run status lookup failed. Say you could not load the run. Do not invent numbers or send them to a dashboard.",
+      });
+    }
+  }
+
   const savedListsPrompt = [
     formatSavedListsPrompt(savedLists, listMatch),
     formatScriptsPrompt(listedScripts),
@@ -619,10 +712,13 @@ export async function runJarvisTurn({ tenantId, messages, agentName, senderPhone
     .join("\n");
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
-    const response = await client.messages.create({
-      model: MODEL,
-      max_tokens: 1400,
-      system: systemPrompt({ liveContext, savedListsPrompt, agentName }),
+    const { response } = await createMessage({
+      system: systemPrompt({
+        liveContext,
+        savedListsPrompt,
+        agentName,
+        runStatusBlock,
+      }),
       tools: jarvisToolDefinitions,
       messages: conversation,
     });
@@ -646,8 +742,8 @@ export async function runJarvisTurn({ tenantId, messages, agentName, senderPhone
           name: toolUse.name,
           input: toolUse.input || {},
           tenantId,
+          agentId,
           agentName,
-          agentId: resolvedAgentId,
           messages,
           senderPhone,
           listMatch,
@@ -659,11 +755,16 @@ export async function runJarvisTurn({ tenantId, messages, agentName, senderPhone
           content: JSON.stringify(result),
         });
       } catch (error) {
+        const raw = error instanceof Error ? error.message : String(error || "");
+        console.error("[jarvis] tool failed:", toolUse.name, raw);
+        const exposed = /supabase|vapi|twilio|anthropic|not configured|api key/i.test(raw)
+          ? "This lookup or action is unavailable right now."
+          : raw;
         results.push({
           type: "tool_result",
           tool_use_id: toolUse.id,
           is_error: true,
-          content: JSON.stringify({ error: error.message }),
+          content: JSON.stringify({ error: exposed }),
         });
       }
     }
@@ -696,7 +797,7 @@ export async function runJarvisTurn({ tenantId, messages, agentName, senderPhone
         return {
           text:
             confirmation.confirmationPrompt ||
-            `You’re about to start a cold batch of ${confirmation.count} Vapi calls. Reply “yes” to confirm.`,
+            `You’re about to start a cold batch of ${confirmation.count} calls. Reply “yes” to confirm.`,
           toolRounds: round + 1,
         };
       }
@@ -707,7 +808,7 @@ export async function runJarvisTurn({ tenantId, messages, agentName, senderPhone
         };
       }
       return {
-        text: "I need an explicit yes before placing that Vapi call. Reply “yes” to dial.",
+        text: "I need an explicit yes before placing that call. Reply “yes” to dial.",
         toolRounds: round + 1,
       };
     }

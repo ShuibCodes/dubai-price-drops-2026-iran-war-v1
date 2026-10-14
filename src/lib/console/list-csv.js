@@ -16,9 +16,62 @@ function canon(header) {
     .replace(/[^a-z0-9]/g, "");
 }
 
+const ISO_ALPHA2 = new Set(
+  "ad ae af ag ai al am ao aq ar as at au aw ax az ba bb bd be bf bg bh bi bj bl bm bn bo bq br bs bt bv bw by bz ca cc cd cf cg ch ci ck cl cm cn co cr cu cv cw cx cy cz de dj dk dm do dz ec ee eg eh er es et fi fj fk fm fo fr ga gb gd ge gf gg gh gi gl gm gn gp gq gr gs gt gu gw gy hk hm hn hr ht hu id ie il im in io iq ir is it je jm jo jp ke kg kh ki km kn kp kr kw ky kz la lb lc li lk lr ls lt lu lv ly ma mc md me mf mg mh mk ml mm mn mo mp mq mr ms mt mu mv mw mx my mz na nc ne nf ng ni nl no np nr nu nz om pa pe pf pg ph pk pl pm pn pr ps pt pw py qa re ro rs ru rw sa sb sc sd se sg sh si sj sk sl sm sn so sr ss st sv sx sy sz tc td tf tg th tj tk tl tm tn to tr tt tv tw tz ua ug um us uy uz va vc ve vg vi vn vu wf ws xk ye yt za zm zw".split(
+    " "
+  )
+);
+
+const NAME_HEADER_BLOCKLIST = new Set([
+  "cc",
+  "clientsource",
+  "contactid",
+  "country",
+  "countrycode",
+  "countryiso",
+  "email",
+  "emailaddress",
+  "emails",
+  "id",
+  "iso",
+  "iso2",
+  "iso3",
+  "label",
+  "labels",
+  "leadid",
+  "mail",
+  "nationality",
+  "recordid",
+  "source",
+  "status",
+  "tag",
+  "tags",
+  "userid",
+  "uuid",
+]);
+
 export function looksLikePhone(value) {
   const digits = String(value || "").replace(/\D/g, "");
   return digits.length >= 8 && digits.length <= 15;
+}
+
+export function looksLikeCountryCode(value) {
+  const text = String(value || "").trim();
+  if (!/^[A-Za-z]{2}$/.test(text)) return false;
+  if (!ISO_ALPHA2.has(text.toLowerCase())) return false;
+  return text === text.toUpperCase() || text === text.toLowerCase();
+}
+
+function looksLikeRecordId(value) {
+  const text = String(value || "").trim();
+  if (/\s/.test(text) || text.length < 10 || text.length > 64) return false;
+  if (!/^[A-Za-z0-9_-]+$/.test(text)) return false;
+  if (/[A-Za-z]/.test(text) && /\d/.test(text)) return true;
+  return text.length >= 16 && /[a-z]/.test(text) && /[A-Z]/.test(text);
+}
+
+function looksLikeTagCell(value) {
+  return /^[A-Za-z][\w -]*:/.test(String(value || "").trim());
 }
 
 export function looksLikeName(value) {
@@ -26,6 +79,9 @@ export function looksLikeName(value) {
   if (!text || looksLikePhone(text) || /@/.test(text)) return false;
   if (/^https?:\/\//i.test(text)) return false;
   if (/^\d+([.,]\d+)?$/.test(text)) return false;
+  if (looksLikeCountryCode(text) || looksLikeRecordId(text) || looksLikeTagCell(text)) {
+    return false;
+  }
   return (
     /[A-Za-z\u00C0-\u024F\u0400-\u04FF\u0600-\u06FF]/.test(text) &&
     text.length <= 80
@@ -70,6 +126,7 @@ function headerHint(header, kind) {
     if (key === "number" || key === "contact" || key === "wa") return 1;
     return 0;
   }
+  if (NAME_HEADER_BLOCKLIST.has(key)) return -8;
   if (/(firstname|lastname|surname|fullname|pushname|leadname|clientname|contactname|customername)/.test(key)) {
     return 3;
   }
@@ -96,7 +153,7 @@ function scoreColumns(rows, headers) {
       header,
       filled,
       phoneScore: phoneHits * 4 + headerHint(header, "phone"),
-      nameScore: nameHits * 4 + headerHint(header, "name"),
+      nameScore: nameHits * 4 + headerHint(header, "name") * 20,
       phoneHits,
       nameHits,
     };
@@ -112,23 +169,30 @@ function pickPhoneHeader(scores) {
 }
 
 function pickNameHeaders(scores, phoneHeader) {
-  const ranked = [...scores]
-    .filter((item) => item.header !== phoneHeader)
-    .sort((a, b) => b.nameScore - a.nameScore);
+  const candidates = scores.filter((item) => {
+    if (item.header === phoneHeader) return false;
+    return headerHint(item.header, "name") >= 0;
+  });
+  const hinted = candidates.filter((item) => headerHint(item.header, "name") >= 2);
+  const ranked = [...(hinted.length ? hinted : candidates)].sort(
+    (a, b) => b.nameScore - a.nameScore
+  );
   const usable = ranked.filter(
     (item) => item.nameHits > 0 || headerHint(item.header, "name") >= 2
   );
   if (!usable.length) return [];
-  const first = usable[0];
-  const key = canon(first.header);
-  if (key === "firstname" || key === "first") {
-    const last = usable.find((item) => {
-      const k = canon(item.header);
-      return k === "lastname" || k === "last" || k === "surname";
-    });
-    return last ? [first.header, last.header] : [first.header];
+  const firstName = usable.find((item) => {
+    const k = canon(item.header);
+    return k === "firstname" || k === "first";
+  });
+  const lastName = usable.find((item) => {
+    const k = canon(item.header);
+    return k === "lastname" || k === "last" || k === "surname";
+  });
+  if (firstName) {
+    return lastName ? [firstName.header, lastName.header] : [firstName.header];
   }
-  return [first.header];
+  return [usable[0].header];
 }
 
 function cellName(row, headers) {
@@ -166,7 +230,7 @@ function contactsFromObjects(rows, headers) {
       : phoneFromAnyCell(row);
     if (!looksLikePhone(phone)) continue;
     const name = nameHeaders.length
-      ? cellName(row, nameHeaders) || nameFromAnyCell(row, phone)
+      ? cellName(row, nameHeaders)
       : nameFromAnyCell(row, phone);
     contacts.push({ phone, name });
   }

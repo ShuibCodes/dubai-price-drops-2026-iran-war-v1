@@ -22,6 +22,32 @@
   --rule-2: #2a2a2a;
   --warn: var(--amber);
   --markup: var(--hot);
+
+  /* AgentZero console surface family. Same system, greener room. */
+  --az: #35e08b;
+  --az-hover: #5aeaa4;
+  --az-ink: #08130d;
+  --az-wash: #0b1610;
+  --az-edge: #2a4d3c;
+  --shell: #080909;
+  --panel: #0c0f0e;
+  --panel-2: #0f1211;
+  --field: #0e1110;
+  --hairline: #141817;
+  --line: #191d1b;
+  --line-2: #232826;
+  --line-3: #333a37;
+  --line-4: #3a4340;
+  --fg: #e9ede9;
+  --fg-soft: #c9d1cd;
+  --fg-2: #9aa39e;
+  --dim: #8b938f;
+  --faint: #6d7672;
+  --ghost: #4f5754;
+  --warn-wash: #15130b;
+  --warn-edge: #3a3524;
+  --markup-wash: #170c10;
+  --markup-edge: #43242c;
 }
 
 * {
@@ -176,4 +202,81 @@ select {
 
 .live-dot {
   animation: livePulse 1.8s infinite;
+}
+
+/* AgentZero console primitives. Prefixed so they can never collide with
+   DXB Dip markup, which shares this stylesheet. */
+@layer components {
+  .az-shell {
+    background: var(--shell);
+    color: var(--fg);
+  }
+
+  .az-label {
+    @apply mb-2 block font-mono text-[11px] tracking-[.14em] text-faint;
+  }
+
+  .az-eyebrow {
+    @apply font-mono text-[11px] tracking-[.16em] text-ghost;
+  }
+
+  .az-input {
+    @apply w-full rounded-[10px] border border-line-2 bg-field px-[18px] py-4 text-[17px] text-fg outline-none placeholder:text-[#5d6663] focus:border-az;
+  }
+
+  .az-card {
+    @apply rounded-[14px] border border-line-2 bg-panel;
+  }
+
+  .az-card-live {
+    @apply rounded-[14px] border border-az-edge bg-az-wash;
+  }
+
+  .az-btn {
+    @apply inline-flex cursor-pointer items-center justify-center rounded-[9px] px-5 py-3 text-[15px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40;
+  }
+
+  .az-btn-primary {
+    @apply az-btn bg-az font-semibold text-az-ink hover:bg-az-hover;
+  }
+
+  .az-btn-white {
+    @apply az-btn bg-[#f2f5f3] font-semibold text-az-ink hover:bg-white;
+  }
+
+  .az-btn-ghost {
+    @apply az-btn border border-line-3 bg-transparent text-fg hover:border-az hover:text-az;
+  }
+
+  .az-btn-quiet {
+    @apply az-btn border border-line-2 bg-transparent text-dim hover:text-fg;
+  }
+
+  .az-h1 {
+    @apply text-[44px] font-semibold leading-[1.02] tracking-[-.03em];
+  }
+
+  .az-pill {
+    @apply inline-flex items-center rounded-full border px-2 py-1 font-mono text-[10px] uppercase tracking-[.12em];
+  }
+
+  .az-pill-live {
+    @apply az-pill border-az-edge bg-az-wash text-az;
+  }
+
+  .az-pill-draft {
+    @apply az-pill border-warn-edge bg-warn-wash text-warn;
+  }
+
+  .az-pill-quiet {
+    @apply az-pill border-line-2 bg-panel-2 text-dim;
+  }
+
+  .az-pill-markup {
+    @apply az-pill border-markup-edge bg-markup-wash text-markup;
+  }
+
+  .az-row {
+    @apply flex w-full items-center gap-5 border-b border-hairline px-1 py-5 text-left;
+  }
 }

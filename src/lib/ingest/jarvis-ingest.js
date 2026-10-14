@@ -1,3 +1,4 @@
+import { nextAssignedAgentId } from "@/lib/leads/assigned-agent";
 import { MESSAGES_TABLE } from "@/lib/supabase/server";
 
 export const JARVIS_LEADS_TABLE = "jarvis_leads";
@@ -9,13 +10,14 @@ export async function upsertJarvisLead({
   pushName,
   messageAt,
   whautomateContactId = null,
+  assignedAgentId = null,
 }) {
   const nowIso = messageAt || new Date().toISOString();
 
   const { data: existingLead } = await supabase
     .from(JARVIS_LEADS_TABLE)
     .select(
-      "id, push_name, first_seen, last_message_at, whautomate_contact_id, bot_paused_until, wa_id"
+      "id, push_name, first_seen, last_message_at, whautomate_contact_id, bot_paused_until, wa_id, assigned_agent_id"
     )
     .eq("tenant_id", tenantId)
     .eq("wa_id", waId)
@@ -29,12 +31,21 @@ export async function upsertJarvisLead({
     if (whautomateContactId) {
       patch.whautomate_contact_id = whautomateContactId;
     }
+    const nextOwner = nextAssignedAgentId(
+      existingLead.assigned_agent_id,
+      assignedAgentId
+    );
+    if (nextOwner && nextOwner !== existingLead.assigned_agent_id) {
+      patch.assigned_agent_id = nextOwner;
+    }
 
     const { data: updatedLead, error } = await supabase
       .from(JARVIS_LEADS_TABLE)
       .update(patch)
       .eq("id", existingLead.id)
-      .select("id, push_name, wa_id, whautomate_contact_id, bot_paused_until")
+      .select(
+        "id, push_name, wa_id, whautomate_contact_id, bot_paused_until, assigned_agent_id"
+      )
       .single();
 
     if (error) throw error;
@@ -51,11 +62,16 @@ export async function upsertJarvisLead({
   if (whautomateContactId) {
     insertRow.whautomate_contact_id = whautomateContactId;
   }
+  if (assignedAgentId) {
+    insertRow.assigned_agent_id = assignedAgentId;
+  }
 
   const { data: insertedLead, error } = await supabase
     .from(JARVIS_LEADS_TABLE)
     .insert(insertRow)
-    .select("id, push_name, wa_id, whautomate_contact_id, bot_paused_until")
+    .select(
+      "id, push_name, wa_id, whautomate_contact_id, bot_paused_until, assigned_agent_id"
+    )
     .single();
 
   if (error) throw error;

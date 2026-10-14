@@ -1,3 +1,5 @@
+import { DEFAULT_FIRST_MESSAGE } from "./schema.js";
+
 /**
  * Seed configs for Phase 6. Import these — do not invent new copy there.
  *
@@ -43,6 +45,7 @@ export const COLD_LIST_FIND_OUT = [
 export const COLD_LIST_CONFIG = {
   goal: "qualify",
   voice_id: "Jot7IsvC9VkWPLPjLDKw",
+  first_message: DEFAULT_FIRST_MESSAGE,
   opening_line: COLD_LIST_OPENING_LINE,
   find_out: COLD_LIST_FIND_OUT,
   rules: BASE_RULES,
@@ -52,6 +55,7 @@ export const COLD_LIST_CONFIG = {
 export const REENGAGE_CONFIG = {
   goal: "re_engage",
   voice_id: "Jot7IsvC9VkWPLPjLDKw",
+  first_message: DEFAULT_FIRST_MESSAGE,
   opening_line:
     "Cool. You looked at a few things with us and then it went quiet — I've just got a couple of questions so we only send what still fits.",
   find_out: [
@@ -82,6 +86,7 @@ export const REENGAGE_CONFIG = {
 export const VIEWING_REMINDER_CONFIG = {
   goal: "remind_viewing",
   voice_id: "Jot7IsvC9VkWPLPjLDKw",
+  first_message: DEFAULT_FIRST_MESSAGE,
   opening_line:
     "Cool. This is a quick one about your viewing — I just need to confirm a couple of details so the consultant has it right.",
   find_out: [
@@ -106,6 +111,7 @@ export const VIEWING_REMINDER_CONFIG = {
 export const POST_VIEWING_FEEDBACK_CONFIG = {
   goal: "collect_feedback",
   voice_id: "Jot7IsvC9VkWPLPjLDKw",
+  first_message: DEFAULT_FIRST_MESSAGE,
   opening_line:
     "Cool. Thanks for going to that viewing — I've got two short questions so we know what to do next.",
   find_out: [

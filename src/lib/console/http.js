@@ -3,6 +3,7 @@ export {
   AED_PER_CALL,
   CONSOLE_RUN_SOURCE,
   estCostAed,
+  tenantWhatsAppLink,
   whatsappHealthy,
   waDeepLink,
 } from "./format";
