@@ -127,6 +127,22 @@ check("Muse stays off without MODEL_API_KEY", museEnabled() === false);
   check("the original conversation is not modified", conversation[1].content.some((b) => b.type === "thinking"));
 }
 
+// tool_choice is passed through only when given (last round forces a text answer)
+{
+  const claude = fakeClient(() => textReply("from claude"));
+  const muse = fakeClient(() => textReply("from muse"));
+  const createMessage = createJarvisMessageClient({ claudeClient: claude, museClient: muse });
+  await createMessage(request);
+  check("no tool_choice is sent by default", !("tool_choice" in muse.calls[0]));
+  await createMessage({ ...request, toolChoice: { type: "none" } });
+  check("toolChoice reaches Muse as tool_choice", muse.calls[1].tool_choice?.type === "none");
+
+  const claudeOnly = fakeClient(() => textReply("from claude"));
+  const claudeMessage = createJarvisMessageClient({ claudeClient: claudeOnly, museClient: null });
+  await claudeMessage({ ...request, toolChoice: { type: "none" } });
+  check("toolChoice reaches Claude as tool_choice", claudeOnly.calls[0].tool_choice?.type === "none");
+}
+
 // The real Muse client never carries the Claude key
 {
   process.env.ANTHROPIC_API_KEY = "test-claude-key";
