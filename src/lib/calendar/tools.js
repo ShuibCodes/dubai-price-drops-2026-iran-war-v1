@@ -12,6 +12,7 @@ import {
 import {
   checkGoogleFreeBusy,
   createGoogleCalendarEvent,
+  deleteGoogleCalendarEvent,
   refreshGoogleAccessToken,
 } from "./google.js";
 import { decryptCalendarTokens } from "./tokens.js";
@@ -112,8 +113,55 @@ function defaultGoogle() {
   return {
     checkFreeBusy: checkGoogleFreeBusy,
     createEvent: createGoogleCalendarEvent,
+    deleteEvent: deleteGoogleCalendarEvent,
     refreshAccessToken: refreshGoogleAccessToken,
   };
+}
+
+const PERSIST_FAIL_COMPENSATED =
+  "Could not book. The appointment could not be saved, so it is not confirmed. That time was released. Offer another time or a callback.";
+const PERSIST_FAIL_ORPHAN =
+  "Could not book. The appointment could not be saved, so it is not confirmed. Offer a callback instead.";
+
+function persistFailureError(compensated) {
+  return Object.assign(
+    new Error(
+      assertNoSecrets(compensated ? PERSIST_FAIL_COMPENSATED : PERSIST_FAIL_ORPHAN)
+    ),
+    { vapiError: true }
+  );
+}
+
+async function deleteCreatedEvent({ connection, eventId, google, supabase }) {
+  const id = String(eventId || "").trim();
+  if (!id || typeof google?.deleteEvent !== "function") {
+    return { deleted: false, reason: "unsupported" };
+  }
+  const calendarId = connection.calendar_id || "primary";
+  const run = (accessToken) =>
+    google.deleteEvent({
+      accessToken,
+      calendarId,
+      eventId: id,
+    });
+  try {
+    let accessToken = await accessTokenForConnection(connection, google, { supabase });
+    try {
+      const result = await run(accessToken);
+      return { deleted: result?.deleted === true };
+    } catch (error) {
+      if (error?.status !== 401) throw error;
+      accessToken = await accessTokenForConnection(connection, google, {
+        supabase,
+        forceRefresh: true,
+      });
+      const result = await run(accessToken);
+      return { deleted: result?.deleted === true };
+    }
+  } catch (error) {
+    console.error("[calendar/tools] event compensation delete failed:", error.message);
+    return { deleted: false, reason: "delete_failed" };
+  }
 }
 
 function formatBusy(busy = []) {
@@ -452,6 +500,13 @@ async function handleBookAppointment({
     });
   } catch (error) {
     console.error("[calendar/tools] appointment persist failed:", error.message);
+    const compensation = await deleteCreatedEvent({
+      connection: verified.connection,
+      eventId: event.eventId,
+      google,
+      supabase,
+    });
+    throw persistFailureError(compensation.deleted);
   }
 
   return assertNoSecrets(

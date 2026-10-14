@@ -228,6 +228,43 @@ export async function createGoogleCalendarEvent({
   };
 }
 
+/**
+ * Best-effort compensation after a diary write that AgentZero could not persist.
+ * 204/200 = deleted. 404/410 = already gone (treat as compensated, not created).
+ * Does not claim success for any other status.
+ */
+export async function deleteGoogleCalendarEvent({
+  accessToken,
+  calendarId = "primary",
+  eventId,
+}) {
+  const token = String(accessToken || "").trim();
+  if (!token) throw new Error("access_token is required");
+  const id = String(eventId || "").trim();
+  if (!id) throw new Error("eventId is required");
+
+  const response = await fetch(
+    `${CALENDAR_API}/calendars/${encodeURIComponent(calendarId || "primary")}/events/${encodeURIComponent(id)}`,
+    {
+      method: "DELETE",
+      headers: authHeaders(token),
+    }
+  );
+  if (response.status === 204 || response.status === 200) {
+    return { deleted: true };
+  }
+  if (response.status === 404 || response.status === 410) {
+    return { deleted: true, alreadyGone: true };
+  }
+  const body = await response.json().catch(() => ({}));
+  const message =
+    body?.error_description || body?.error?.message || body?.error || "Google API error";
+  const error = new Error(`Google Calendar: ${message}`);
+  error.status = response.status;
+  error.body = body;
+  throw error;
+}
+
 function normalizeTokenResponse(body) {
   const expiresIn = Number(body.expires_in);
   const expiresAt =

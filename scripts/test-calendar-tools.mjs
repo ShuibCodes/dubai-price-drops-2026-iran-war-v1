@@ -79,6 +79,7 @@ function createFakeDb({
   leads = [],
   jarvisLeads = [],
   calls = [],
+  appointmentInsertError = null,
 } = {}) {
   const tables = {
     calendar_connections: connections.map((row) => ({ ...row })),
@@ -153,6 +154,12 @@ function createFakeDb({
         },
         single() {
           if (pendingInsert) {
+            if (appointmentInsertError && table === "appointments") {
+              return Promise.resolve({
+                data: null,
+                error: { message: appointmentInsertError },
+              });
+            }
             const saved = { id: `appt-${rows.length + 1}`, ...pendingInsert };
             rows.push(saved);
             return Promise.resolve({ data: { ...saved }, error: null });
@@ -217,7 +224,15 @@ function officialToolCallsPayload({
   };
 }
 
-function mockGoogle({ busy = [], eventId = "evt-1", onFreeBusy, onCreate, onRefresh } = {}) {
+function mockGoogle({
+  busy = [],
+  eventId = "evt-1",
+  onFreeBusy,
+  onCreate,
+  onDelete,
+  onRefresh,
+  deleteError = null,
+} = {}) {
   return {
     async checkFreeBusy(input) {
       if (onFreeBusy) onFreeBusy(input);
@@ -237,6 +252,11 @@ function mockGoogle({ busy = [], eventId = "evt-1", onFreeBusy, onCreate, onRefr
         end: { dateTime: input.endDateTime },
         status: "confirmed",
       };
+    },
+    async deleteEvent(input) {
+      if (onDelete) onDelete(input);
+      if (deleteError) throw deleteError;
+      return { deleted: true };
     },
     async refreshAccessToken(refreshToken) {
       if (onRefresh) return onRefresh(refreshToken);
@@ -526,6 +546,134 @@ await test("book_appointment re-checks availability then persists after Google s
   assert.equal(row.status, "booked");
   assert.equal(row.timezone, "Asia/Dubai");
   assert.equal(hasSecret(row), false);
+});
+
+await test("book_appointment does not confirm when appointment persist fails and Google event is deleted", async () => {
+  const deleted = [];
+  const db = createFakeDb({
+    connections: [activeConnection()],
+    appointmentInsertError: "insert failed",
+  });
+  const results = await handleVapiCalendarToolCalls(
+    officialToolCallsPayload({
+      name: "book_appointment",
+      args: {
+        startDateTime: "2026-09-21T10:00:00+04:00",
+        durationMinutes: 30,
+        summary: "Marina viewing",
+      },
+    }),
+    {
+      supabase: db,
+      google: mockGoogle({
+        onDelete(input) {
+          deleted.push(input);
+        },
+      }),
+    }
+  );
+  assert.equal(db.tables.appointments.length, 0);
+  assert.equal(results[0].result, undefined);
+  assert.doesNotMatch(JSON.stringify(results), /Booked/);
+  assert.match(results[0].error, /Could not book/);
+  assert.match(results[0].error, /not confirmed/);
+  assert.match(results[0].error, /released/);
+  assert.doesNotMatch(results[0].error, /evt-1/);
+  assert.equal(deleted.length, 1);
+  assert.equal(deleted[0].eventId, "evt-1");
+  assert.equal(deleted[0].calendarId, "primary");
+  assert.equal(deleted[0].accessToken, "access-aaa");
+  assert.equal(hasSecret(results), false);
+});
+
+await test("book_appointment does not claim the Google event was deleted when compensation fails", async () => {
+  const deleted = [];
+  const db = createFakeDb({
+    connections: [activeConnection()],
+    appointmentInsertError: "insert failed",
+  });
+  const deleteErr = new Error("Google Calendar: backendError");
+  deleteErr.status = 500;
+  const results = await handleVapiCalendarToolCalls(
+    officialToolCallsPayload({ name: "book_appointment" }),
+    {
+      supabase: db,
+      google: mockGoogle({
+        onDelete(input) {
+          deleted.push(input);
+        },
+        deleteError: deleteErr,
+      }),
+    }
+  );
+  assert.equal(db.tables.appointments.length, 0);
+  assert.equal(deleted.length, 1);
+  assert.equal(results[0].result, undefined);
+  assert.doesNotMatch(JSON.stringify(results), /Booked/);
+  assert.match(results[0].error, /Could not book/);
+  assert.match(results[0].error, /not confirmed/);
+  assert.doesNotMatch(results[0].error, /released/);
+  assert.doesNotMatch(results[0].error, /deleted/);
+  assert.equal(hasSecret(results), false);
+});
+
+await test("book_appointment persist failure without a delete helper does not confirm or claim deletion", async () => {
+  const db = createFakeDb({
+    connections: [activeConnection()],
+    appointmentInsertError: "insert failed",
+  });
+  const google = mockGoogle();
+  delete google.deleteEvent;
+  const results = await handleVapiCalendarToolCalls(
+    officialToolCallsPayload({ name: "book_appointment" }),
+    { supabase: db, google }
+  );
+  assert.equal(db.tables.appointments.length, 0);
+  assert.equal(results[0].result, undefined);
+  assert.doesNotMatch(JSON.stringify(results), /Booked/);
+  assert.match(results[0].error, /Could not book/);
+  assert.doesNotMatch(results[0].error, /released/);
+  assert.equal(hasSecret(results), false);
+});
+
+await test("book_appointment persist failure retries event delete after a 401", async () => {
+  let deleteCalls = 0;
+  const db = createFakeDb({
+    connections: [activeConnection()],
+    appointmentInsertError: "insert failed",
+  });
+  const results = await handleVapiCalendarToolCalls(
+    officialToolCallsPayload({ name: "book_appointment" }),
+    {
+      supabase: db,
+      google: {
+        ...mockGoogle({
+          onRefresh() {
+            return {
+              access_token: "fresh-access",
+              refresh_token: "refresh-aaa",
+              expires_at: FUTURE,
+            };
+          },
+        }),
+        async deleteEvent(input) {
+          deleteCalls += 1;
+          if (deleteCalls === 1) {
+            const error = new Error("Google Calendar: Invalid Credentials");
+            error.status = 401;
+            throw error;
+          }
+          assert.equal(input.accessToken, "fresh-access");
+          assert.equal(input.eventId, "evt-1");
+          return { deleted: true };
+        },
+      },
+    }
+  );
+  assert.equal(deleteCalls, 2);
+  assert.equal(db.tables.appointments.length, 0);
+  assert.match(results[0].error, /released/);
+  assert.doesNotMatch(JSON.stringify(results), /Booked/);
 });
 
 await test("book_appointment does not persist when the slot is no longer free", async () => {
