@@ -18,10 +18,17 @@ import {
   markLeadOptedOut,
   qualificationLooksLikeOptOut,
 } from "@/lib/console/opt-out";
+import { handleVapiCalendarToolCalls } from "@/lib/calendar/tools";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { verifyConfiguredWebhookSecret } from "@/lib/security/webhook-secret";
 import { resolveCompletedCallContext } from "@/lib/vapi/webhook-leads";
 import { agentZeroWhatsAppFromAddress } from "@/lib/jarvis/self-chat";
+import {
+  extractVapiToolCalls,
+  isVapiToolCallsMessage,
+  vapiToolCallsResponse,
+  vapiToolError,
+} from "@/lib/vapi/tool-calls";
 import {
   sendWhatsAppText,
   truncateWhatsAppBody,
@@ -334,6 +341,30 @@ export async function POST(request) {
     }
 
     const payload = await request.json().catch(() => ({}));
+
+    // Official Vapi tool-calls must respond { results: [{ toolCallId, result|error }] }
+    // HTTP 200. Do not fall through to the persist filter — that returns the wrong shape.
+    if (isVapiToolCallsMessage(payload)) {
+      try {
+        const results = await handleVapiCalendarToolCalls(payload, {
+          supabase: getSupabaseServerClient(),
+        });
+        return Response.json(vapiToolCallsResponse(results));
+      } catch (toolError) {
+        console.error("[vapi/webhook] tool-calls error:", toolError.message);
+        const calls = extractVapiToolCalls(payload);
+        return Response.json(
+          vapiToolCallsResponse(
+            calls.length
+              ? calls.map((call) =>
+                  vapiToolError(call.id, "Calendar is unavailable right now.")
+                )
+              : []
+          )
+        );
+      }
+    }
+
     const eventType =
       payload?.message?.type ||
       payload?.type ||
