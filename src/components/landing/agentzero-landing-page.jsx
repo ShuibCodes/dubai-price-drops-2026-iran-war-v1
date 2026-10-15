@@ -88,6 +88,8 @@ function HeroVideo() {
             href={TYPEFORM_ENQUIRY_URL}
             target="_blank"
             rel="noreferrer"
+            data-fast-goal="enquiry_click"
+            data-fast-goal-location="hero"
             className="mt-6 inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
           >
             Get Started
@@ -401,12 +403,15 @@ export default function AgentZeroLandingPage() {
               href={TYPEFORM_ENQUIRY_URL}
               target="_blank"
               rel="noreferrer"
+              data-fast-goal="enquiry_click"
+              data-fast-goal-location="nav"
               className="rounded-full border border-white/10 px-3 py-2 text-sm text-white transition hover:text-white sm:px-4"
             >
               Get Started
             </a>
             <Link
               href="/copilot"
+              data-fast-goal="copilot_login_click"
               className="rounded-full border border-white/10 px-3 py-2 text-sm text-white transition hover:text-white sm:px-4"
             >
               Log in
@@ -492,6 +497,8 @@ export default function AgentZeroLandingPage() {
                 href={TYPEFORM_ENQUIRY_URL}
                 target="_blank"
                 rel="noreferrer"
+                data-fast-goal="enquiry_click"
+                data-fast-goal-location="how_it_works"
                 className="inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
               >
                 Get Started
@@ -553,6 +560,8 @@ export default function AgentZeroLandingPage() {
                 href={TYPEFORM_ENQUIRY_URL}
                 target="_blank"
                 rel="noreferrer"
+                data-fast-goal="enquiry_click"
+                data-fast-goal-location="why_it_wins"
                 className="inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
               >
                 Get Started
@@ -632,6 +641,8 @@ export default function AgentZeroLandingPage() {
             href={TYPEFORM_ENQUIRY_URL}
             target="_blank"
             rel="noreferrer"
+            data-fast-goal="enquiry_click"
+            data-fast-goal-location="before_after"
             className="inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
           >
             Get Started
@@ -730,6 +741,8 @@ export default function AgentZeroLandingPage() {
                 href={TYPEFORM_ENQUIRY_URL}
                 target="_blank"
                 rel="noreferrer"
+                data-fast-goal="enquiry_click"
+                data-fast-goal-location="pricing_individual"
                 className="inline-flex w-full justify-center rounded-full bg-[#ffd60a] px-6 py-3.5 text-sm font-semibold text-black transition hover:opacity-90 sm:py-3"
               >
                 Get Started
@@ -772,6 +785,8 @@ export default function AgentZeroLandingPage() {
                 href={TYPEFORM_ENQUIRY_URL}
                 target="_blank"
                 rel="noreferrer"
+                data-fast-goal="enquiry_click"
+                data-fast-goal-location="pricing_brokerage"
                 className="inline-flex w-full justify-center rounded-full border border-[#ffd60a]/60 px-6 py-3.5 text-sm font-semibold text-[#ffd60a] transition hover:bg-[#ffd60a]/10 sm:py-3"
               >
                 Get Started
@@ -810,6 +825,8 @@ export default function AgentZeroLandingPage() {
               href={TYPEFORM_ENQUIRY_URL}
               target="_blank"
               rel="noreferrer"
+              data-fast-goal="enquiry_click"
+              data-fast-goal-location="final_cta"
               className="inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-8 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
             >
               Get Started
