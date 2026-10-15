@@ -45,6 +45,10 @@ function memorySupabase(seed) {
           );
           return chain;
         },
+        neq(key, value) {
+          filters.push((row) => row[key] !== value);
+          return chain;
+        },
         maybeSingle() {
           const data = seed.filter((row) => filters.every((fn) => fn(row)))[0] || null;
           return Promise.resolve({ data, error: null });
@@ -200,7 +204,9 @@ const whatsappRoute = await readFile(
 );
 check(
   "both Twilio Jarvis paths pass the resolved agentId",
-  whatsappRoute.match(/agentId: sender\.agentId/g)?.length === 6
+  (whatsappRoute.match(/await replyWithDurableHistory\(\{/g) || []).length === 2 &&
+    (whatsappRoute.match(/agentId: sender\.agentId/g) || []).length === 4 &&
+    (whatsappRoute.match(/runJarvisTurn\(/g) || []).length === 1
 );
 
 const leadTools = await readFile(

@@ -62,8 +62,8 @@ function CallBody({ call }) {
   return (
     <div className="border-b border-hairline px-1 pb-6 pt-5">
       {call.quote ? (
-        <div className="rounded-r-[10px] border-l-2 border-az bg-az-wash px-5.5 py-5 text-[17px] italic leading-relaxed text-[#dce3df]">
-          “{call.quote}”
+        <div className="rounded-r-[10px] border-l-2 border-az bg-az-wash px-5.5 py-5 text-[17px] leading-relaxed text-[#dce3df]">
+          {call.quote}
         </div>
       ) : (
         <p className="text-[15px] text-dim">

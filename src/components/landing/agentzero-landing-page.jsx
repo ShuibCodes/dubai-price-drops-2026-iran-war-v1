@@ -88,6 +88,8 @@ function HeroVideo() {
             href={TYPEFORM_ENQUIRY_URL}
             target="_blank"
             rel="noreferrer"
+            data-fast-goal="enquiry_click"
+            data-fast-goal-location="hero"
             className="mt-6 inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
           >
             Get Started
@@ -229,21 +231,37 @@ const BEFORE_AFTER_ROWS = [
   },
 ];
 
+const AGENT_PLAN_SPECS = [
+  { label: "Conversations per day", value: "Up to 50" },
+  { label: "Calling days", value: "Mon–Fri" },
+  { label: "Conversations per month", value: "Up to 1,100" },
+  { label: "Talk time included", value: "Up to 800 min" },
+  { label: "Extra minutes", value: "AED 2.95 /min" },
+];
+
 const AGENT_PLAN_FEATURES = [
   "7–10 qualified leads a week, handed straight to you",
   "Every portal enquiry called and qualified within 60 seconds",
   "Outbound AI calling, every working day",
+  "Speaks 15 languages, with 5 accents to choose from",
   "Dead WhatsApp leads revived and re-engaged",
   "No CRM, no app, no login. It all runs on your WhatsApp",
 ];
 
+const BROKERAGE_PLAN_SPECS = [
+  { label: "Dials per day", value: "200" },
+  { label: "Calling days", value: "Mon–Fri" },
+  { label: "Calls per month", value: "4,400" },
+  { label: "Talk time included", value: "1,450 min" },
+  { label: "Extra minutes", value: "AED 4 /min" },
+];
+
 const BROKERAGE_PLAN_FEATURES = [
-  "200 AI calls a day, across your entire roster",
-  "40–55 qualified leads a week, distributed to your agents",
-  "Every portal enquiry called and qualified within 60 seconds",
-  "Your whole database revived, not just this month's leads",
-  "Team-wide reporting: who's converting, what's stalling",
-  "No CRM, no app, no login. It all runs on WhatsApp",
+  "Outbound calling across your full contact list",
+  "Speaks 15 languages, with 5 accents to choose from",
+  "Property Finder enquiries answered in under a minute, day or night",
+  "Runs on your existing WhatsApp number — no new number, nothing changes for your clients",
+  "Qualified leads handed over with a full transcript",
 ];
 
 const FAQS = [
@@ -273,7 +291,7 @@ const FAQS = [
   },
   {
     q: "What does it cost?",
-    a: "AED 750 per agent / month, or a custom plan for the whole roster. 15 qualified conversations in your first month, or that month is free.",
+    a: "AED 750 per agent / month, which you can split into 3 payments of AED 250. For a whole brokerage it's AED 5,000 / month. 15 qualified conversations in your first month, or that month is free.",
   },
 ];
 
@@ -362,23 +380,39 @@ export default function AgentZeroLandingPage() {
   return (
     <main className="min-h-screen bg-black font-medium text-white">
       <section className="border-b border-white/5">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-5 sm:px-6 lg:px-8">
-          <div>
-            <div className="mono text-[10px] uppercase tracking-[0.34em] text-white">
-              AgentZero
-            </div>
-          </div>
-          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-5 sm:px-6 lg:px-8">
+          <Link href="/" aria-label="AgentZero home" className="shrink-0">
+            <Image
+              src="/brand/agentzero-lockup-horizontal.svg"
+              alt="AgentZero"
+              width={417}
+              height={88}
+              priority
+              unoptimized
+              className="h-6 w-auto sm:h-7"
+            />
+          </Link>
+          <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
+            <Link
+              href="/live-updates"
+              data-fast-goal="distressed_deals_click"
+              className="rounded-full border border-white/10 px-3 py-2 text-sm text-white transition hover:text-white sm:px-4"
+            >
+              Distressed deals
+            </Link>
             <a
               href={TYPEFORM_ENQUIRY_URL}
               target="_blank"
               rel="noreferrer"
+              data-fast-goal="enquiry_click"
+              data-fast-goal-location="nav"
               className="rounded-full border border-white/10 px-3 py-2 text-sm text-white transition hover:text-white sm:px-4"
             >
               Get Started
             </a>
             <Link
               href="/copilot"
+              data-fast-goal="copilot_login_click"
               className="rounded-full border border-white/10 px-3 py-2 text-sm text-white transition hover:text-white sm:px-4"
             >
               Log in
@@ -464,6 +498,8 @@ export default function AgentZeroLandingPage() {
                 href={TYPEFORM_ENQUIRY_URL}
                 target="_blank"
                 rel="noreferrer"
+                data-fast-goal="enquiry_click"
+                data-fast-goal-location="how_it_works"
                 className="inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
               >
                 Get Started
@@ -525,6 +561,8 @@ export default function AgentZeroLandingPage() {
                 href={TYPEFORM_ENQUIRY_URL}
                 target="_blank"
                 rel="noreferrer"
+                data-fast-goal="enquiry_click"
+                data-fast-goal-location="why_it_wins"
                 className="inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
               >
                 Get Started
@@ -604,6 +642,8 @@ export default function AgentZeroLandingPage() {
             href={TYPEFORM_ENQUIRY_URL}
             target="_blank"
             rel="noreferrer"
+            data-fast-goal="enquiry_click"
+            data-fast-goal-location="before_after"
             className="inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
           >
             Get Started
@@ -661,7 +701,7 @@ export default function AgentZeroLandingPage() {
         <div className="grid items-stretch gap-4 sm:gap-6 lg:grid-cols-2">
           <article className="flex flex-col rounded-[28px] border border-[#ffd60a]/40 bg-white/[0.03] p-6 transition hover:-translate-y-1 sm:rounded-[32px] sm:p-10">
             <div className="flex flex-wrap items-center gap-3">
-              <h3 className="text-xl font-semibold text-white">Per Agent</h3>
+              <h3 className="text-xl font-semibold text-white">Individual agent</h3>
               <span className="rounded-full bg-[#ffd60a] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-black">
                 Most popular
               </span>
@@ -671,7 +711,22 @@ export default function AgentZeroLandingPage() {
                 AED 750
               </span>
             </div>
-            <p className="mt-2 text-sm text-white">/ agent / month</p>
+            <p className="mt-2 text-sm text-white">/ month</p>
+            <p className="mt-3 inline-flex w-fit rounded-full border border-[#ffd60a]/30 bg-[#ffd60a]/10 px-3 py-1 text-xs font-medium text-[#ffd60a]">
+              Or pay in 3 × AED 250
+            </p>
+            <p className="mt-4 text-sm leading-6 text-white/70">
+              For one agent who would rather be in viewings than on the phone.
+            </p>
+
+            <dl className="mt-6 divide-y divide-white/10 rounded-2xl border border-white/10">
+              {AGENT_PLAN_SPECS.map((spec) => (
+                <div key={spec.label} className="flex items-center justify-between px-4 py-3">
+                  <dt className="text-sm text-white/70">{spec.label}</dt>
+                  <dd className="text-sm font-semibold text-white">{spec.value}</dd>
+                </div>
+              ))}
+            </dl>
 
             <ul className="mt-7 space-y-4 sm:mt-8">
               {AGENT_PLAN_FEATURES.map((feature) => (
@@ -687,6 +742,8 @@ export default function AgentZeroLandingPage() {
                 href={TYPEFORM_ENQUIRY_URL}
                 target="_blank"
                 rel="noreferrer"
+                data-fast-goal="enquiry_click"
+                data-fast-goal-location="pricing_individual"
                 className="inline-flex w-full justify-center rounded-full bg-[#ffd60a] px-6 py-3.5 text-sm font-semibold text-black transition hover:opacity-90 sm:py-3"
               >
                 Get Started
@@ -698,10 +755,22 @@ export default function AgentZeroLandingPage() {
             <h3 className="text-xl font-semibold text-white">Brokerage</h3>
             <div className="mt-5 flex items-baseline gap-2 sm:mt-6">
               <span className="text-4xl font-semibold leading-none text-white sm:text-5xl">
-                Custom
+                AED 5,000
               </span>
             </div>
-            <p className="mt-2 text-sm text-white">tailored to your roster</p>
+            <p className="mt-2 text-sm text-white">/ month</p>
+            <p className="mt-4 text-sm leading-6 text-white/70">
+              For a team that wants its whole database worked, every working day.
+            </p>
+
+            <dl className="mt-6 divide-y divide-white/10 rounded-2xl border border-white/10">
+              {BROKERAGE_PLAN_SPECS.map((spec) => (
+                <div key={spec.label} className="flex items-center justify-between px-4 py-3">
+                  <dt className="text-sm text-white/70">{spec.label}</dt>
+                  <dd className="text-sm font-semibold text-white">{spec.value}</dd>
+                </div>
+              ))}
+            </dl>
 
             <ul className="mt-7 space-y-4 sm:mt-8">
               {BROKERAGE_PLAN_FEATURES.map((feature) => (
@@ -717,6 +786,8 @@ export default function AgentZeroLandingPage() {
                 href={TYPEFORM_ENQUIRY_URL}
                 target="_blank"
                 rel="noreferrer"
+                data-fast-goal="enquiry_click"
+                data-fast-goal-location="pricing_brokerage"
                 className="inline-flex w-full justify-center rounded-full border border-[#ffd60a]/60 px-6 py-3.5 text-sm font-semibold text-[#ffd60a] transition hover:bg-[#ffd60a]/10 sm:py-3"
               >
                 Get Started
@@ -755,6 +826,8 @@ export default function AgentZeroLandingPage() {
               href={TYPEFORM_ENQUIRY_URL}
               target="_blank"
               rel="noreferrer"
+              data-fast-goal="enquiry_click"
+              data-fast-goal-location="final_cta"
               className="inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-8 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
             >
               Get Started

@@ -134,16 +134,3 @@ export function markProcessedMessageSid(sender, messageSid) {
   };
   sidStore.set(key, next);
 }
-
-export function pushConversationTurn(sender, userText, assistantText, priorState = null) {
-  const state = priorState ?? getSenderState(sender);
-  const nextMessages = [
-    ...(state.messages || []),
-    { role: "user", content: String(userText || "") },
-    { role: "assistant", content: String(assistantText || "") },
-  ].slice(-MAX_MESSAGES);
-  setSenderState(sender, {
-    ...state,
-    messages: nextMessages,
-  });
-}

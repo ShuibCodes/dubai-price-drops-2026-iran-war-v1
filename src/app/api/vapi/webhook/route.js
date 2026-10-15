@@ -9,12 +9,19 @@ import { sendAgentSummary } from "@/lib/notify/agent";
 import { postCallResult } from "@/lib/notify/results-hook";
 import { bumpBatchCount } from "@/lib/console/batches";
 import {
+  CALL_SOURCE as EGM_CALL_SOURCE,
+  egmCallbackRef,
+  getEgmSupabase,
+  handleCallbackCallEnded,
+} from "@/lib/callbacks/egm";
+import {
   markLeadOptedOut,
   qualificationLooksLikeOptOut,
 } from "@/lib/console/opt-out";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { verifyConfiguredWebhookSecret } from "@/lib/security/webhook-secret";
 import { resolveCompletedCallContext } from "@/lib/vapi/webhook-leads";
+import { agentZeroWhatsAppFromAddress } from "@/lib/jarvis/self-chat";
 import {
   sendWhatsAppText,
   truncateWhatsAppBody,
@@ -180,18 +187,6 @@ async function upsertCompletedCall(details, qualification) {
   return { call: callRecord, lead };
 }
 
-function twilioWhatsAppFrom() {
-  const configured = String(process.env.TWILIO_WHATSAPP_FROM || "").trim();
-  if (configured) {
-    return configured.startsWith("whatsapp:")
-      ? configured
-      : `whatsapp:${configured}`;
-  }
-  const phone = String(process.env.TWILIO_PHONE_NUMBER || "").trim();
-  if (!phone) return null;
-  return phone.startsWith("whatsapp:") ? phone : `whatsapp:${phone}`;
-}
-
 async function processRelayCallEnd(details) {
   const relay = await updateRelayCallFromWebhook({
     vapiCallId: details.callId,
@@ -209,7 +204,7 @@ async function processRelayCallEnd(details) {
   }
 
   if (twilioRestConfigured() && relay.sender_phone) {
-    const from = twilioWhatsAppFrom();
+    const from = agentZeroWhatsAppFromAddress();
     const to = `whatsapp:+${String(relay.sender_phone).replace(/\D/g, "")}`;
     if (from && to) {
       const summaryLine =
@@ -237,6 +232,16 @@ async function processRelayCallEnd(details) {
 async function processPipelineCall(payload) {
   const details = extractVapiCallDetails(payload);
   if (!details.callId) return { processed: false, reason: "missing_call_id" };
+
+  // EGM Trading website callbacks live in the client's Supabase, not `calls`.
+  const egmRef = egmCallbackRef(payload);
+  if (egmRef) {
+    const egmSupabase = getEgmSupabase();
+    if (!egmSupabase) {
+      return { processed: false, kind: EGM_CALL_SOURCE, reason: "egm_supabase_not_configured" };
+    }
+    return handleCallbackCallEnded(egmSupabase, details, egmRef);
+  }
 
   // Relay path first — do not run lead-qualification CRM sync for these.
   try {
@@ -378,7 +383,8 @@ export async function POST(request) {
 
     let fileName = null;
     let fullPath = null;
-    if (record.summary || record.transcript) {
+    // EGM car-sales calls must not land in the property knowledge base.
+    if ((record.summary || record.transcript) && !egmCallbackRef(payload)) {
       try {
         const written = writeCallRecord(record);
         fileName = written.fileName;

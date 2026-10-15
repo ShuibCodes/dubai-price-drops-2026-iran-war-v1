@@ -2,8 +2,7 @@
 // which is why tenant scoping lives there and not in user_metadata. Every write
 // below goes through the service-role admin API — never from the browser.
 
-const AGENT_AUTH_COLS =
-  "id, tenant_id, role, email, auth_user_id, tenants!inner(id, slug)";
+const AGENT_AUTH_COLS = "id, tenant_id, role, email, auth_user_id";
 
 function likeEscape(value) {
   return value.replace(/[%_\\]/g, "\\$&");
@@ -18,7 +17,15 @@ export async function findAgentByEmail(admin, email) {
     .ilike("email", likeEscape(address))
     .maybeSingle();
   if (error) throw new Error(`Agent lookup failed: ${error.message}`);
-  return data || null;
+  if (!data?.tenant_id) return null;
+  const { data: tenant, error: tenantError } = await admin
+    .from("tenants")
+    .select("id, slug")
+    .eq("id", data.tenant_id)
+    .maybeSingle();
+  if (tenantError) throw new Error(`Agent lookup failed: ${tenantError.message}`);
+  if (!tenant?.id) return null;
+  return { ...data, tenants: { id: tenant.id, slug: tenant.slug } };
 }
 
 export function buildAgentClaims(agent, tenantSlug) {

@@ -69,6 +69,29 @@ export async function previewRunMatch(supabase, {
   };
 }
 
+const LEAD_PAGE = 1000;
+/** Safety stop so a broken pager cannot load the whole tenant. */
+const LEAD_HARD_MAX = 20000;
+
+function positiveLimit(limit) {
+  const n = Number(limit);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+}
+
+function matchesRunFilters(row, areaFilters, beds) {
+  if (areaFilters.length) {
+    const have = Array.isArray(row.areas) ? row.areas : [];
+    const inArea = areaFilters.some((area) =>
+      have.some((h) => String(h).toLowerCase() === area.toLowerCase())
+    );
+    if (!inArea) return false;
+  }
+  if (beds && String(row.bedrooms || "").toLowerCase() !== beds.toLowerCase()) {
+    return false;
+  }
+  return true;
+}
+
 export async function selectRunLeadIds(supabase, {
   tenantId,
   sourceType,
@@ -78,9 +101,10 @@ export async function selectRunLeadIds(supabase, {
   limit,
 }) {
   const source = String(sourceType || "whatsapp");
-  const cap = Math.max(1, Number(limit) || 200);
+  const cap = positiveLimit(limit);
 
   if (source === "whatsapp") {
+    const inboxCap = cap ?? 200;
     const { data: inbox, error } = await supabase
       .from("jarvis_leads")
       .select("id")
@@ -89,43 +113,41 @@ export async function selectRunLeadIds(supabase, {
     if (error) throw new Error(`Inbox select failed: ${error.message}`);
     const ids = (inbox || []).map((row) => row.id);
     return {
-      jarvisLeadIds: ids.slice(0, cap),
+      jarvisLeadIds: ids.slice(0, inboxCap),
       leadIds: [],
     };
   }
 
   const named = String(listName || "").trim();
-  let query = supabase
-    .from("leads")
-    .select("id, opted_out, areas, bedrooms")
-    .eq("tenant_id", tenantId)
-    .eq("opted_out", false)
-    .not("source", "is", null)
-    .limit(2000);
-  if (named) query = query.eq("source", named);
-
-  const { data: rows, error } = await query;
-  if (error) throw new Error(`Lead select failed: ${error.message}`);
-
   const areaFilters = (areas || []).map((a) => String(a).trim()).filter(Boolean);
   const beds = String(bedrooms || "").trim();
-  let usable = rows || [];
-  if (areaFilters.length) {
-    usable = usable.filter((row) => {
-      const have = Array.isArray(row.areas) ? row.areas : [];
-      return areaFilters.some((area) =>
-        have.some((h) => String(h).toLowerCase() === area.toLowerCase())
-      );
-    });
-  }
-  if (beds) {
-    usable = usable.filter(
-      (row) => String(row.bedrooms || "").toLowerCase() === beds.toLowerCase()
-    );
+  const want = cap ?? LEAD_HARD_MAX;
+  const usable = [];
+
+  for (let from = 0; usable.length < want; from += LEAD_PAGE) {
+    let query = supabase
+      .from("leads")
+      .select("id, areas, bedrooms")
+      .eq("tenant_id", tenantId)
+      .eq("opted_out", false)
+      .not("source", "is", null)
+      .order("id", { ascending: true })
+      .range(from, from + LEAD_PAGE - 1);
+    if (named) query = query.eq("source", named);
+
+    const { data: rows, error } = await query;
+    if (error) throw new Error(`Lead select failed: ${error.message}`);
+    const page = rows || [];
+    for (const row of page) {
+      if (!matchesRunFilters(row, areaFilters, beds)) continue;
+      usable.push(row.id);
+      if (usable.length >= want) break;
+    }
+    if (page.length < LEAD_PAGE) break;
   }
 
   return {
-    leadIds: usable.map((row) => row.id).slice(0, cap),
+    leadIds: usable,
     jarvisLeadIds: [],
   };
 }

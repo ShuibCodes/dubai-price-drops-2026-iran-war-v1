@@ -56,8 +56,7 @@ export async function getSession(source, { tenantSlug } = {}) {
   const supabase = getSupabaseServerClient();
   if (!supabase) throw new Error("Supabase not configured");
 
-  const select = "id, tenant_id, role, wa_id, tenants!inner(id, slug)";
-  let query = supabase.from("agents").select(select);
+  let query = supabase.from("agents").select("id, tenant_id, role, wa_id");
   let fallbackSlug = null;
 
   // Supabase Auth first; agents still on the legacy form fall through to the
@@ -82,10 +81,18 @@ export async function getSession(source, { tenantSlug } = {}) {
 
   const { data: agent, error } = await query.maybeSingle();
   if (error) throw new Error(`Agent session lookup failed: ${error.message}`);
-  if (!agent) return null;
+  if (!agent?.tenant_id) return null;
+
+  const { data: tenant, error: tenantError } = await supabase
+    .from("tenants")
+    .select("id, slug")
+    .eq("id", agent.tenant_id)
+    .maybeSingle();
+  if (tenantError) throw new Error(`Agent session lookup failed: ${tenantError.message}`);
+  if (!tenant?.id) return null;
 
   // Authoritative for both paths: role and tenant come from the row, never a claim.
-  const slug = agent.tenants?.slug || fallbackSlug;
+  const slug = tenant.slug || fallbackSlug;
   if (tenantSlug && slug !== String(tenantSlug).trim()) {
     const mismatch = new Error("Forbidden for this tenant.");
     mismatch.status = 403;

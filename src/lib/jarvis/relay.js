@@ -7,6 +7,7 @@ import {
 } from "@/lib/jarvis/infer-name";
 import {
   isJarvisAffirmative,
+  isJarvisAmbiguousAck,
   isJarvisNegative,
 } from "@/lib/jarvis/confirm";
 import { clearPendingContact } from "@/lib/jarvis/pending-contact";
@@ -446,7 +447,8 @@ export async function placeRelayCall({
 /**
  * Confirm + dial a pending relay (WhatsApp "yes" path).
  * Returns null if there was no pending relay, or if the message is neither
- * yes nor no (pending is left intact so a later "yes" still works).
+ * yes, no, nor an acknowledgement (pending is left intact so a later "yes" still works).
+ * "ok" / "okay" / "sure" ask for an explicit yes and do not dial or clear pending.
  * Clears pending only on no/cancel, success, failure, or expiry (via get).
  */
 export async function handleRelayConfirmationMessage({
@@ -468,6 +470,13 @@ export async function handleRelayConfirmationMessage({
     return {
       handled: true,
       text: "Okay — I won't place that relay call.",
+    };
+  }
+
+  if (isJarvisAmbiguousAck(message)) {
+    return {
+      handled: true,
+      text: "Reply yes to place that call.",
     };
   }
 

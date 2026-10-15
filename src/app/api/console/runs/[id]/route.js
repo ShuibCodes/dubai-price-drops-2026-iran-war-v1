@@ -1,7 +1,54 @@
 import { consoleContext, jsonError } from "@/lib/console/http";
 import { quotedSentence, worthScore } from "@/lib/console/run-status";
+import { summarizeCallOneLine } from "@/lib/calls/qualification";
 import { routeId } from "@/lib/scripts/http";
 import { callHasPlayableRecording } from "@/lib/console/recording-playback";
+
+const HEADLINE_FILL_LIMIT = 20;
+
+function needsHeadline(call) {
+  const qualification =
+    call?.qualification && typeof call.qualification === "object" ? call.qualification : {};
+  return (
+    String(call?.transcript || "").trim() &&
+    !Object.prototype.hasOwnProperty.call(qualification, "headline")
+  );
+}
+
+/** One-time recap for calls saved before headlines existed. Failures stay unset and retry next load. */
+async function fillMissingHeadlines(supabase, tenantId, calls) {
+  const missing = (calls || [])
+    .filter(needsHeadline)
+    .sort((a, b) => worthScore(b) - worthScore(a))
+    .slice(0, HEADLINE_FILL_LIMIT);
+
+  await Promise.all(
+    missing.map(async (call) => {
+      const headline = await summarizeCallOneLine({
+        transcript: call.transcript,
+        summary: call.summary,
+      });
+      if (headline === null) return;
+
+      const qualification = {
+        ...(call.qualification && typeof call.qualification === "object"
+          ? call.qualification
+          : {}),
+        headline,
+      };
+      const { error } = await supabase
+        .from("calls")
+        .update({ qualification })
+        .eq("id", call.id)
+        .eq("tenant_id", tenantId);
+      if (error) {
+        console.error("[runs] headline save failed:", error.message);
+        return;
+      }
+      call.qualification = qualification;
+    })
+  );
+}
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -76,6 +123,8 @@ export async function GET(request, { params }) {
       ]);
     if (callsError) throw new Error(callsError.message);
     if (queueError) throw new Error(queueError.message);
+
+    await fillMissingHeadlines(supabase, session.tenantId, calls);
 
     const findOut = batch.script_versions?.config_json?.find_out || [];
     const callRows = (calls || []).map((call) => {

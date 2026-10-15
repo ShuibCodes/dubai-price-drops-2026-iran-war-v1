@@ -35,18 +35,31 @@ export async function POST(request) {
   const { data: agents, error } = await supabase
     .from("agents")
     .select(
-      "id, name, wa_id, tenant_id, brief_enabled, brief_time, tz, last_brief_sent_on, tenants(id, phone_number_id, business_token, waba_id)"
+      "id, name, wa_id, tenant_id, brief_enabled, brief_time, tz, last_brief_sent_on"
     )
     .eq("brief_enabled", true);
   if (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
 
+  const tenantIds = [...new Set((agents || []).map((agent) => agent.tenant_id).filter(Boolean))];
+  const tenantsById = new Map();
+  if (tenantIds.length) {
+    const { data: tenants, error: tenantError } = await supabase
+      .from("tenants")
+      .select("id, phone_number_id, business_token, waba_id")
+      .in("id", tenantIds);
+    if (tenantError) {
+      return Response.json({ error: tenantError.message }, { status: 500 });
+    }
+    for (const tenant of tenants || []) tenantsById.set(tenant.id, tenant);
+  }
+
   const now = new Date();
   const results = [];
   for (const agent of agents || []) {
     if (!briefDueToday(agent, now)) continue;
-    const tenant = agent.tenants;
+    const tenant = tenantsById.get(agent.tenant_id) || null;
     if (!tenant) continue;
     try {
       const sent = await sendMorningBriefNotification({

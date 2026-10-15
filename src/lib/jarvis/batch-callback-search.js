@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { JARVIS_LEADS_TABLE } from "@/lib/ingest/jarvis-ingest";
 import { formatJarvisLeadName } from "@/lib/jarvis/infer-name";
+import { excludeAgentZeroSelfChat } from "@/lib/jarvis/self-chat";
 import { getSupabaseServerClient, MESSAGES_TABLE } from "@/lib/supabase/server";
 
 /** Cheap yes/no classifier — escalate to Sonnet only if Haiku quality proves weak. */
@@ -58,11 +59,13 @@ export async function listOwnedJarvisLeadIds({
 } = {}) {
   requireCallbackScope({ tenantId, agentId });
   const client = db(supabase);
-  const { data, error } = await client
-    .from(JARVIS_LEADS_TABLE)
-    .select("id")
-    .eq("tenant_id", tenantId)
-    .eq("assigned_agent_id", agentId);
+  const { data, error } = await excludeAgentZeroSelfChat(
+    client
+      .from(JARVIS_LEADS_TABLE)
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("assigned_agent_id", agentId)
+  );
   if (error) {
     throw new Error(`Owned Jarvis leads lookup failed: ${error.message}`);
   }
@@ -79,12 +82,14 @@ export async function loadOwnedLeadsById({
   const ids = [...new Set((leadIds || []).filter(Boolean))];
   if (!ids.length) return new Map();
   const client = db(supabase);
-  const { data, error } = await client
-    .from(JARVIS_LEADS_TABLE)
-    .select(OWNED_LEAD_COLS)
-    .eq("tenant_id", tenantId)
-    .eq("assigned_agent_id", agentId)
-    .in("id", ids);
+  const { data, error } = await excludeAgentZeroSelfChat(
+    client
+      .from(JARVIS_LEADS_TABLE)
+      .select(OWNED_LEAD_COLS)
+      .eq("tenant_id", tenantId)
+      .eq("assigned_agent_id", agentId)
+      .in("id", ids)
+  );
   if (error) throw new Error(`Jarvis leads lookup failed: ${error.message}`);
   return new Map((data || []).map((row) => [row.id, row]));
 }
@@ -99,13 +104,14 @@ export async function getOwnedCallbackLead({
   const id = String(leadId || "").trim();
   if (!id) return null;
   const client = db(supabase);
-  const { data, error } = await client
-    .from(JARVIS_LEADS_TABLE)
-    .select(OWNED_LEAD_COLS)
-    .eq("id", id)
-    .eq("tenant_id", tenantId)
-    .eq("assigned_agent_id", agentId)
-    .maybeSingle();
+  const { data, error } = await excludeAgentZeroSelfChat(
+    client
+      .from(JARVIS_LEADS_TABLE)
+      .select(OWNED_LEAD_COLS)
+      .eq("id", id)
+      .eq("tenant_id", tenantId)
+      .eq("assigned_agent_id", agentId)
+  ).maybeSingle();
   if (error) throw new Error(`Jarvis lead lookup failed: ${error.message}`);
   return data || null;
 }

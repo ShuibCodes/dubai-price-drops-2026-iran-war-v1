@@ -4,6 +4,8 @@
  *
  * Affirmatives are exact-phrase only (after light normalize) so chatter like
  * "ok thanks" does NOT confirm and does NOT clear pending.
+ * "ok" / "okay" / "sure" are acknowledgements, not confirmation: callers should
+ * ask for an explicit yes and leave the pending action in place.
  * Negatives clear pending (exact phrase or leading cancel word).
  */
 
@@ -27,10 +29,10 @@ const AFFIRMATIVE_BASE = new Set([
   "go ahead",
   "do it",
   "proceed",
-  "ok",
-  "okay",
-  "sure",
 ]);
+
+/** Acknowledgements. Exact phrase only. Never confirm a pending action. */
+const AMBIGUOUS_ACK = new Set(["ok", "okay", "sure"]);
 
 /** Contact-save only — do not treat "call …" as confirming a save. */
 const AFFIRMATIVE_SAVE = new Set([
@@ -81,6 +83,11 @@ export function isJarvisAffirmative(text, options = {}) {
   if (allowSave && AFFIRMATIVE_SAVE.has(normalized)) return true;
   if (allowCall && AFFIRMATIVE_CALL.has(normalized)) return true;
   return false;
+}
+
+export function isJarvisAmbiguousAck(text) {
+  const normalized = normalizeConfirmText(text);
+  return Boolean(normalized) && AMBIGUOUS_ACK.has(normalized);
 }
 
 export function isJarvisNegative(text) {
