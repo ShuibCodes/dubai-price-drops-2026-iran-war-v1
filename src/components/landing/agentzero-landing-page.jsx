@@ -395,6 +395,7 @@ export default function AgentZeroLandingPage() {
           <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
             <Link
               href="/live-updates"
+              data-fast-goal="distressed_deals_click"
               className="rounded-full border border-white/10 px-3 py-2 text-sm text-white transition hover:text-white sm:px-4"
             >
               Distressed deals
