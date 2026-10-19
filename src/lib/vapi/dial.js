@@ -1,8 +1,31 @@
+import { createHash } from "crypto";
 import { enquiryClauseForSource } from "../scripts/enquiry-source.js";
 import {
   DEFAULT_FIRST_MESSAGE,
   VOICE_ALLOWLIST,
 } from "../scripts/schema.js";
+
+/** Vapi rejects assistant names longer than this (`name must be shorter than or equal to 40 characters`). */
+export const VAPI_ASSISTANT_NAME_MAX = 40;
+const VAPI_ASSISTANT_NAME_HASH = 8;
+
+/**
+ * Name sent to Vapi. Short names stay as written, including `slug — script`.
+ * Longer names keep a stable prefix plus a hash of the full name so two
+ * scripts that share a prefix do not collapse to the same assistant name.
+ * Blank input becomes "untitled". The Console script name is not rewritten.
+ */
+export function vapiAssistantName(name) {
+  const base = String(name ?? "").trim() || "untitled";
+  if (base.length <= VAPI_ASSISTANT_NAME_MAX) return base;
+  const hash = createHash("sha256")
+    .update(base)
+    .digest("hex")
+    .slice(0, VAPI_ASSISTANT_NAME_HASH);
+  const head = base.slice(0, VAPI_ASSISTANT_NAME_MAX - hash.length - 1).trimEnd();
+  const named = `${head} ${hash}`.trim();
+  return named.slice(0, VAPI_ASSISTANT_NAME_MAX) || "untitled";
+}
 
 function getRequiredEnv(name) {
   const value = process.env[name];
@@ -176,9 +199,11 @@ export function buildVapiAssistantWriteBody({
   voiceId,
   firstMessage,
 }) {
-  const displayName = String(name || "").trim();
+  const displayName = vapiAssistantName(name);
   const systemPrompt = String(prompt || "");
-  if (!displayName) throw new Error("Assistant name is required");
+  if (!displayName || displayName.length > VAPI_ASSISTANT_NAME_MAX) {
+    throw new Error("Assistant name is required");
+  }
   if (!systemPrompt) throw new Error("Assistant prompt is required");
 
   const spokenFirst = String(
