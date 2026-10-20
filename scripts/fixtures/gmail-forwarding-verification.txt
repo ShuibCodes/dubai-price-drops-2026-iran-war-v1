@@ -1,0 +1,20 @@
+From: Gmail Team <forwarding-noreply@google.com>
+Subject: (#847291053) Gmail Forwarding Confirmation - Receive mail from alex.agent@sterling.ae
+To: sterling-k8f3x2@leads.agentzero.ae
+
+alex.agent@sterling.ae has requested to automatically forward mail to your email
+address sterling-k8f3x2@leads.agentzero.ae.
+
+To allow alex.agent@sterling.ae to automatically forward mail to your address,
+please click the link below to confirm the request:
+
+https://mail.google.com/mail/forwarding/confirm?...
+
+If you do not click the link, the request will be ignored. No further action
+is required if you ignore this message.
+
+If you are unsure about this request, you can enter this confirmation code in
+Gmail settings under "Forwarding and POP/IMAP": 847291053
+
+Thanks,
+The Gmail Team
