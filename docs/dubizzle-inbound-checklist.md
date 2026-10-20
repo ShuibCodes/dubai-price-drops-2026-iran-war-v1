@@ -28,7 +28,9 @@ AgentZero: agent forwards Dubizzle enquiry emails to a per-tenant inbound addres
 
 ## Step 1 — Database schema
 
-**Migration:** `supabase/migrations/027_dubizzle_inbound_email.sql` (renumber if 027 taken).
+**Migrations:**
+- `supabase/migrations/029_dubizzle_inbound_email.sql` (PR #6): `inbound_email` column, `inbound_leads` and `retired_inbound_emails` tables, indexes and RLS
+- `supabase/migrations/031_dubizzle_pipeline_columns.sql` (this PR): extra `tenants` columns (`dubizzle_enabled`, `dubizzle_last_lead_at`, `require_approval`, Gmail verify columns) and `inbound_leads` columns (`lead_name`, `lead_phone`, `listing_title`, `listing_url`, `call_id`). Requires 029 to be applied first.
 
 | Change | Detail |
 |---|---|
@@ -38,7 +40,8 @@ AgentZero: agent forwards Dubizzle enquiry emails to a per-tenant inbound addres
 
 **Files**
 
-- [ ] `supabase/migrations/027_dubizzle_inbound_email.sql`
+- [ ] `supabase/migrations/029_dubizzle_inbound_email.sql` (PR #6)
+- [ ] `supabase/migrations/031_dubizzle_pipeline_columns.sql` (after 029)
 
 **Done when**
 
@@ -198,7 +201,8 @@ AgentZero: agent forwards Dubizzle enquiry emails to a per-tenant inbound addres
 ## New files (summary)
 
 ```
-supabase/migrations/027_dubizzle_inbound_email.sql
+supabase/migrations/029_dubizzle_inbound_email.sql
+supabase/migrations/031_dubizzle_pipeline_columns.sql
 src/lib/dubizzle/inbound-email.js
 src/lib/dubizzle/webhook.js
 src/lib/dubizzle/tenant-by-inbound-email.js
