@@ -5,6 +5,11 @@ import {
 } from "./business-hours.js";
 import { buildPropertyInterest, normalizePhone } from "../leads/normalize.js";
 import { getLeadTimezone } from "../leads/phone-timezone.js";
+import {
+  applyCalendarVariableValues,
+  applyTrustedCalendarMetadata,
+  loadCalendarDialContext,
+} from "../calendar/dial-context.js";
 import { startLeadCall } from "../vapi/dial.js";
 import {
   scriptPointerForScript,
@@ -364,6 +369,7 @@ export async function dialLeadNow({
   scriptId = null,
   scriptVersionId = null,
   batchId = null,
+  agentId = null,
   startCall = startLeadCall,
   buildCallBrief = buildWhatsappCallBrief,
 }) {
@@ -446,31 +452,42 @@ export async function dialLeadNow({
     if (!whatsappContext) whatsappContext = FALLBACK_WHATSAPP_CONTEXT;
   }
 
+  const calendar = await loadCalendarDialContext(supabase, {
+    tenantId: tenant.id,
+    agentId,
+  });
+
   const result = await startCall({
     name: leadName,
     phone,
     assistantId,
     phoneNumberId: tenant.vapi_phone_number_id,
     firstMessage,
-    variableValues: {
-      leadName,
-      leadSource,
-      propertyInterest,
-      campaignTopic: fields.campaignTopic || "",
-      formWhen: fields.formWhen || "",
-      ownsProperty: fields.ownsProperty || lead.owns_property || "",
-      ...(jarvisLead ? { whatsappContext } : {}),
-    },
-    metadata: {
-      tenantId: tenant.id,
-      leadId: jarvisLead ? null : lead.id,
-      jarvisLeadId: jarvisLead ? lead.id : null,
-      pixxiLeadId: lead.pixxi_lead_id,
-      source,
-      scriptId: pointer.script_id,
-      scriptVersionId: pointer.script_version_id,
-      batchId: batchId || null,
-    },
+    variableValues: applyCalendarVariableValues(
+      {
+        leadName,
+        leadSource,
+        propertyInterest,
+        campaignTopic: fields.campaignTopic || "",
+        formWhen: fields.formWhen || "",
+        ownsProperty: fields.ownsProperty || lead.owns_property || "",
+        ...(jarvisLead ? { whatsappContext } : {}),
+      },
+      calendar
+    ),
+    metadata: applyTrustedCalendarMetadata(
+      {
+        tenantId: tenant.id,
+        leadId: jarvisLead ? null : lead.id,
+        jarvisLeadId: jarvisLead ? lead.id : null,
+        pixxiLeadId: lead.pixxi_lead_id,
+        source,
+        scriptId: pointer.script_id,
+        scriptVersionId: pointer.script_version_id,
+        batchId: batchId || null,
+      },
+      calendar
+    ),
   });
 
   const callRow = {

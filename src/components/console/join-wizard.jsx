@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Strip } from "@/components/ui/strip";
 import { Toggle } from "@/components/ui/toggle";
 import { ConsoleShell } from "@/components/console/console-shell";
+import { CalendarConnect } from "@/components/console/calendar-connect";
 import { WhatsAppConnect } from "@/components/console/whatsapp-connect";
 import { Tooltip } from "@/components/console/tooltip";
 import { consoleBase, consoleJson } from "@/lib/console/client";
@@ -30,10 +31,12 @@ function ChoicePoint({ children }) {
 export function JoinWizard({ tenant, previewChoice = false }) {
   const router = useRouter();
   const [profile, setProfile] = useState(null);
+  const [calendar, setCalendar] = useState(null);
   const [step, setStep] = useState(-1);
   const [path, setPath] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
   const [sent, setSent] = useState(null);
 
@@ -49,6 +52,14 @@ export function JoinWizard({ tenant, previewChoice = false }) {
   const base = consoleBase(tenant);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const calendarResult = params.get("calendar");
+    if (calendarResult === "connected") {
+      setNotice("Google Calendar connected.");
+    } else if (calendarResult === "error") {
+      setError("Google Calendar could not be connected. Try again or skip.");
+    }
+
     consoleJson(base, "/api/console/profile", {
       fallback: "Could not load profile.",
     })
@@ -63,19 +74,29 @@ export function JoinWizard({ tenant, previewChoice = false }) {
         setLanguages((agent.languages || []).join(", ") || "English");
         setBriefOn(agent.brief_enabled !== false);
         setBriefTime(String(agent.brief_time || "07:30").slice(0, 5));
-        if (body.tenant?.whatsapp_connected && !previewChoice) {
+        if (calendarResult === "connected" || calendarResult === "error") {
+          setPath(body.tenant?.whatsapp_connected ? "whatsapp" : "console");
+          setStep(2);
+        } else if (body.tenant?.whatsapp_connected && !previewChoice) {
           setPath("whatsapp");
           setStep(1);
         }
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
+
+    consoleJson(base, "/api/console/calendar", {
+      fallback: "Could not load calendar.",
+    })
+      .then((body) => setCalendar(body))
+      .catch(() => {});
   }, [base, previewChoice]);
 
   const connected = Boolean(profile?.tenant?.whatsapp_connected);
-  const total = path === "whatsapp" ? 3 : 2;
-  const stepNo = step === 1 ? 2 : 3;
-  const stepLabel = step === 1 ? "ABOUT YOU" : "MORNING BRIEF";
+  const total = path === "whatsapp" ? 4 : 3;
+  const stepNo = step === 1 ? 2 : step === 2 ? 3 : 4;
+  const stepLabel =
+    step === 1 ? "ABOUT YOU" : step === 2 ? "CALENDAR" : "MORNING BRIEF";
 
   async function saveProfile(extra = {}) {
     return consoleJson(base, "/api/console/profile", {
@@ -188,6 +209,17 @@ export function JoinWizard({ tenant, previewChoice = false }) {
 
       {step === 2 ? (
         <>
+          <h1 className="az-h1 mb-3.5 text-fg">Your viewing diary</h1>
+          <p className="mb-9 text-lg leading-snug text-fg-2 [text-wrap:pretty]">
+            Connect the Google Calendar this agent uses for viewings. AgentZero
+            owns the connection and uses it on calls. Skip if you will connect
+            later in Settings.
+          </p>
+        </>
+      ) : null}
+
+      {step === 3 ? (
+        <>
           <h1 className="az-h1 mb-3.5 text-fg">Your morning brief</h1>
           <p className="mb-9 text-lg leading-snug text-fg-2 [text-wrap:pretty]">
             Each morning AgentZero scans the overnight pipeline, ranks who is
@@ -199,6 +231,10 @@ export function JoinWizard({ tenant, previewChoice = false }) {
       {error ? (
         <Strip className="mb-6" tone="markup">
           <span>{error}</span>
+        </Strip>
+      ) : notice ? (
+        <Strip className="mb-6" tone="live">
+          <span>{notice}</span>
         </Strip>
       ) : null}
 
@@ -321,13 +357,10 @@ export function JoinWizard({ tenant, previewChoice = false }) {
             setSaving(true);
             setError("");
             try {
-              if (path === "console") {
-                await saveProfile({ onboarded: true, brief_enabled: false });
-                router.push(base);
-              } else {
-                await saveProfile();
-                setStep(2);
-              }
+              await saveProfile(
+                path === "console" ? { brief_enabled: false } : {}
+              );
+              setStep(2);
             } catch (err) {
               setError(err.message);
             } finally {
@@ -423,21 +456,11 @@ export function JoinWizard({ tenant, previewChoice = false }) {
 
           <div className="flex flex-wrap gap-2.5 pt-2">
             <Button disabled={saving} type="submit">
-              {saving
-                ? "Saving…"
-                : path === "console"
-                  ? "Enter AgentZero Console"
-                  : "Continue"}
+              {saving ? "Saving…" : "Continue"}
             </Button>
             <Button
               disabled={saving}
-              onClick={() => {
-                if (path === "console") {
-                  void finishConsole();
-                } else {
-                  setStep(2);
-                }
-              }}
+              onClick={() => setStep(2)}
               type="button"
               variant="quiet"
             >
@@ -461,6 +484,66 @@ export function JoinWizard({ tenant, previewChoice = false }) {
       ) : null}
 
       {!loading && step === 2 ? (
+        <div className="grid gap-5">
+          {calendar?.unavailable ? (
+            <Strip tone="markup">
+              <span>
+                Calendar storage is not available yet. Skip this step and
+                connect from Settings after it is enabled.
+              </span>
+            </Strip>
+          ) : null}
+          <div className="az-card px-6.5 py-6">
+            {calendar?.connected ? (
+              <p className="text-[15px] leading-snug text-fg-2">
+                {calendar.label || calendar.email || "Google Calendar"}
+                {calendar.timezone ? ` · ${calendar.timezone}` : ""}
+                {" · connected"}
+              </p>
+            ) : (
+              <CalendarConnect
+                disabled={Boolean(calendar?.unavailable)}
+                next="join"
+              />
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2.5 pt-2">
+            <Button
+              disabled={saving}
+              onClick={() => {
+                if (path === "console") {
+                  void finishConsole();
+                } else {
+                  setStep(3);
+                }
+              }}
+              type="button"
+            >
+              {saving
+                ? "Saving…"
+                : path === "console"
+                  ? "Enter AgentZero Console"
+                  : "Continue"}
+            </Button>
+            <Button
+              disabled={saving}
+              onClick={() => {
+                if (path === "console") {
+                  void finishConsole();
+                } else {
+                  setStep(3);
+                }
+              }}
+              type="button"
+              variant="quiet"
+            >
+              Skip
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      {!loading && step === 3 ? (
         <>
           <div className="az-card px-6.5 py-6">
             <div className="flex flex-wrap items-start justify-between gap-5">
