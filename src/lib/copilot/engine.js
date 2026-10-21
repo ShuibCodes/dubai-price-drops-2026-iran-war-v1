@@ -32,7 +32,11 @@ import {
 } from "@/lib/console/run-status";
 
 const MODEL = "claude-sonnet-4-6";
-const MAX_TOOL_ROUNDS = 5;
+// Tool rounds per turn. The last round is called with tool_choice "none" so the
+// model answers from what it already looked up instead of the turn failing.
+const MAX_TOOL_ROUNDS = 8;
+const OUT_OF_ROUNDS_REPLY =
+  "That needed more lookups than I can do in one go. Could you narrow it down a little?";
 
 export const copilotToolDefinitions = [
   {
@@ -462,22 +466,32 @@ export async function runCopilotTurn({
   }
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
+    const lastRound = round === MAX_TOOL_ROUNDS - 1;
     const response = await client.messages.create({
       model: MODEL,
       max_tokens: 1200,
       system: systemPrompt(tenantName, agentName, runStatusBlock),
       tools: copilotToolDefinitions,
+      ...(lastRound ? { tool_choice: { type: "none" } } : {}),
       messages: conversation,
     });
 
     const toolUses = response.content.filter((block) => block.type === "tool_use");
+    const text = response.content
+      .filter((block) => block.type === "text")
+      .map((block) => block.text)
+      .join("\n")
+      .trim();
     if (!toolUses.length) {
-      const text = response.content
-        .filter((block) => block.type === "text")
-        .map((block) => block.text)
-        .join("\n")
-        .trim();
       return { text: text || "I couldn't produce a response.", toolRounds: round };
+    }
+    console.log(
+      `[copilot] tool round ${round + 1}/${MAX_TOOL_ROUNDS}:`,
+      toolUses.map((toolUse) => toolUse.name).join(", ")
+    );
+    if (lastRound) {
+      console.error("[copilot] out of tool rounds; replying without running more tools");
+      return { text: text || OUT_OF_ROUNDS_REPLY, toolRounds: round };
     }
 
     conversation.push({ role: "assistant", content: response.content });
@@ -518,5 +532,5 @@ export async function runCopilotTurn({
     conversation.push({ role: "user", content: results });
   }
 
-  throw new Error("Copilot exceeded the maximum of 5 tool rounds");
+  return { text: OUT_OF_ROUNDS_REPLY, toolRounds: MAX_TOOL_ROUNDS };
 }

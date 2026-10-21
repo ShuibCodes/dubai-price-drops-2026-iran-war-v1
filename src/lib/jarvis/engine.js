@@ -48,7 +48,11 @@ import { HELP_TEXT, isHelpMessage } from "@/lib/console/help";
 import { assertJarvisActor } from "@/lib/jarvis/visibility";
 import { createJarvisMessageClient } from "@/lib/jarvis/model-client";
 
-const MAX_TOOL_ROUNDS = 5;
+// Tool rounds per turn. The last round is called with tool_choice "none" so the
+// model answers from what it already looked up instead of the turn failing.
+const MAX_TOOL_ROUNDS = 8;
+const OUT_OF_ROUNDS_REPLY =
+  "That needed more lookups than I can do in one go. Could you narrow it down a little?";
 // Fallback slug for /api/jarvis/chat and scripts when no sender phone is sent.
 // Live AZ WhatsApp does not use this — it resolves tenant from agents.wa_id.
 export const JARVIS_TENANT_SLUG =
@@ -712,6 +716,7 @@ export async function runJarvisTurn({
     .join("\n");
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
+    const lastRound = round === MAX_TOOL_ROUNDS - 1;
     const { response } = await createMessage({
       system: systemPrompt({
         liveContext,
@@ -720,17 +725,27 @@ export async function runJarvisTurn({
         runStatusBlock,
       }),
       tools: jarvisToolDefinitions,
+      toolChoice: lastRound ? { type: "none" } : undefined,
       messages: conversation,
     });
 
     const toolUses = response.content.filter((block) => block.type === "tool_use");
+    const text = response.content
+      .filter((block) => block.type === "text")
+      .map((block) => block.text)
+      .join("\n")
+      .trim();
     if (!toolUses.length) {
-      const text = response.content
-        .filter((block) => block.type === "text")
-        .map((block) => block.text)
-        .join("\n")
-        .trim();
       return { text: text || "I couldn't produce a response.", toolRounds: round };
+    }
+    console.log(
+      `[jarvis] tool round ${round + 1}/${MAX_TOOL_ROUNDS}:`,
+      toolUses.map((toolUse) => toolUse.name).join(", ")
+    );
+    if (lastRound) {
+      // The model ignored tool_choice "none"; don't run tools we can't follow up on.
+      console.error("[jarvis] out of tool rounds; replying without running more tools");
+      return { text: text || OUT_OF_ROUNDS_REPLY, toolRounds: round };
     }
 
     conversation.push({ role: "assistant", content: response.content });
@@ -816,5 +831,5 @@ export async function runJarvisTurn({
     conversation.push({ role: "user", content: results });
   }
 
-  throw new Error("Jarvis exceeded the maximum of 5 tool rounds");
+  return { text: OUT_OF_ROUNDS_REPLY, toolRounds: MAX_TOOL_ROUNDS };
 }
