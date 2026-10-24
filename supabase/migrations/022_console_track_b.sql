@@ -15,7 +15,7 @@ alter table agents
 
 -- Existing agents are already in; do not force them through /join.
 update agents
-set onboarded_at = coalesce(onboarded_at, created_at, now())
+set onboarded_at = coalesce(onboarded_at, created_at, now())r
 where onboarded_at is null;
 
 alter table tenants

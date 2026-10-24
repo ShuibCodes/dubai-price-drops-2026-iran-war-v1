@@ -364,6 +364,8 @@ export async function dialLeadNow({
   scriptId = null,
   scriptVersionId = null,
   batchId = null,
+  // Explicit assistant (e.g. inbound_sources.assistant_id): skips script resolution.
+  assistantIdOverride = null,
   startCall = startLeadCall,
   buildCallBrief = buildWhatsappCallBrief,
 }) {
@@ -377,11 +379,13 @@ export async function dialLeadNow({
   if (!phone) throw new Error("Lead has no valid phone number");
 
   let pointer = { script_id: scriptId || null, script_version_id: scriptVersionId || null };
-  if (pointer.script_id && !pointer.script_version_id) {
-    pointer = await scriptPointerForScript(supabase, tenant.id, pointer.script_id);
-  }
-  if (!pointer.script_id) {
-    pointer = await scriptPointerForSource(supabase, tenant.id, source, { jarvisLead });
+  if (!assistantIdOverride) {
+    if (pointer.script_id && !pointer.script_version_id) {
+      pointer = await scriptPointerForScript(supabase, tenant.id, pointer.script_id);
+    }
+    if (!pointer.script_id) {
+      pointer = await scriptPointerForSource(supabase, tenant.id, source, { jarvisLead });
+    }
   }
 
   let scriptAssistantId = null;
@@ -411,7 +415,7 @@ export async function dialLeadNow({
   // 2. else jarvisLead → tenants.vapi_assistant_id_jarvis (never cold)
   // 3. else tenants.vapi_assistant_id
   // 4. else env fallback, with a warning
-  let assistantId = scriptAssistantId;
+  let assistantId = String(assistantIdOverride || "").trim() || scriptAssistantId;
   if (jarvisLead) {
     if (!assistantId) assistantId = tenant.vapi_assistant_id_jarvis;
     if (!assistantId) {

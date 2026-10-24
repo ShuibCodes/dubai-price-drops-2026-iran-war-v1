@@ -240,6 +240,19 @@ export function SettingsPage({ tenant }) {
         )}
       </div>
 
+      <div className="az-eyebrow mb-4 block">VOICE</div>
+      <div className="az-card mb-12 flex flex-wrap items-center justify-between gap-5 px-6.5 py-6">
+        <div>
+          <div className="text-lg font-medium text-fg">Test voices</div>
+          <div className="mt-1 text-sm text-dim">
+            Hear each voice read the same line before picking one.
+          </div>
+        </div>
+        <Link className="az-btn-quiet" href={`${base}/settings/voices`}>
+          Open voice tester
+        </Link>
+      </div>
+
       <div className="az-eyebrow mb-4 block">YOUR MORNING</div>
       <div className="az-card mb-12 px-6.5 py-6">
         <div className="flex flex-wrap items-center justify-between gap-5 border-b border-line pb-5">
