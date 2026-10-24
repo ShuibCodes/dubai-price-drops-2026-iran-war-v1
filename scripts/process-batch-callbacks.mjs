@@ -147,6 +147,7 @@ async function processInboundLeads(supabase) {
       .eq("id", lead.id)
       .eq("call_status", "waiting")
       .eq("call_attempts", attempts)
+      .lte("next_call_at", new Date().toISOString())
       .select("*")
       .maybeSingle();
     if (claimError) throw new Error(`Inbound claim failed: ${claimError.message}`);
