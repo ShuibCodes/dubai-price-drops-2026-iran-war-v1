@@ -296,7 +296,13 @@ async function processPipelineCall(payload) {
   );
 
   // Inbound-source leads only (GHL forms): done / retry / no_answer.
-  if (lead?.inbound_source_id && lead.call_status === "calling") {
+  // Only on the full report: the earlier status-update "ended" event has no
+  // transcript yet and would misclassify answered calls as no-answer.
+  if (
+    lead?.inbound_source_id &&
+    lead.call_status === "calling" &&
+    isEndOfCallReport(payload)
+  ) {
     try {
       await applyInboundCallOutcome(getSupabaseServerClient(), lead, {
         connected: inboundCallConnected({
