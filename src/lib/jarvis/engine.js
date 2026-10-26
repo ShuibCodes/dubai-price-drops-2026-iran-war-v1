@@ -9,6 +9,7 @@ import {
   listSavedLists,
   matchSavedList,
 } from "@/lib/console/lists";
+import { DAILY_BATCH_CAP, dailyBatchCapForTenant } from "@/lib/calls/outbound";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { draftLeadEmail, sendDraftEmail } from "@/lib/jarvis/email";
 import {
@@ -324,7 +325,13 @@ export const jarvisToolDefinitions = [
   },
 ];
 
-export function systemPrompt({ liveContext, savedListsPrompt, agentName, runStatusBlock }) {
+export function systemPrompt({
+  liveContext,
+  savedListsPrompt,
+  agentName,
+  runStatusBlock,
+  dailyCap = DAILY_BATCH_CAP,
+}) {
   const who = String(agentName || "").trim() || "the agent";
   return `You are Jarvis — a live WhatsApp knowledge base and action desk.
 
@@ -391,7 +398,7 @@ ACTIONS — CALLS (Vapi):
 - After relays, use get_lead_story / get_call_detail — there may be multiple recent relay calls. Prefer the latest completed one with a transcript; do not say "no recording" if a later/earlier call has one.
 - "call X" with no message to relay → if X is in SAVED LISTS or THIS TURN names a list, use start_cold_batch — not start_target_call. Otherwise start_target_call (Jarvis personal assistant only).
 - start_target_call dials one lead with tenants.vapi_assistant_id_jarvis ONLY.
-- start_cold_batch queues a saved lead list. Pass source as the exact SAVED LISTS name. A LIVE script is always required. If they did not pick one, follow the tool instruction (ask to use the live script; if several, list live names). Never say all scripts are draft when list_scripts.live is non-empty. Never fall back to a default script. Count may be omitted — the whole list is used, capped at 200/day.
+- start_cold_batch queues a saved lead list. Pass source as the exact SAVED LISTS name. A LIVE script is always required. If they did not pick one, follow the tool instruction (ask to use the live script; if several, list live names). Never say all scripts are draft when list_scripts.live is non-empty. Never fall back to a default script. Count may be omitted — the whole list is used, capped at ${dailyCap}/day.
 - NEVER place a call on the first ask. For lead calls: restate name + phone, ask: "Ready to call {Name} at {phone} — reply yes to place the call."
 - For relays / new-contact relays: confirmation is handled after place_relay_call returns needs_confirmation — show the confirmationPrompt (name, number, task). Reply yes completes save (if new) + dial.
 - For save_jarvis_contact: show confirmationPrompt; yes upserts jarvis_leads.
@@ -481,6 +488,7 @@ async function executeTool({
   messages,
   senderPhone,
   listMatch,
+  dailyCap = DAILY_BATCH_CAP,
 }) {
   assertJarvisActor({ tenantId, agentId });
   switch (name) {
@@ -572,8 +580,8 @@ async function executeTool({
       const countRaw = Number(input.count);
       const count =
         Number.isInteger(countRaw) && countRaw >= 1
-          ? countRaw
-          : Math.max(1, Number(listMatch?.count) || 200);
+          ? Math.min(countRaw, dailyCap)
+          : Math.max(1, Math.min(Number(listMatch?.count) || dailyCap, dailyCap));
       const resolved = await resolveScript({ tenantId, phrase });
       if (!isResolvedMatch(resolved)) {
         return resolveFailurePayload(resolved);
@@ -594,6 +602,7 @@ async function executeTool({
             resolved,
             count,
             sourceFilter: source,
+            cap: dailyCap,
           }),
           instruction:
             "Show the confirmationPrompt verbatim. Do not call the tool again this turn.",
@@ -653,11 +662,18 @@ export async function runJarvisTurn({
   } catch (error) {
     console.error("[jarvis] live context unavailable:", error.message);
   }
+  let dailyCap = DAILY_BATCH_CAP;
   try {
     const supabase = getSupabaseServerClient();
     if (supabase) savedLists = await listSavedLists(supabase, tenantId, agentId);
   } catch (error) {
     console.error("[jarvis] saved lists unavailable:", error.message);
+  }
+  try {
+    const supabase = getSupabaseServerClient();
+    if (supabase) dailyCap = await dailyBatchCapForTenant(supabase, tenantId);
+  } catch (error) {
+    console.error("[jarvis] daily cap lookup failed:", error.message);
   }
   try {
     listedScripts = await listScripts(tenantId);
@@ -723,6 +739,7 @@ export async function runJarvisTurn({
         savedListsPrompt,
         agentName,
         runStatusBlock,
+        dailyCap,
       }),
       tools: jarvisToolDefinitions,
       toolChoice: lastRound ? { type: "none" } : undefined,
@@ -762,6 +779,7 @@ export async function runJarvisTurn({
           messages,
           senderPhone,
           listMatch,
+          dailyCap,
         });
         if (result?.requiresConfirmation) confirmation = result;
         results.push({

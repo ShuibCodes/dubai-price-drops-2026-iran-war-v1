@@ -12,9 +12,10 @@
  * dialLeadNow. Outcomes/retries are written by the Vapi webhook. Not counted
  * toward DAILY_BATCH_CAP (same as /api/leads/inbound dials).
  *
- * Daily cap: shares ONE combined DAILY_BATCH_CAP (200) with cold-batch via
+ * Daily cap: shares ONE combined ceiling with cold-batch via
  * batchDialsForDay / BATCH_QUEUE_SOURCES (includes "jarvis-batch-callback").
- * Before each dial, check batchDialsForDay >= DAILY_BATCH_CAP and defer with
+ * The ceiling is the tenant plan (daily_dial_cap, default 200).
+ * Before each dial, check batchDialsForDay >= that cap and defer with
  * nextDubaiSixPm() — same gate as process-call-queue.mjs.
  *
  * Full dial loop lands with the Batch Callback feature (migration 015 +
@@ -26,6 +27,7 @@ import { applyEnv, loadEnvFile } from "./load-env.mjs";
 import {
   DAILY_BATCH_CAP,
   batchDialsForDay,
+  dailyBatchCapForTenant,
   dialLeadNow,
   getOutboundTenant,
   nextDubaiSixPm,
@@ -233,18 +235,20 @@ async function main() {
   // Shared ceiling smoke-check (same counter cold-batch uses). Full dial
   // loop still pending — do not place calls from this stub.
   const tenantId = data[0]?.tenant_id;
+  let cap = DAILY_BATCH_CAP;
   if (tenantId) {
+    cap = await dailyBatchCapForTenant(supabase, tenantId);
     const dialsToday = await batchDialsForDay(supabase, tenantId);
-    if (dialsToday >= DAILY_BATCH_CAP) {
+    if (dialsToday >= cap) {
       console.log(
-        `batch_callback summary processed=0 due=${due} deferred_cap=${DAILY_BATCH_CAP} next=${nextDubaiSixPm().toISOString()} note=shared_daily_cap`
+        `batch_callback summary processed=0 due=${due} deferred_cap=${cap} next=${nextDubaiSixPm().toISOString()} note=shared_daily_cap`
       );
       return;
     }
   }
 
   console.log(
-    `batch_callback summary processed=0 due=${due} dry_run=${DRY_RUN} note=worker_logic_pending cap=${DAILY_BATCH_CAP}`
+    `batch_callback summary processed=0 due=${due} dry_run=${DRY_RUN} note=worker_logic_pending cap=${cap}`
   );
 }
 

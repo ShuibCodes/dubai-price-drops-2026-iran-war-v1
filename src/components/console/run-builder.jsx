@@ -274,7 +274,7 @@ export function RunBuilder({ tenant }) {
     matched > 0 &&
     !needsUploadName &&
     (source !== "segment" || listName.trim().length >= 2);
-  const dailyCap = 200;
+  const dailyCap = Number(home?.tenant?.daily_dial_cap) || null;
   const startLabel = saving
     ? "Queueing…"
     : !scriptId
@@ -287,7 +287,7 @@ export function RunBuilder({ tenant }) {
           ? "Name the list first"
           : counting
             ? "Counting…"
-            : matched > dailyCap
+            : dailyCap && matched > dailyCap
               ? `Queue ${matched} · ${dailyCap} a day`
               : windowStart
                 ? `Schedule ${matched} calls`
@@ -537,11 +537,13 @@ export function RunBuilder({ tenant }) {
             />
           </div>
         ) : null}
-        <div className="text-sm text-faint">
-          200 calls a day. Not all{" "}
-          {matched > 0 ? matched.toLocaleString("en-US") : "of them"} would go
-          out at once.
-        </div>
+        {dailyCap ? (
+          <div className="text-sm text-faint">
+            {dailyCap} calls a day. Not all{" "}
+            {matched > 0 ? matched.toLocaleString("en-US") : "of them"} would go
+            out at once.
+          </div>
+        ) : null}
       </div>
 
       <div className="rounded-2xl border border-az-edge bg-az-wash p-7">

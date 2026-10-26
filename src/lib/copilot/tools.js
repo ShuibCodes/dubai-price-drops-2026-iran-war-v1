@@ -4,6 +4,7 @@ import {
   DAILY_BATCH_CAP,
   assertOutboundActive,
   buildCappedBatchSchedule,
+  dailyBatchCapFor,
   dialLeadNow,
   getOutboundTenant,
   queueLeadCalls,
@@ -734,10 +735,10 @@ const MAX_COLD_CALL_ATTEMPTS = 3;
 const COLD_SCAN_PAGE = 250;
 const COLD_SCAN_MAX = 8000;
 
-function validateCount(count, { allowDefault } = {}) {
+function validateCount(count, { allowDefault, cap = DAILY_BATCH_CAP } = {}) {
   const value = Number(count);
   if (!Number.isInteger(value) || value < 1) {
-    if (allowDefault) return DAILY_BATCH_CAP;
+    if (allowDefault) return cap;
     throw new Error("Count must be a positive integer");
   }
   return value;
@@ -930,11 +931,13 @@ export async function startColdBatch(
     async (supabase) => {
       const tenant = await getOutboundTenant(supabase, tenantId);
       assertOutboundActive(tenant);
+      const dailyCap = dailyBatchCapFor(tenant);
       const requested = validateCount(count, {
         allowDefault: Boolean(String(sourceFilter || "").trim()),
+        cap: dailyCap,
       });
-      // Never accept more than one day's hard cap in a single start.
-      const want = Math.min(requested, DAILY_BATCH_CAP);
+      // Never accept more than one day's plan cap in a single start.
+      const want = Math.min(requested, dailyCap);
       // After 10pm UAE → first slot is next day 6pm (all tenants).
       const startAt = resolveBatchDialStart(new Date());
       const { times, cappedTo } = await buildCappedBatchSchedule(
@@ -949,11 +952,11 @@ export async function startColdBatch(
           scheduled: 0,
           requested,
           cappedTo: 0,
-          dailyCap: DAILY_BATCH_CAP,
+          dailyCap,
           country: countryCode,
           byTimezone: {},
           queuedLeads: summarizeQueuedLeads([]),
-          error: `Daily hard cap of ${DAILY_BATCH_CAP} calls/day leaves no open slots (Asia/Dubai).`,
+          error: `Daily hard cap of ${dailyCap} calls/day leaves no open slots (Asia/Dubai).`,
         };
       }
 
@@ -988,7 +991,7 @@ export async function startColdBatch(
         capped: cappedTo < requested,
         firstScheduledFor: queued[0]?.scheduled_for || null,
         lastScheduledFor: queued[queued.length - 1]?.scheduled_for || null,
-        dailyCap: DAILY_BATCH_CAP,
+        dailyCap,
         country: countryCode,
         byTimezone,
         queuedLeads: summarizeQueuedLeads(leads),
@@ -1060,6 +1063,7 @@ export async function scheduleBatch(
     async (supabase) => {
       const tenant = await getOutboundTenant(supabase, tenantId);
       assertOutboundActive(tenant);
+      const dailyCap = dailyBatchCapFor(tenant);
       const when = new Date(whenIso);
       if (Number.isNaN(when.getTime())) throw new Error("Invalid whenIso");
       const requested = validateCount(count);
@@ -1068,7 +1072,7 @@ export async function scheduleBatch(
         throw new Error(`spreadDays must be an integer between 1 and ${MAX_SPREAD_DAYS}`);
       }
 
-      // Same start time each consecutive day; each day hard-capped at 200.
+      // Same start time each consecutive day; each day hard-capped at the plan.
       const schedule = [];
       const perDay = [];
       const chunks = splitAcrossDays(requested, days);
@@ -1079,7 +1083,7 @@ export async function scheduleBatch(
         const dayStart = resolveBatchDialStart(
           new Date(when.getTime() + dayIndex * 24 * 60 * 60 * 1000)
         );
-        const want = Math.min(chunk, DAILY_BATCH_CAP);
+        const want = Math.min(chunk, dailyCap);
         const { times, cappedTo } = await buildCappedBatchSchedule(
           supabase,
           tenantId,
@@ -1113,10 +1117,10 @@ export async function scheduleBatch(
           cappedTo: 0,
           spreadDays: days,
           perDay,
-          dailyCap: DAILY_BATCH_CAP,
+          dailyCap,
           country: countryCode,
           queuedLeads: summarizeQueuedLeads([]),
-          error: `Daily hard cap of ${DAILY_BATCH_CAP} calls/day leaves no slots for the requested schedule.`,
+          error: `Daily hard cap of ${dailyCap} calls/day leaves no slots for the requested schedule.`,
         };
       }
 
@@ -1144,7 +1148,7 @@ export async function scheduleBatch(
         perDay,
         firstScheduledFor: queued[0]?.scheduled_for || null,
         lastScheduledFor: queued[queued.length - 1]?.scheduled_for || null,
-        dailyCap: DAILY_BATCH_CAP,
+        dailyCap,
         country: countryCode,
         queuedLeads: summarizeQueuedLeads(leads),
       };

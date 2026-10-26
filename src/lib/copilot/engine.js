@@ -24,7 +24,9 @@ import {
   resolveScript,
   scriptRequiredPayload,
 } from "@/lib/scripts/resolve";
+import { DAILY_BATCH_CAP, dailyBatchCapForTenant } from "@/lib/calls/outbound";
 import { HELP_TEXT, isHelpMessage } from "@/lib/console/help";
+import { getSupabaseServerClient } from "@/lib/supabase/server";
 import {
   formatRunStatusBlock,
   getRunStatus,
@@ -265,7 +267,12 @@ export const copilotToolDefinitions = [
   },
 ];
 
-function systemPrompt(tenantName, agentName, runStatusBlock) {
+function systemPrompt(
+  tenantName,
+  agentName,
+  runStatusBlock,
+  dailyCap = DAILY_BATCH_CAP
+) {
   return `You are the operations Copilot for ${tenantName}.
 You are assisting ${agentName || "a team member"}. Be concise, warm, and numbers-first.
 
@@ -280,7 +287,7 @@ Rules:
 - When discussing a specific lead, include their full phone number so the agent can reach them directly.
 - Batches can be restricted to one market: when the user says "UAE leads only", "local numbers", "971 numbers", or names any country, pass that country to start_cold_batch or schedule_batch. UAE = 971. In the reply, state which country the batch was limited to.
 - When batching a named campaign, pass it as source to start_cold_batch or schedule_batch. If unsure what campaigns exist, call list_lead_sources first.
-- Dates/times are Asia/Dubai. HARD rules for EVERY tenant: (1) max 200 batch calls per Dubai day — clamp and say so, no override; (2) after 10:00pm UAE, dials move to the next day at 6:00pm; (3) previously called numbers can be re-dialed until 3 lifetime attempts.
+- Dates/times are Asia/Dubai. HARD rules for this workspace: (1) max ${dailyCap} batch calls per Dubai day — clamp and say so, no override; (2) after 10:00pm UAE, dials move to the next day at 6:00pm; (3) previously called numbers can be re-dialed until 3 lifetime attempts. The tool result's dailyCap is the number to quote.
 - Cold batches re-call numbers that were dialed before. Only skip a lead once it already has 3 call attempts (or is already in the queue). Prefer never-called first, then 1x, then 2x.
 
 ROSTER vs CALL ACTIVITY — hard routing rules:
@@ -348,7 +355,7 @@ function hasScriptBatchConfirmation(messages, displayName) {
   );
 }
 
-async function executeTool({ name, input, tenantId, agentName, messages }) {
+async function executeTool({ name, input, tenantId, agentName, messages, dailyCap }) {
   switch (name) {
     case "count_calls_since":
       return countCallsSince(tenantId, input.sinceIso);
@@ -393,6 +400,7 @@ async function executeTool({ name, input, tenantId, agentName, messages }) {
             resolved,
             count: input.count,
             sourceFilter: input.source,
+            cap: dailyCap,
           }),
           instruction:
             "Show the confirmationPrompt verbatim. Do not call the tool again this turn.",
@@ -456,6 +464,14 @@ export async function runCopilotTurn({
     return { text: HELP_TEXT, toolRounds: 0 };
   }
 
+  let dailyCap = DAILY_BATCH_CAP;
+  try {
+    const supabase = getSupabaseServerClient();
+    if (supabase) dailyCap = await dailyBatchCapForTenant(supabase, tenantId);
+  } catch (error) {
+    console.error("[copilot] daily cap lookup failed:", error.message);
+  }
+
   let runStatusBlock = "";
   if (shouldPrefetchRunStatus(lastText, null)) {
     try {
@@ -470,7 +486,7 @@ export async function runCopilotTurn({
     const response = await client.messages.create({
       model: MODEL,
       max_tokens: 1200,
-      system: systemPrompt(tenantName, agentName, runStatusBlock),
+      system: systemPrompt(tenantName, agentName, runStatusBlock, dailyCap),
       tools: copilotToolDefinitions,
       ...(lastRound ? { tool_choice: { type: "none" } } : {}),
       messages: conversation,
@@ -505,6 +521,7 @@ export async function runCopilotTurn({
           tenantId,
           agentName,
           messages,
+          dailyCap,
         });
         if (result?.requiresConfirmation) confirmation = result;
         results.push({

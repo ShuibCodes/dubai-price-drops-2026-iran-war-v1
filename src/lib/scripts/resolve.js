@@ -241,11 +241,13 @@ export function formatPublishedAgo(iso, now = new Date()) {
   return `${weeks} week${weeks === 1 ? "" : "s"} ago`;
 }
 
-export function buildScriptBatchConfirm({ resolved, count, sourceFilter }) {
-  const leadCount = Math.max(
-    1,
-    Math.min(Number(count) || 0, CONFIRM_COUNT_CAP)
-  );
+export function buildScriptBatchConfirm({ resolved, count, sourceFilter, cap }) {
+  const planCap = Math.trunc(Number(cap));
+  const ceiling =
+    Number.isFinite(planCap) && planCap >= 1
+      ? Math.min(CONFIRM_COUNT_CAP, planCap)
+      : CONFIRM_COUNT_CAP;
+  const leadCount = Math.max(1, Math.min(Number(count) || 0, ceiling));
   const sourceLabel = String(sourceFilter || "").trim() || "the cold list";
   return formatScriptBatchConfirm({
     displayName: resolved.match.display_name,

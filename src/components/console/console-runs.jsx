@@ -58,7 +58,15 @@ export function ConsoleRuns({ tenant }) {
       ) : null}
 
       <div className="mb-4.5 flex items-center justify-between gap-4">
-        <div className="az-eyebrow">RECENT RUNS</div>
+        <div>
+          <div className="az-eyebrow">RECENT RUNS</div>
+          {Number(data?.tenant?.daily_dial_cap) > 0 &&
+          Number(data?.tenant?.daily_dial_cap) < 200 ? (
+            <p className="mt-2 text-[15px] text-dim">
+              {Number(data.tenant.daily_dial_cap)} numbers a day on this plan.
+            </p>
+          ) : null}
+        </div>
         <Link className="az-btn-white" href={`${base}/runs/new`}>
           New call run
         </Link>
