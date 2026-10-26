@@ -1,4 +1,5 @@
 import { consoleContext, jsonError, loadConsoleTenant, whatsappHealthy } from "@/lib/console/http";
+import { cleanWaId } from "@/lib/copilot/agent-wa-id";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -92,6 +93,31 @@ export async function PATCH(request) {
     }
     if (body.tz != null) patch.tz = String(body.tz).trim() || "Asia/Dubai";
     if (body.onboarded === true) patch.onboarded_at = new Date().toISOString();
+
+    if (body.wa_id !== undefined || body.phone !== undefined) {
+      const rawPhone = body.wa_id !== undefined ? body.wa_id : body.phone;
+      if (rawPhone === null || String(rawPhone).trim() === "") {
+        patch.wa_id = null;
+      } else {
+        const waId = cleanWaId(rawPhone);
+        if (!waId) {
+          return jsonError("Phone number must contain between 6 and 20 digits.", 400);
+        }
+        const { data: conflict } = await supabase
+          .from("agents")
+          .select("id")
+          .eq("wa_id", waId)
+          .neq("id", session.agentId)
+          .maybeSingle();
+        if (conflict) {
+          return jsonError(
+            "This WhatsApp phone number is already registered to another agent.",
+            409
+          );
+        }
+        patch.wa_id = waId;
+      }
+    }
 
     if (!Object.keys(patch).length) {
       return jsonError("Nothing to update.", 400);
