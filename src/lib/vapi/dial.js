@@ -159,7 +159,14 @@ export function getAssistantServerUrl() {
 function calendarToolsOnModel() {
   try {
     return calendarToolsForAssistant(getAssistantServerUrl());
-  } catch {
+  } catch (err) {
+    // P2: Surface missing server URL — an empty serverUrl means Vapi will
+    // silently drop calendar tool calls without any error on this side.
+    console.warn(
+      "[vapi/dial] calendarToolsOnModel: server URL is not configured —",
+      err?.message,
+      "— calendar tools will have no webhook endpoint. Set VAPI_SERVER_URL or APP_URL."
+    );
     return calendarToolsForAssistant("");
   }
 }
@@ -319,7 +326,7 @@ export async function upsertVapiAssistant({
   return id;
 }
 
-function buildAssistantOverrides({
+export function buildAssistantOverrides({
   name,
   variableValues = {},
   prompt,

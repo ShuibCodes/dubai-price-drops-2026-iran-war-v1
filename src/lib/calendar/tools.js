@@ -6,6 +6,7 @@ import {
 import {
   insertAppointment,
   loadOwnedCalendarConnection,
+  logCompensationFailure,
   markCalendarConnectionError,
   persistCalendarTokens,
 } from "./store.js";
@@ -160,6 +161,15 @@ async function deleteCreatedEvent({ connection, eventId, google, supabase }) {
     }
   } catch (error) {
     console.error("[calendar/tools] event compensation delete failed:", error.message);
+    // B1: Log the orphan so the team can manually clean it up.
+    await logCompensationFailure(supabase, {
+      tenantId: connection.tenant_id,
+      agentId: connection.agent_id,
+      calendarConnectionId: connection.id,
+      providerEventId: id,
+      calendarId,
+      reason: `compensation_delete_failed: ${error.message}`,
+    });
     return { deleted: false, reason: "delete_failed" };
   }
 }
@@ -426,25 +436,19 @@ async function handleCheckAvailability({ connection, args, google, supabase }) {
 
 async function handleBookAppointment({
   supabase,
-  connection,
+  connection,      // P1: already-resolved, owned connection from executeCalendarTool
   context,
   args,
   vapiCallId,
   google,
 }) {
-  const verified = await resolveOwnedConnection(supabase, context);
-  if (!verified.connection) {
-    throw Object.assign(new Error(connectionError(verified.reason)), {
-      vapiError: true,
-    });
-  }
-
-  const window = resolveBookingWindow(args, verified.connection);
+  // P1: connection is passed in — no second DB round-trip needed.
+  const window = resolveBookingWindow(args, connection);
   if (!viewingWindowAllows(window)) {
     return assertNoSecrets(`Could not book. ${viewingWindowSpeech(window)}`);
   }
   const { available, busy } = await queryAvailability({
-    connection: verified.connection,
+    connection,
     window,
     google,
     supabase,
@@ -456,12 +460,12 @@ async function handleBookAppointment({
   }
 
   const summary = String(args.summary || "Viewing").trim() || "Viewing";
-  const accessToken = await accessTokenForConnection(verified.connection, google, {
+  const accessToken = await accessTokenForConnection(connection, google, {
     supabase,
   });
   const event = await google.createEvent({
     accessToken,
-    calendarId: verified.connection.calendar_id || "primary",
+    calendarId: connection.calendar_id || "primary",
     summary,
     startDateTime: window.startDateTime,
     endDateTime: window.endDateTime,
@@ -482,7 +486,7 @@ async function handleBookAppointment({
     await insertAppointment(supabase, {
       tenant_id: context.tenantId,
       agent_id: context.agentId,
-      calendar_connection_id: verified.connection.id,
+      calendar_connection_id: connection.id,
       lead_id: leadId,
       jarvis_lead_id: jarvisLeadId,
       call_id: callId,
@@ -501,7 +505,7 @@ async function handleBookAppointment({
   } catch (error) {
     console.error("[calendar/tools] appointment persist failed:", error.message);
     const compensation = await deleteCreatedEvent({
-      connection: verified.connection,
+      connection,
       eventId: event.eventId,
       google,
       supabase,

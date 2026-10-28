@@ -80,6 +80,8 @@ function createFakeDb({
   jarvisLeads = [],
   calls = [],
   appointmentInsertError = null,
+  // B2: set to true to simulate the unique-index violation on second insert
+  appointmentDuplicateOnSecondInsert = false,
 } = {}) {
   const tables = {
     calendar_connections: connections.map((row) => ({ ...row })),
@@ -87,7 +89,10 @@ function createFakeDb({
     leads: leads.map((row) => ({ ...row })),
     jarvis_leads: jarvisLeads.map((row) => ({ ...row })),
     calls: calls.map((row) => ({ ...row })),
+    // B1: compensation failures log
+    calendar_compensation_failures: [],
   };
+  let appointmentInsertCount = 0;
   return {
     tables,
     from(table) {
@@ -132,6 +137,15 @@ function createFakeDb({
           pendingInsert = { ...row };
           return api;
         },
+        then(resolve, reject) {
+          if (pendingInsert) {
+            const saved = { id: `row-${rows.length + 1}`, ...pendingInsert };
+            rows.push(saved);
+            pendingInsert = null;
+            return Promise.resolve({ data: [saved], error: null }).then(resolve, reject);
+          }
+          return Promise.resolve({ data: rows, error: null }).then(resolve, reject);
+        },
         update(row) {
           pendingUpdate = { ...row };
           return api;
@@ -154,13 +168,21 @@ function createFakeDb({
         },
         single() {
           if (pendingInsert) {
-            if (appointmentInsertError && table === "appointments") {
-              return Promise.resolve({
-                data: null,
-                error: { message: appointmentInsertError },
-              });
+            if (table === "appointments") {
+              appointmentInsertCount += 1;
+              // B2: simulate unique-index violation on the second concurrent insert
+              if (
+                appointmentInsertError ||
+                (appointmentDuplicateOnSecondInsert && appointmentInsertCount > 1)
+              ) {
+                return Promise.resolve({
+                  data: null,
+                  error: { message: appointmentInsertError || "duplicate key value violates unique constraint appointments_agent_start_booked_idx" },
+                });
+              }
             }
-            const saved = { id: `appt-${rows.length + 1}`, ...pendingInsert };
+            // calendar_compensation_failures has no error path by default
+            const saved = { id: `row-${rows.length + 1}`, ...pendingInsert };
             rows.push(saved);
             return Promise.resolve({ data: { ...saved }, error: null });
           }
@@ -931,6 +953,230 @@ await test("empty toolCallList returns empty results, not a 500 shape", async ()
   );
   assert.deepEqual(results, []);
   assert.deepEqual(vapiToolCallsResponse(results), { results: [] });
+});
+
+// ── B1: orphan event is persisted when compensation delete also fails ────────
+
+await test("[B1] orphan Google event is logged to calendar_compensation_failures when compensation delete fails", async () => {
+  const db = createFakeDb({
+    connections: [activeConnection()],
+    appointmentInsertError: "insert failed",
+  });
+  const deleteErr = new Error("Google Calendar: backendError");
+  deleteErr.status = 500;
+
+  const results = await handleVapiCalendarToolCalls(
+    officialToolCallsPayload({ name: "book_appointment" }),
+    {
+      supabase: db,
+      google: mockGoogle({ deleteError: deleteErr }),
+    }
+  );
+
+  // LLM still hears "not confirmed" (orphan, not compensated)
+  assert.match(results[0].error, /Could not book/);
+  assert.doesNotMatch(JSON.stringify(results), /Booked/);
+  assert.equal(hasSecret(results), false);
+
+  // B1: The orphan record must be persisted
+  const failures = db.tables.calendar_compensation_failures;
+  assert.equal(failures.length, 1, "Expected one compensation failure record");
+  assert.equal(failures[0].provider_event_id, "evt-1");
+  assert.equal(failures[0].agent_id, AGENT_A);
+  assert.equal(failures[0].tenant_id, TENANT_A);
+  assert.match(failures[0].reason, /compensation_delete_failed/);
+  assert.equal(hasSecret(failures[0]), false);
+});
+
+await test("[B1] successful delete does NOT write a compensation failure record", async () => {
+  const db = createFakeDb({
+    connections: [activeConnection()],
+    appointmentInsertError: "insert failed",
+  });
+
+  await handleVapiCalendarToolCalls(
+    officialToolCallsPayload({ name: "book_appointment" }),
+    { supabase: db, google: mockGoogle() }
+  );
+
+  // compensation succeeded (event deleted) — no orphan record needed
+  assert.equal(db.tables.calendar_compensation_failures.length, 0);
+});
+
+// ── B2: unique partial index blocks concurrent double-booking ───────────────
+
+await test("[B2] second concurrent booking is rejected by unique-index constraint and compensated", async () => {
+  const db = createFakeDb({
+    connections: [activeConnection()],
+    appointmentDuplicateOnSecondInsert: true,
+  });
+  const deleted = [];
+
+  // First booking succeeds
+  const result1 = await handleVapiCalendarToolCalls(
+    officialToolCallsPayload({
+      name: "book_appointment",
+      args: {
+        startDateTime: "2026-09-21T10:00:00+04:00",
+        durationMinutes: 30,
+        summary: "First booking",
+      },
+    }),
+    { supabase: db, google: mockGoogle({ eventId: "evt-first" }) }
+  );
+  assert.match(result1[0].result, /Booked/);
+  assert.equal(db.tables.appointments.length, 1);
+
+  // Second booking at the same time hits the unique constraint
+  const result2 = await handleVapiCalendarToolCalls(
+    officialToolCallsPayload({
+      name: "book_appointment",
+      args: {
+        startDateTime: "2026-09-21T10:00:00+04:00",
+        durationMinutes: 30,
+        summary: "Second booking (concurrent)",
+      },
+    }),
+    {
+      supabase: db,
+      google: mockGoogle({
+        eventId: "evt-second",
+        onDelete(input) { deleted.push(input); },
+      }),
+    }
+  );
+
+  // Must NOT confirm the second booking
+  assert.doesNotMatch(JSON.stringify(result2), /Booked/);
+  assert.match(result2[0].error, /Could not book/);
+  assert.match(result2[0].error, /not confirmed/);
+  assert.equal(hasSecret(result2), false);
+
+  // The second Google event must be deleted (compensation)
+  assert.equal(deleted.length, 1, "Compensation delete must run for second booking");
+  assert.equal(deleted[0].eventId, "evt-second");
+
+  // Only the first appointment persisted
+  assert.equal(db.tables.appointments.length, 1);
+  assert.equal(db.tables.appointments[0].summary, "First booking");
+});
+
+// ── P1: single connection lookup per book_appointment ──────────────────────
+
+await test("[P1] book_appointment performs exactly one DB connection lookup, not two", async () => {
+  let connectionLookups = 0;
+  const realDb = createFakeDb({ connections: [activeConnection()] });
+
+  // Intercept calendar_connections queries to count lookups
+  const countingDb = {
+    tables: realDb.tables,
+    from(table) {
+      const api = realDb.from(table);
+      if (table === "calendar_connections") {
+        const origMaybeSingle = api.maybeSingle.bind(api);
+        api.maybeSingle = () => {
+          connectionLookups += 1;
+          return origMaybeSingle();
+        };
+      }
+      return api;
+    },
+  };
+
+  const results = await handleVapiCalendarToolCalls(
+    officialToolCallsPayload({ name: "book_appointment" }),
+    { supabase: countingDb, google: mockGoogle() }
+  );
+
+  assert.match(results[0].result, /Booked/);
+  // P1 fix: exactly 1 lookup (from executeCalendarTool), not 2
+  assert.equal(connectionLookups, 1, `Expected 1 connection lookup but got ${connectionLookups}`);
+});
+
+// ── S4: token patterns are redacted from error messages ────────────────────
+
+await test("[S4] markCalendarConnectionError redacts token patterns including URL query tokens", async () => {
+  const { markCalendarConnectionError } = await import("../src/lib/calendar/store.js");
+  const db = createFakeDb({
+    connections: [activeConnection()],
+  });
+  const conn = db.tables.calendar_connections[0];
+
+  // Messages with various token leak patterns
+  const messages = [
+    "Error: access_token expired",
+    "Error: refresh_token invalid for ya29.some_token",
+    "URL error: ?access_token=ya29.abc123&refresh_token=1//xyz",
+    "token_ciphertext decode failed",
+    "\"token\": \"secret_value\"",
+  ];
+
+  for (const msg of messages) {
+    await markCalendarConnectionError(db, conn, msg);
+    const stored = db.tables.calendar_connections[0].last_error;
+    assert.doesNotMatch(stored, /ya29\.|1\/\//, `Raw Google token prefix leaked in: "${stored}"`);
+    assert.doesNotMatch(stored, /access_token.*=.*[a-zA-Z0-9]/, `Inline token value leaked in: "${stored}"`);
+  }
+});
+
+// ── P3: Google API calls include AbortSignal.timeout(8000) ──────────────────
+
+await test("[P3] Google API calls include an AbortSignal timeout", async () => {
+  const {
+    fetchPrimaryCalendar,
+    checkGoogleFreeBusy,
+    createGoogleCalendarEvent,
+    deleteGoogleCalendarEvent,
+    revokeGoogleToken,
+  } = await import("../src/lib/calendar/google.js");
+
+  const originalFetch = globalThis.fetch;
+  const capturedSignals = [];
+
+  globalThis.fetch = async (url, options = {}) => {
+    capturedSignals.push({ url: String(url), signal: options?.signal });
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ id: "primary", items: [] }),
+    };
+  };
+
+  try {
+    await fetchPrimaryCalendar("test-access-token");
+    assert.equal(capturedSignals.length, 1);
+    assert.ok(capturedSignals[0].signal instanceof AbortSignal, "fetchPrimaryCalendar missing AbortSignal");
+
+    await checkGoogleFreeBusy({
+      accessToken: "test-access-token",
+      startDateTime: "2026-09-21T10:00:00+04:00",
+      endDateTime: "2026-09-21T10:30:00+04:00",
+    });
+    assert.equal(capturedSignals.length, 2);
+    assert.ok(capturedSignals[1].signal instanceof AbortSignal, "checkGoogleFreeBusy missing AbortSignal");
+
+    await createGoogleCalendarEvent({
+      accessToken: "test-access-token",
+      summary: "Viewing",
+      startDateTime: "2026-09-21T10:00:00+04:00",
+      endDateTime: "2026-09-21T10:30:00+04:00",
+    });
+    assert.equal(capturedSignals.length, 3);
+    assert.ok(capturedSignals[2].signal instanceof AbortSignal, "createGoogleCalendarEvent missing AbortSignal");
+
+    await deleteGoogleCalendarEvent({
+      accessToken: "test-access-token",
+      eventId: "evt-123",
+    });
+    assert.equal(capturedSignals.length, 4);
+    assert.ok(capturedSignals[3].signal instanceof AbortSignal, "deleteGoogleCalendarEvent missing AbortSignal");
+
+    await revokeGoogleToken("test-token");
+    assert.equal(capturedSignals.length, 5);
+    assert.ok(capturedSignals[4].signal instanceof AbortSignal, "revokeGoogleToken missing AbortSignal");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 console.log("\nAll calendar Phase 3 tool-call tests passed.");

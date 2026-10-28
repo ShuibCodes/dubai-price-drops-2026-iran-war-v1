@@ -57,6 +57,7 @@ export async function exchangeGoogleCode(code, { redirectUri } = {}) {
 
   const response = await fetch(TOKEN_URL, {
     method: "POST",
+    signal: AbortSignal.timeout(8000),
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       code: trimmed,
@@ -80,6 +81,7 @@ export async function refreshGoogleAccessToken(refreshToken) {
 
   const response = await fetch(TOKEN_URL, {
     method: "POST",
+    signal: AbortSignal.timeout(8000),
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       refresh_token: token,
@@ -97,6 +99,7 @@ export async function revokeGoogleToken(token) {
   if (!value) return { revoked: false, reason: "missing_token" };
   const response = await fetch(REVOKE_URL, {
     method: "POST",
+    signal: AbortSignal.timeout(8000),
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ token: value }),
   });
@@ -115,6 +118,7 @@ export async function fetchPrimaryCalendar(accessToken) {
   const token = String(accessToken || "").trim();
   if (!token) throw new Error("access_token is required");
   const response = await fetch(`${CALENDAR_API}/users/me/calendarList/primary`, {
+    signal: AbortSignal.timeout(8000),
     headers: authHeaders(token),
   });
   const body = await readGoogleJson(response);
@@ -148,6 +152,7 @@ export async function checkGoogleFreeBusy({
 
   const response = await fetch(`${CALENDAR_API}/freeBusy`, {
     method: "POST",
+    signal: AbortSignal.timeout(8000),
     headers: {
       ...authHeaders(token),
       "Content-Type": "application/json",
@@ -200,6 +205,7 @@ export async function createGoogleCalendarEvent({
     `${CALENDAR_API}/calendars/${encodeURIComponent(calendarId || "primary")}/events`,
     {
       method: "POST",
+      signal: AbortSignal.timeout(8000),
       headers: {
         ...authHeaders(token),
         "Content-Type": "application/json",
@@ -247,6 +253,7 @@ export async function deleteGoogleCalendarEvent({
     `${CALENDAR_API}/calendars/${encodeURIComponent(calendarId || "primary")}/events/${encodeURIComponent(id)}`,
     {
       method: "DELETE",
+      signal: AbortSignal.timeout(8000),
       headers: authHeaders(token),
     }
   );

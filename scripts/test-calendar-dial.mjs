@@ -16,7 +16,10 @@ import {
   mergeServerMessages,
   VAPI_REQUIRED_SERVER_MESSAGES,
 } from "../src/lib/vapi/assistant-calendar.js";
-import { buildVapiAssistantWriteBody } from "../src/lib/vapi/dial.js";
+import {
+  buildAssistantOverrides,
+  buildVapiAssistantWriteBody,
+} from "../src/lib/vapi/dial.js";
 
 const TENANT_A = "11111111-1111-4111-8111-111111111111";
 const TENANT_B = "44444444-4444-4444-8444-444444444444";
@@ -379,6 +382,32 @@ await test("composed prompt mentions calendarConnected true/false without hard-c
   assert.match(prompt, /Sunday to Thursday/);
   assert.doesNotMatch(prompt, /11111111-1111-4111-8111-111111111111/);
   assert.doesNotMatch(prompt, /calendarConnectionId/);
+});
+
+await test("[P2] calendarToolsOnModel surfaces warning when server URL is not configured", () => {
+  const oldAppUrl = process.env.APP_URL;
+  const oldVapiUrl = process.env.VAPI_SERVER_URL;
+  delete process.env.APP_URL;
+  delete process.env.VAPI_SERVER_URL;
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...args) => warnings.push(args.join(" "));
+  try {
+    const { assistantOverrides } = buildAssistantOverrides({
+      name: "Allan",
+      prompt: "You are Allan.",
+    });
+    assert.ok(warnings.length > 0, "Expected console.warn for missing server URL");
+    assert.match(warnings[0], /server URL is not configured/);
+    const checkAvailability = assistantOverrides.model.tools.find(
+      (t) => t.function?.name === "check_availability"
+    );
+    assert.equal(checkAvailability.server, undefined);
+  } finally {
+    console.warn = originalWarn;
+    if (oldAppUrl) process.env.APP_URL = oldAppUrl;
+    if (oldVapiUrl) process.env.VAPI_SERVER_URL = oldVapiUrl;
+  }
 });
 
 console.log("\nAll calendar Phase 4 dial tests passed.");

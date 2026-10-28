@@ -5,6 +5,10 @@ import {
   publicCalendarConnection,
 } from "./tokens.js";
 
+// Centralised token-pattern regex — same set used in tools.js assertNoSecrets.
+const TOKEN_LEAK_PATTERN = /access_token|refresh_token|token_ciphertext|"token":|ya29\.|1\/\//gi;
+
+
 export const CALENDAR_PUBLIC_COLS =
   "id, tenant_id, agent_id, provider, google_account_email, calendar_id, calendar_summary, calendar_timezone, status, last_error, connected_at, updated_at";
 
@@ -126,7 +130,7 @@ export async function persistCalendarTokens(supabase, connection, tokens) {
 export async function markCalendarConnectionError(supabase, connection, message) {
   if (!supabase || !connection?.id) return null;
   const safe = String(message || "Calendar credentials are no longer valid")
-    .replace(/access_token|refresh_token|token_ciphertext|ya29\.|1\/\//gi, "[redacted]")
+    .replace(TOKEN_LEAK_PATTERN, "[redacted]")
     .slice(0, 240);
   const now = new Date().toISOString();
   try {
@@ -164,6 +168,38 @@ export async function insertAppointment(supabase, row) {
   if (error) throw new Error(`Appointment save failed: ${error.message}`);
   return data;
 }
+
+/**
+ * B1: Persist a record of an orphan Google Calendar event so the team can
+ * manually clean it up. Swallows all errors — compensation logging must
+ * never throw and must never block the tool response.
+ */
+export async function logCompensationFailure(supabase, {
+  tenantId,
+  agentId,
+  calendarConnectionId,
+  providerEventId,
+  calendarId,
+  reason,
+}) {
+  if (!supabase) return;
+  try {
+    await supabase.from("calendar_compensation_failures").insert({
+      tenant_id: tenantId || null,
+      agent_id: agentId || null,
+      calendar_connection_id: calendarConnectionId || null,
+      provider_event_id: providerEventId || null,
+      calendar_id: calendarId || "primary",
+      reason: String(reason || "unknown").slice(0, 240),
+      created_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    // Log to console only — do not re-throw. The Vapi response has already
+    // been decided before this function is called.
+    console.error("[calendar/store] compensation failure log failed:", err?.message);
+  }
+}
+
 
 export async function upsertAgentCalendarConnection(
   supabase,
