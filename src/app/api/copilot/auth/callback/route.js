@@ -12,6 +12,7 @@ import {
   COPILOT_SESSION_COOKIE,
   copilotSessionCookieOptions,
 } from "@/lib/copilot-auth";
+import { assignAgentWaId } from "@/lib/copilot/agent-wa-id";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import {
   createRouteAuthClient,
@@ -98,6 +99,19 @@ export async function GET(request) {
       .from("agents")
       .update({ last_login_at: new Date().toISOString() })
       .eq("id", agent.id);
+
+    const authPhone =
+      user.phone ||
+      user.user_metadata?.phone ||
+      user.user_metadata?.phone_number ||
+      null;
+    if (authPhone && agent.id) {
+      await assignAgentWaId(admin, {
+        agentId: agent.id,
+        rawPhone: authPhone,
+        overwriteExisting: false,
+      });
+    }
 
     // A newly-created owner always enters setup. Client-controlled next is only
     // considered for identities that already belonged to an AgentZero agent.
