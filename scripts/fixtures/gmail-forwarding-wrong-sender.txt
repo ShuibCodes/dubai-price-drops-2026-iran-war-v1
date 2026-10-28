@@ -1,0 +1,9 @@
+From: Google Account <noreply@google.com>
+Subject: (#999888777) Security alert for your Google Account
+To: sterling-k8f3x2@leads.agentzero.ae
+
+We noticed a new sign-in to your Google Account.
+
+Confirmation code: 999888777
+
+If this was you, you don't need to do anything.
