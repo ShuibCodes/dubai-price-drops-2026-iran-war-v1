@@ -1,4 +1,5 @@
 import { DM_Sans, IBM_Plex_Mono } from "next/font/google";
+import Script from "next/script";
 import { SHARE_IMAGE } from "@/lib/share-image";
 import "./globals.css";
 
@@ -46,10 +47,26 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
+      <head>
+        {/* Queues goal events fired before the DataFast script finishes loading. */}
+        <script
+          id="datafast-queue"
+          dangerouslySetInnerHTML={{
+            __html:
+              "window.datafast=window.datafast||function(){(window.datafast.q=window.datafast.q||[]).push(arguments)};",
+          }}
+        />
+      </head>
       <body
         className={`${dmSans.variable} ${ibmPlexMono.variable} bg-background text-foreground antialiased`}
       >
         {children}
+        <Script
+          defer
+          data-website-id="dfid_aqzPmo9l06RAI6kjno3Ok"
+          data-domain="agentzero.ae"
+          src="https://datafa.st/js/script.js"
+        />
       </body>
     </html>
   );

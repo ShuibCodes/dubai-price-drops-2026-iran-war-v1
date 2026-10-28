@@ -1,5 +1,4 @@
 import AgentZeroLandingPage from "@/components/landing/agentzero-landing-page";
-import Script from "next/script";
 import { SHARE_IMAGE } from "@/lib/share-image";
 
 const TITLE = "AgentZero — Your CRM has 4,000 leads. When did you last call one?";
@@ -27,15 +26,5 @@ export const metadata = {
 };
 
 export default function Home() {
-  return (
-    <>
-      <Script
-        defer
-        data-website-id="dfid_aqzPmo9l06RAI6kjno3Ok"
-        data-domain="agentzero.ae"
-        src="https://datafa.st/js/script.js"
-      />
-      <AgentZeroLandingPage />
-    </>
-  );
+  return <AgentZeroLandingPage />;
 }

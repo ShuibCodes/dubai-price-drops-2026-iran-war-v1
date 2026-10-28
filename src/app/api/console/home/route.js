@@ -1,3 +1,4 @@
+import { dailyBatchCapFor } from "@/lib/calls/outbound";
 import {
   consoleContext,
   jsonError,
@@ -45,6 +46,7 @@ export async function GET(request) {
         name: tenant?.name,
         display_phone: tenant?.display_phone || null,
         whatsapp_healthy: whatsappHealthy(tenant),
+        daily_dial_cap: dailyBatchCapFor(tenant),
       },
       agent: {
         name: agent?.name || null,

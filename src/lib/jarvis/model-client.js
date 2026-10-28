@@ -65,7 +65,9 @@ function hasUsableOutput(response) {
 }
 
 /**
- * Returns createMessage({ system, tools, messages }) -> { response, provider }.
+ * Returns createMessage({ system, tools, messages, toolChoice }) -> { response, provider }.
+ * toolChoice is passed through as tool_choice, e.g. { type: "none" } to force a
+ * text answer on the last round.
  * One instance per Jarvis turn: once Muse fails, the turn stays on Claude.
  * Clients can be injected for tests.
  */
@@ -76,7 +78,8 @@ export function createJarvisMessageClient({
 } = {}) {
   let useMuse = Boolean(museClient);
 
-  return async function createMessage({ system, tools, messages }) {
+  return async function createMessage({ system, tools, messages, toolChoice }) {
+    const choice = toolChoice ? { tool_choice: toolChoice } : {};
     if (useMuse) {
       try {
         const response = await museClient.messages.create({
@@ -85,6 +88,7 @@ export function createJarvisMessageClient({
           output_config: { effort: MUSE_EFFORT },
           system,
           tools,
+          ...choice,
           messages,
         });
         if (hasUsableOutput(response)) {
@@ -107,6 +111,7 @@ export function createJarvisMessageClient({
       max_tokens: CLAUDE_MAX_TOKENS,
       system,
       tools,
+      ...choice,
       messages: withoutThinking(messages),
     });
     return { response, provider: "claude" };

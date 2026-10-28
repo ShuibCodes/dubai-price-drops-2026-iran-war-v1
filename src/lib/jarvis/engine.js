@@ -9,6 +9,7 @@ import {
   listSavedLists,
   matchSavedList,
 } from "@/lib/console/lists";
+import { DAILY_BATCH_CAP, dailyBatchCapForTenant } from "@/lib/calls/outbound";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { draftLeadEmail, sendDraftEmail } from "@/lib/jarvis/email";
 import {
@@ -48,7 +49,11 @@ import { HELP_TEXT, isHelpMessage } from "@/lib/console/help";
 import { assertJarvisActor } from "@/lib/jarvis/visibility";
 import { createJarvisMessageClient } from "@/lib/jarvis/model-client";
 
-const MAX_TOOL_ROUNDS = 5;
+// Tool rounds per turn. The last round is called with tool_choice "none" so the
+// model answers from what it already looked up instead of the turn failing.
+const MAX_TOOL_ROUNDS = 8;
+const OUT_OF_ROUNDS_REPLY =
+  "That needed more lookups than I can do in one go. Could you narrow it down a little?";
 // Fallback slug for /api/jarvis/chat and scripts when no sender phone is sent.
 // Live AZ WhatsApp does not use this — it resolves tenant from agents.wa_id.
 export const JARVIS_TENANT_SLUG =
@@ -320,7 +325,13 @@ export const jarvisToolDefinitions = [
   },
 ];
 
-export function systemPrompt({ liveContext, savedListsPrompt, agentName, runStatusBlock }) {
+export function systemPrompt({
+  liveContext,
+  savedListsPrompt,
+  agentName,
+  runStatusBlock,
+  dailyCap = DAILY_BATCH_CAP,
+}) {
   const who = String(agentName || "").trim() || "the agent";
   return `You are Jarvis — a live WhatsApp knowledge base and action desk.
 
@@ -387,7 +398,7 @@ ACTIONS — CALLS (Vapi):
 - After relays, use get_lead_story / get_call_detail — there may be multiple recent relay calls. Prefer the latest completed one with a transcript; do not say "no recording" if a later/earlier call has one.
 - "call X" with no message to relay → if X is in SAVED LISTS or THIS TURN names a list, use start_cold_batch — not start_target_call. Otherwise start_target_call (Jarvis personal assistant only).
 - start_target_call dials one lead with tenants.vapi_assistant_id_jarvis ONLY.
-- start_cold_batch queues a saved lead list. Pass source as the exact SAVED LISTS name. A LIVE script is always required. If they did not pick one, follow the tool instruction (ask to use the live script; if several, list live names). Never say all scripts are draft when list_scripts.live is non-empty. Never fall back to a default script. Count may be omitted — the whole list is used, capped at 200/day.
+- start_cold_batch queues a saved lead list. Pass source as the exact SAVED LISTS name. A LIVE script is always required. If they did not pick one, follow the tool instruction (ask to use the live script; if several, list live names). Never say all scripts are draft when list_scripts.live is non-empty. Never fall back to a default script. Count may be omitted — the whole list is used, capped at ${dailyCap}/day.
 - NEVER place a call on the first ask. For lead calls: restate name + phone, ask: "Ready to call {Name} at {phone} — reply yes to place the call."
 - For relays / new-contact relays: confirmation is handled after place_relay_call returns needs_confirmation — show the confirmationPrompt (name, number, task). Reply yes completes save (if new) + dial.
 - For save_jarvis_contact: show confirmationPrompt; yes upserts jarvis_leads.
@@ -477,6 +488,7 @@ async function executeTool({
   messages,
   senderPhone,
   listMatch,
+  dailyCap = DAILY_BATCH_CAP,
 }) {
   assertJarvisActor({ tenantId, agentId });
   switch (name) {
@@ -568,8 +580,8 @@ async function executeTool({
       const countRaw = Number(input.count);
       const count =
         Number.isInteger(countRaw) && countRaw >= 1
-          ? countRaw
-          : Math.max(1, Number(listMatch?.count) || 200);
+          ? Math.min(countRaw, dailyCap)
+          : Math.max(1, Math.min(Number(listMatch?.count) || dailyCap, dailyCap));
       const resolved = await resolveScript({ tenantId, phrase });
       if (!isResolvedMatch(resolved)) {
         return resolveFailurePayload(resolved);
@@ -590,6 +602,7 @@ async function executeTool({
             resolved,
             count,
             sourceFilter: source,
+            cap: dailyCap,
           }),
           instruction:
             "Show the confirmationPrompt verbatim. Do not call the tool again this turn.",
@@ -649,11 +662,18 @@ export async function runJarvisTurn({
   } catch (error) {
     console.error("[jarvis] live context unavailable:", error.message);
   }
+  let dailyCap = DAILY_BATCH_CAP;
   try {
     const supabase = getSupabaseServerClient();
     if (supabase) savedLists = await listSavedLists(supabase, tenantId, agentId);
   } catch (error) {
     console.error("[jarvis] saved lists unavailable:", error.message);
+  }
+  try {
+    const supabase = getSupabaseServerClient();
+    if (supabase) dailyCap = await dailyBatchCapForTenant(supabase, tenantId);
+  } catch (error) {
+    console.error("[jarvis] daily cap lookup failed:", error.message);
   }
   try {
     listedScripts = await listScripts(tenantId);
@@ -712,25 +732,37 @@ export async function runJarvisTurn({
     .join("\n");
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
+    const lastRound = round === MAX_TOOL_ROUNDS - 1;
     const { response } = await createMessage({
       system: systemPrompt({
         liveContext,
         savedListsPrompt,
         agentName,
         runStatusBlock,
+        dailyCap,
       }),
       tools: jarvisToolDefinitions,
+      toolChoice: lastRound ? { type: "none" } : undefined,
       messages: conversation,
     });
 
     const toolUses = response.content.filter((block) => block.type === "tool_use");
+    const text = response.content
+      .filter((block) => block.type === "text")
+      .map((block) => block.text)
+      .join("\n")
+      .trim();
     if (!toolUses.length) {
-      const text = response.content
-        .filter((block) => block.type === "text")
-        .map((block) => block.text)
-        .join("\n")
-        .trim();
       return { text: text || "I couldn't produce a response.", toolRounds: round };
+    }
+    console.log(
+      `[jarvis] tool round ${round + 1}/${MAX_TOOL_ROUNDS}:`,
+      toolUses.map((toolUse) => toolUse.name).join(", ")
+    );
+    if (lastRound) {
+      // The model ignored tool_choice "none"; don't run tools we can't follow up on.
+      console.error("[jarvis] out of tool rounds; replying without running more tools");
+      return { text: text || OUT_OF_ROUNDS_REPLY, toolRounds: round };
     }
 
     conversation.push({ role: "assistant", content: response.content });
@@ -747,6 +779,7 @@ export async function runJarvisTurn({
           messages,
           senderPhone,
           listMatch,
+          dailyCap,
         });
         if (result?.requiresConfirmation) confirmation = result;
         results.push({
@@ -816,5 +849,5 @@ export async function runJarvisTurn({
     conversation.push({ role: "user", content: results });
   }
 
-  throw new Error("Jarvis exceeded the maximum of 5 tool rounds");
+  return { text: OUT_OF_ROUNDS_REPLY, toolRounds: MAX_TOOL_ROUNDS };
 }

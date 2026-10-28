@@ -1,8 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
 import { applyEnv, loadEnvFile } from "./load-env.mjs";
 import {
-  DAILY_BATCH_CAP,
   batchDialsForDay,
+  dailyBatchCapFor,
   dialLeadNow,
   getOutboundTenant,
   isAfterDubaiBatchCutoff,
@@ -116,8 +116,9 @@ async function main({ dryRun = false } = {}) {
       continue;
     }
 
-    // Batch rules for every tenant: no dials after 10pm UAE; max 200/day.
-    // Overflow (cutoff or cap) always rolls to next day 6pm UAE.
+    // Batch rules for every tenant: no dials after 10pm UAE; stop at that
+    // workspace's daily plan (default 200). Overflow rolls to next day 6pm UAE.
+    const dailyCap = dailyBatchCapFor(tenant);
     if (isBatchQueueSource(item.source)) {
       if (isAfterDubaiBatchCutoff()) {
         if (!dryRun) {
@@ -134,7 +135,7 @@ async function main({ dryRun = false } = {}) {
         if (!dryRun) {
           await updateQueueRow(supabase, item.id, {
             scheduled_for: nextDubaiSixPm().toISOString(),
-            failure_reason: `deferred: daily hard cap ${DAILY_BATCH_CAP} → next day 6pm`,
+            failure_reason: `deferred: daily hard cap ${dailyCap} → next day 6pm`,
           });
         }
         summary.rescheduled += 1;
@@ -147,12 +148,12 @@ async function main({ dryRun = false } = {}) {
         dialsTodayByTenant.set(item.tenant_id, dialsToday);
       }
 
-      if (dialsToday >= DAILY_BATCH_CAP) {
+      if (dialsToday >= dailyCap) {
         cappedTenants.add(item.tenant_id);
         if (!dryRun) {
           await updateQueueRow(supabase, item.id, {
             scheduled_for: nextDubaiSixPm().toISOString(),
-            failure_reason: `deferred: daily hard cap ${DAILY_BATCH_CAP} → next day 6pm`,
+            failure_reason: `deferred: daily hard cap ${dailyCap} → next day 6pm`,
           });
         }
         summary.rescheduled += 1;
@@ -253,7 +254,7 @@ async function main({ dryRun = false } = {}) {
       if (isBatchQueueSource(item.source)) {
         const next = (dialsTodayByTenant.get(item.tenant_id) || 0) + 1;
         dialsTodayByTenant.set(item.tenant_id, next);
-        if (next >= DAILY_BATCH_CAP) cappedTenants.add(item.tenant_id);
+        if (next >= dailyCap) cappedTenants.add(item.tenant_id);
       }
     } catch (error) {
       const message = String(error.message || "Dial failed");

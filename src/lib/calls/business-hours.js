@@ -92,6 +92,32 @@ export function nextWindowStartForZone(timeZone, date = new Date()) {
   return new Date(targetUtcMs);
 }
 
+/** "10:00" / "10:00:00" (Postgres time) → minutes after midnight. */
+function timeToMinutes(value, fallback) {
+  const match = String(value || "").match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return fallback;
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
+/** Custom per-source window (e.g. inbound_sources.call_window_*) in `timeZone`. */
+export function isWithinZoneWindow(timeZone, start, end, date = new Date()) {
+  const { hour, minute } = getZoneParts(timeZone, date);
+  const now = hour * 60 + minute;
+  return now >= timeToMinutes(start, 600) && now < timeToMinutes(end, 1140);
+}
+
+/** `date` if inside the window, else the next window start (UTC) in `timeZone`. */
+export function nextZoneWindowStart(timeZone, start, end, date = new Date()) {
+  if (isWithinZoneWindow(timeZone, start, end, date)) return date;
+  const parts = getZoneParts(timeZone, date);
+  const startMin = timeToMinutes(start, 600);
+  const dayShift = parts.hour * 60 + parts.minute >= startMin ? 1 : 0;
+  const localMs = Date.UTC(parts.year, parts.month, parts.day + dayShift, 0, startMin);
+  // Re-read the offset at the target so a DST change overnight doesn't shift it an hour.
+  const guess = new Date(localMs - getZoneOffsetMs(timeZone, date));
+  return new Date(localMs - getZoneOffsetMs(timeZone, guess));
+}
+
 /** Next business-window start in UTC, plus 5 minutes (queue scheduling). */
 export function nextWindowStart(date = new Date()) {
   const parts = getDubaiParts(date);

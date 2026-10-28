@@ -22,6 +22,10 @@ import { handleVapiCalendarToolCalls } from "@/lib/calendar/tools";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { verifyConfiguredWebhookSecret } from "@/lib/security/webhook-secret";
 import { resolveCompletedCallContext } from "@/lib/vapi/webhook-leads";
+import {
+  applyInboundCallOutcome,
+  inboundCallConnected,
+} from "@/lib/leads/inbound-sources";
 import { agentZeroWhatsAppFromAddress } from "@/lib/jarvis/self-chat";
 import {
   extractVapiToolCalls,
@@ -294,8 +298,33 @@ async function processPipelineCall(payload) {
   if (!result) return { processed: false, reason: "db_upsert_failed" };
 
   const { call, lead } = result;
+  const optedOut = Boolean(
+    lead && !call.jarvis_lead_id && qualificationLooksLikeOptOut(qualification, details)
+  );
 
-  if (lead && !call.jarvis_lead_id && qualificationLooksLikeOptOut(qualification, details)) {
+  // Inbound-source leads only (GHL forms): done / retry / no_answer.
+  // Only on the full report: the earlier status-update "ended" event has no
+  // transcript yet and would misclassify answered calls as no-answer.
+  if (
+    lead?.inbound_source_id &&
+    lead.call_status === "calling" &&
+    isEndOfCallReport(payload)
+  ) {
+    try {
+      await applyInboundCallOutcome(getSupabaseServerClient(), lead, {
+        connected: inboundCallConnected({
+          endedReason: details.endedReason,
+          structuredData: details.structuredData,
+          qualification,
+        }),
+        optedOut,
+      });
+    } catch (error) {
+      console.error("[vapi/webhook] inbound outcome failed:", error.message);
+    }
+  }
+
+  if (optedOut) {
     try {
       await markLeadOptedOut(getSupabaseServerClient(), {
         tenantId: call.tenant_id,

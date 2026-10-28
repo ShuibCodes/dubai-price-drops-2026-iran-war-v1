@@ -6,6 +6,7 @@ import {
 } from "@/lib/meta/assets";
 import { resolveMetaExchangeTarget } from "@/lib/meta/exchange-tenant";
 import { getSession } from "@/lib/copilot/session";
+import { assignAgentWaId } from "@/lib/copilot/agent-wa-id";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -134,11 +135,30 @@ export async function POST(request) {
         { status: 500 }
       );
     }
+    let assignedWaId = null;
     if (displayPhone) {
       await supabase
         .from("tenants")
         .update({ display_phone: displayPhone })
         .eq("id", targetTenantId);
+
+      // Automatically sync the agent's wa_id to this connected business phone
+      const targetAgentId = session?.agentId;
+      if (targetAgentId) {
+        const syncResult = await assignAgentWaId(supabase, {
+          agentId: targetAgentId,
+          rawPhone: displayPhone,
+          overwriteExisting: true,
+        });
+        if (syncResult.ok) {
+          assignedWaId = syncResult.waId;
+        } else {
+          console.warn(
+            `[meta/exchange] could not auto-assign wa_id to agent ${targetAgentId}:`,
+            syncResult.error
+          );
+        }
+      }
     }
 
     const subscription = await subscribeAppToWaba({
@@ -153,6 +173,7 @@ export async function POST(request) {
       phone_number_id: resolvedPhoneNumberId,
       subscribed: subscription.subscribed,
       subscribe_error: subscription.error || null,
+      wa_id: assignedWaId || null,
     });
   } catch (error) {
     console.error("Meta exchange route error:", error.message);

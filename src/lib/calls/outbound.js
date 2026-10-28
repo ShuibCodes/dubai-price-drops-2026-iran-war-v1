@@ -24,11 +24,22 @@ import {
 } from "../jarvis/call-brief.js";
 
 /**
- * Hard max batch dials per tenant per Asia/Dubai day. Not overridable.
- * Shared across cold-batch (call_queue worker) AND Jarvis batch-callback
- * worker — both read/increment via batchDialsForDay + BATCH_QUEUE_SOURCES.
+ * Default hard max batch dials per tenant per Asia/Dubai day.
+ * tenants.daily_dial_cap, when set, is that workspace's plan and cannot
+ * exceed this. Shared across cold-batch (call_queue worker) AND Jarvis
+ * batch-callback — both read batchDialsForDay + BATCH_QUEUE_SOURCES.
  */
 export const DAILY_BATCH_CAP = 200;
+
+/** Plan ceiling for one workspace. Null or invalid uses the product default. */
+export function dailyBatchCapFor(tenant) {
+  if (tenant?.daily_dial_cap == null || tenant.daily_dial_cap === "") {
+    return DAILY_BATCH_CAP;
+  }
+  const cap = Math.trunc(Number(tenant.daily_dial_cap));
+  if (!Number.isFinite(cap) || cap < 1) return DAILY_BATCH_CAP;
+  return Math.min(cap, DAILY_BATCH_CAP);
+}
 export const BATCH_SPACING_SECONDS = 60;
 /** No batch dials at/after this hour Asia/Dubai — overflow goes to next day 6pm. */
 export const BATCH_CUTOFF_HOUR_DUBAI = 22;
@@ -145,9 +156,20 @@ export async function batchUsageForDay(supabase, tenantId, date = new Date()) {
   return dials + pending;
 }
 
-export async function remainingDailyBatchCap(supabase, tenantId, date = new Date()) {
+export async function dailyBatchCapForTenant(supabase, tenantId) {
+  const tenant = await getOutboundTenant(supabase, tenantId);
+  return dailyBatchCapFor(tenant);
+}
+
+export async function remainingDailyBatchCap(
+  supabase,
+  tenantId,
+  date = new Date(),
+  cap
+) {
   const used = await batchUsageForDay(supabase, tenantId, date);
-  return Math.max(0, DAILY_BATCH_CAP - used);
+  const ceiling = cap ?? (await dailyBatchCapForTenant(supabase, tenantId));
+  return Math.max(0, ceiling - used);
 }
 
 export function assertOutboundActive(tenant) {
@@ -157,17 +179,28 @@ export function assertOutboundActive(tenant) {
   }
 }
 
+const OUTBOUND_TENANT_COLS =
+  "id, name, slug, outbound_paused, vapi_assistant_id, vapi_assistant_id_meta, vapi_assistant_id_jarvis, vapi_phone_number_id, daily_dial_cap";
+const OUTBOUND_TENANT_COLS_LEGACY =
+  "id, name, slug, outbound_paused, vapi_assistant_id, vapi_assistant_id_meta, vapi_assistant_id_jarvis, vapi_phone_number_id";
+
 export async function getOutboundTenant(supabase, tenantId) {
-  const { data, error } = await supabase
+  const first = await supabase
     .from("tenants")
-    .select(
-      "id, name, slug, outbound_paused, vapi_assistant_id, vapi_assistant_id_meta, vapi_assistant_id_jarvis, vapi_phone_number_id"
-    )
+    .select(OUTBOUND_TENANT_COLS)
     .eq("id", tenantId)
     .single();
-
-  if (error) throw new Error(`Tenant lookup failed: ${error.message}`);
-  return data;
+  if (!first.error) return first.data;
+  if (!/daily_dial_cap/i.test(String(first.error.message || ""))) {
+    throw new Error(`Tenant lookup failed: ${first.error.message}`);
+  }
+  const retry = await supabase
+    .from("tenants")
+    .select(OUTBOUND_TENANT_COLS_LEGACY)
+    .eq("id", tenantId)
+    .single();
+  if (retry.error) throw new Error(`Tenant lookup failed: ${retry.error.message}`);
+  return retry.data;
 }
 
 /**
@@ -198,7 +231,7 @@ function dubaiDayKey(date) {
 }
 
 /**
- * Build up to `count` slots respecting per-day hard cap (200) and 10pm→6pm rule.
+ * Build up to `count` slots respecting the tenant's daily cap and 10pm→6pm rule.
  * @param {{ singleDay?: boolean }} [options] If singleDay, stop instead of spilling
  *   into later Dubai days (used by schedule_batch day chunks).
  */
@@ -210,6 +243,7 @@ export async function buildCappedBatchSchedule(
   { singleDay = false } = {}
 ) {
   const requested = Math.max(0, Number(count) || 0);
+  const cap = await dailyBatchCapForTenant(supabase, tenantId);
   const times = [];
   const plannedByDay = new Map();
   let cursor = resolveBatchDialStart(startAt);
@@ -218,7 +252,7 @@ export async function buildCappedBatchSchedule(
 
   // Safety: don't walk more than ~2 weeks of days looking for slots.
   let guard = 0;
-  while (times.length < requested && guard < requested + 14 * DAILY_BATCH_CAP) {
+  while (times.length < requested && guard < requested + 14 * cap) {
     guard += 1;
     if (isAfterDubaiBatchCutoff(cursor)) {
       if (singleDay) break;
@@ -231,7 +265,7 @@ export async function buildCappedBatchSchedule(
 
     let planned = plannedByDay.get(dayKey);
     if (planned == null) {
-      const remaining = await remainingDailyBatchCap(supabase, tenantId, cursor);
+      const remaining = await remainingDailyBatchCap(supabase, tenantId, cursor, cap);
       planned = { remaining };
       plannedByDay.set(dayKey, planned);
     }
@@ -370,6 +404,8 @@ export async function dialLeadNow({
   scriptVersionId = null,
   batchId = null,
   agentId = null,
+  // Explicit assistant (e.g. inbound_sources.assistant_id): skips script resolution.
+  assistantIdOverride = null,
   startCall = startLeadCall,
   buildCallBrief = buildWhatsappCallBrief,
 }) {
@@ -383,11 +419,13 @@ export async function dialLeadNow({
   if (!phone) throw new Error("Lead has no valid phone number");
 
   let pointer = { script_id: scriptId || null, script_version_id: scriptVersionId || null };
-  if (pointer.script_id && !pointer.script_version_id) {
-    pointer = await scriptPointerForScript(supabase, tenant.id, pointer.script_id);
-  }
-  if (!pointer.script_id) {
-    pointer = await scriptPointerForSource(supabase, tenant.id, source, { jarvisLead });
+  if (!assistantIdOverride) {
+    if (pointer.script_id && !pointer.script_version_id) {
+      pointer = await scriptPointerForScript(supabase, tenant.id, pointer.script_id);
+    }
+    if (!pointer.script_id) {
+      pointer = await scriptPointerForSource(supabase, tenant.id, source, { jarvisLead });
+    }
   }
 
   let scriptAssistantId = null;
@@ -417,7 +455,7 @@ export async function dialLeadNow({
   // 2. else jarvisLead → tenants.vapi_assistant_id_jarvis (never cold)
   // 3. else tenants.vapi_assistant_id
   // 4. else env fallback, with a warning
-  let assistantId = scriptAssistantId;
+  let assistantId = String(assistantIdOverride || "").trim() || scriptAssistantId;
   if (jarvisLead) {
     if (!assistantId) assistantId = tenant.vapi_assistant_id_jarvis;
     if (!assistantId) {

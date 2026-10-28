@@ -9,6 +9,8 @@ export {
 } from "./format";
 
 const TENANT_COLS =
+  "id, slug, name, waba_id, phone_number_id, business_token, display_phone, daily_dial_cap";
+const TENANT_COLS_NO_CAP =
   "id, slug, name, waba_id, phone_number_id, business_token, display_phone";
 const TENANT_COLS_NO_DISPLAY =
   "id, slug, name, waba_id, phone_number_id, business_token";
@@ -24,9 +26,22 @@ export async function loadConsoleTenant(supabase, tenantId) {
     .eq("id", tenantId)
     .maybeSingle();
   if (!first.error) return first.data;
-  if (!missingDisplayPhone(first.error)) {
+
+  const message = String(first.error.message || "");
+  if (/daily_dial_cap/i.test(message)) {
+    const withoutCap = await supabase
+      .from("tenants")
+      .select(TENANT_COLS_NO_CAP)
+      .eq("id", tenantId)
+      .maybeSingle();
+    if (!withoutCap.error) return withoutCap.data;
+    if (!missingDisplayPhone(withoutCap.error)) {
+      throw new Error(`Tenant lookup failed: ${withoutCap.error.message}`);
+    }
+  } else if (!missingDisplayPhone(first.error)) {
     throw new Error(`Tenant lookup failed: ${first.error.message}`);
   }
+
   const retry = await supabase
     .from("tenants")
     .select(TENANT_COLS_NO_DISPLAY)

@@ -1,4 +1,4 @@
-﻿-- Migration 031: B1 + B2 fixes for calendar booking.
+-- Migration 032: B1 + B2 fixes for calendar booking.
 --
 -- B2: Unique partial index on appointments to prevent concurrent double-booking.
 --     Two concurrent book_appointment calls on the same agent both see the slot

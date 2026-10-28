@@ -237,8 +237,12 @@ tick.
 Create the service:
 
 - **Start command:** `node scripts/process-batch-callbacks.mjs`
-- **Cron schedule:** `*/2 * * * *` (UTC — every 2 minutes; per-lead local
-  9am–10pm gating + shared 200/day Dubai cap are enforced in-script)
+- **Cron schedule:** `* * * * *` (UTC — every minute, so inbound-source leads
+  from `/api/inbound/[sourceId]` ring within ~1–2 min; per-lead local window
+  gating + shared 200/day Dubai cap are enforced in-script)
+- **Inbound sources:** each tick claims up to `INBOUND_BATCH_LIMIT` (default 10)
+  leads with `call_status = 'waiting'` and `next_call_at <= now()`. Apply
+  migration `029_inbound_sources.sql` first; until then this pass no-ops.
 - **Required variables:** same as the call-queue service —
   `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `VAPI_API_KEY`,
   `VAPI_ASSISTANT_ID` / tenant Jarvis assistant ids, `VAPI_PHONE_NUMBER_ID`
@@ -255,7 +259,7 @@ node scripts/process-batch-callbacks.mjs
 ```
 
 Do **not** share one cron service that runs both scripts — keep call-queue
-(`*/15`) and batch-callback (`*/2`) as separate Railway services so schedules
+(`*/15`) and batch-callback (`* * * * *`) as separate Railway services so schedules
 and failure isolation stay independent. Apply migration `015` (batch callback
 tables) before expecting dials; until then the script no-ops cleanly.
 
