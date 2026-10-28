@@ -1,3 +1,4 @@
+import { getCalendarStatus } from "@/lib/calendar/oauth";
 import {
   consoleContext,
   jsonError,
@@ -15,15 +16,16 @@ export async function GET(request) {
     if (ctx.response) return ctx.response;
     const { session, supabase } = ctx;
 
-    const [tenant, { data: agent, error: agentError }] = await Promise.all([
+    const [tenant, { data: agent, error: agentError }, calendar] = await Promise.all([
       loadConsoleTenant(supabase, session.tenantId),
-        supabase
-          .from("agents")
-          .select("id, name, wa_id, brief_enabled, brief_time, tz")
-          .eq("id", session.agentId)
-          .eq("tenant_id", session.tenantId)
-          .maybeSingle(),
-      ]);
+      supabase
+        .from("agents")
+        .select("id, name, wa_id, brief_enabled, brief_time, tz")
+        .eq("id", session.agentId)
+        .eq("tenant_id", session.tenantId)
+        .maybeSingle(),
+      getCalendarStatus(supabase, session),
+    ]);
     if (agentError) throw new Error(agentError.message);
 
     return Response.json({
@@ -31,6 +33,16 @@ export async function GET(request) {
       whatsapp_healthy: whatsappHealthy(tenant),
       role: session.role,
       agent,
+      calendar: calendar.error
+        ? {
+            connected: false,
+            email: null,
+            label: null,
+            timezone: null,
+            status: null,
+            lastError: null,
+          }
+        : calendar,
     });
   } catch (error) {
     return jsonError(error.message || "Unexpected error", error.status || 500);

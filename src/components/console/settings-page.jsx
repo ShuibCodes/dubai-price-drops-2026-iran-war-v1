@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Pill } from "@/components/ui/pill";
 import { Strip } from "@/components/ui/strip";
 import { Toggle } from "@/components/ui/toggle";
+import { CalendarConnect } from "@/components/console/calendar-connect";
 import { ConsoleShell } from "@/components/console/console-shell";
 import { WhatsAppConnect } from "@/components/console/whatsapp-connect";
 import { Tooltip } from "@/components/console/tooltip";
@@ -24,9 +25,12 @@ const LEAD_SOURCES = [
 export function SettingsPage({ tenant }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+  const [confirmCalendarDisconnect, setConfirmCalendarDisconnect] = useState(false);
+  const [calendarBusy, setCalendarBusy] = useState(false);
   const [briefSending, setBriefSending] = useState(false);
   const [briefSent, setBriefSent] = useState(false);
   const [draft, setDraft] = useState(null);
@@ -41,6 +45,12 @@ export function SettingsPage({ tenant }) {
   }, [base]);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("calendar") === "connected") {
+      setNotice("Google Calendar connected.");
+    } else if (params.get("calendar") === "error") {
+      setError("Google Calendar could not be connected. Try again.");
+    }
     load().catch((err) => setError(err.message));
   }, [load]);
 
@@ -73,6 +83,25 @@ export function SettingsPage({ tenant }) {
       return;
     }
     save({ [field]: next });
+  }
+
+  async function disconnectCalendar() {
+    setCalendarBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const body = await consoleJson(base, "/api/console/calendar", {
+        method: "POST",
+        fallback: "Calendar disconnect failed.",
+      });
+      setConfirmCalendarDisconnect(false);
+      setData((current) => ({ ...current, calendar: body }));
+      setNotice("Google Calendar disconnected.");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCalendarBusy(false);
+    }
   }
 
   async function disconnect() {
@@ -109,6 +138,7 @@ export function SettingsPage({ tenant }) {
   }
 
   const agent = data?.agent || {};
+  const calendar = data?.calendar || {};
   const healthy = Boolean(data?.whatsapp_healthy);
   const waLink = tenantWhatsAppLink({
     connected: healthy,
@@ -125,6 +155,11 @@ export function SettingsPage({ tenant }) {
       {error ? (
         <Strip className="mb-8" tone="markup">
           <span>{error}</span>
+        </Strip>
+      ) : null}
+      {notice ? (
+        <Strip className="mb-8" tone="live">
+          <span>{notice}</span>
         </Strip>
       ) : null}
 
@@ -175,6 +210,67 @@ export function SettingsPage({ tenant }) {
           <WhatsAppConnect onConnected={() => load()} tenantSlug={tenant} />
         </div>
       ) : null}
+
+      <div className="az-eyebrow mb-4 block">CALENDAR</div>
+      <div className="az-card mb-12 px-6.5 py-6">
+        {calendar.connected ? (
+          <>
+            <div className="flex flex-wrap items-start justify-between gap-5">
+              <div>
+                <div className="text-lg font-medium text-fg">
+                  {calendar.label || calendar.email || "Google Calendar"}
+                </div>
+                <div className="mt-1 text-sm text-dim">
+                  {calendar.email &&
+                  calendar.label &&
+                  calendar.label !== calendar.email
+                    ? `${calendar.email} · `
+                    : ""}
+                  {calendar.timezone ? `${calendar.timezone} · ` : ""}
+                  connected
+                </div>
+              </div>
+              {!confirmCalendarDisconnect ? (
+                <button
+                  className="rounded-lg border border-line-2 px-4.5 py-2.5 text-sm text-dim hover:border-[#4a2a2a] hover:text-[#e08b8b]"
+                  onClick={() => setConfirmCalendarDisconnect(true)}
+                  type="button"
+                >
+                  Disconnect
+                </button>
+              ) : null}
+            </div>
+            {confirmCalendarDisconnect ? (
+              <Strip className="mt-5" tone="markup">
+                <span>
+                  This drops this agent&apos;s Google Calendar. Viewings already
+                  booked stay.
+                </span>
+                <span className="flex flex-wrap gap-2.5">
+                  <Button disabled={calendarBusy} onClick={disconnectCalendar}>
+                    {calendarBusy ? "Disconnecting…" : "Disconnect"}
+                  </Button>
+                  <Button
+                    onClick={() => setConfirmCalendarDisconnect(false)}
+                    variant="quiet"
+                  >
+                    Keep it
+                  </Button>
+                </span>
+              </Strip>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <p className="mb-4 text-sm text-dim">
+              {calendar.status === "error"
+                ? "This calendar needs to be reconnected."
+                : "Connect the Google Calendar this agent uses for viewings."}
+            </p>
+            <CalendarConnect disabled={calendar.unavailable} />
+          </>
+        )}
+      </div>
 
       <div className="az-eyebrow mb-2.5 block">LEAD SOURCES</div>
       <p className="mb-5 max-w-[620px] text-base leading-snug text-fg-2">

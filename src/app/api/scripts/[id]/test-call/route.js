@@ -1,3 +1,8 @@
+import {
+  applyCalendarVariableValues,
+  applyTrustedCalendarMetadata,
+  loadCalendarDialContext,
+} from "@/lib/calendar/dial-context";
 import { composePrompt } from "@/lib/scripts/compose";
 import {
   jsonError,
@@ -84,24 +89,34 @@ export async function POST(request, { params }) {
     if (agentError) throw new Error(`Agent lookup failed: ${agentError.message}`);
     const agentName = String(agent?.name || "").trim() || "there";
 
+    const calendar = await loadCalendarDialContext(supabase, {
+      tenantId: session.tenantId,
+      agentId: session.agentId,
+    });
+
     const shared = {
       name: agentName,
       assistantId,
       prompt,
       voiceId: parsed.data.voice_id,
       firstMessage: parsed.data.first_message,
-      variableValues: {
-        leadName: agentName,
-        agent_name: agentName,
-      },
-      metadata: {
-        tenantId: session.tenantId,
-        agentId: session.agentId,
-        scriptId: script.id,
-        scriptVersionId: version.id,
-        source: SCRIPT_TEST_SOURCE,
-        testMode: mode,
-      },
+      variableValues: applyCalendarVariableValues(
+        {
+          leadName: agentName,
+          agent_name: agentName,
+        },
+        calendar
+      ),
+      metadata: applyTrustedCalendarMetadata(
+        {
+          tenantId: session.tenantId,
+          scriptId: script.id,
+          scriptVersionId: version.id,
+          source: SCRIPT_TEST_SOURCE,
+          testMode: mode,
+        },
+        calendar
+      ),
     };
 
     let result;
