@@ -18,7 +18,8 @@
     "simulate:meta": "node scripts/simulate-meta.mjs all",
     "migrate:whatsapp": "node scripts/apply-migration.mjs",
     "verify:coexistence": "node scripts/verify-coexistence.mjs",
-    "test:calendar": "node scripts/test-calendar-tokens.mjs && node scripts/test-calendar-oauth.mjs && node scripts/test-calendar-window.mjs && node scripts/test-calendar-tools.mjs && node scripts/test-calendar-dial.mjs"
+    "test:calendar": "node scripts/test-calendar-tokens.mjs && node scripts/test-calendar-oauth.mjs && node scripts/test-calendar-window.mjs && node scripts/test-calendar-tools.mjs && node scripts/test-calendar-dial.mjs && node scripts/test-calendar-cleanup.mjs",
+    "calendar:cleanup": "node scripts/cleanup-calendar-orphans.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.86.1",

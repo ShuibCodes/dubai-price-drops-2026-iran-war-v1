@@ -191,6 +191,8 @@ export async function logCompensationFailure(supabase, {
       provider_event_id: providerEventId || null,
       calendar_id: calendarId || "primary",
       reason: String(reason || "unknown").slice(0, 240),
+      status: "pending",
+      retry_count: 0,
       created_at: new Date().toISOString(),
     });
   } catch (err) {
