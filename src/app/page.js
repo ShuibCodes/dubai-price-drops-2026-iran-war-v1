@@ -3,7 +3,7 @@ import { SHARE_IMAGE } from "@/lib/share-image";
 
 const TITLE = "AgentZero — Your CRM has 4,000 leads. When did you last call one?";
 const DESCRIPTION =
-  "AI agent for real estate brokerages. Calls leads, books viewings, emails listing packs — all from WhatsApp. No new app.";
+  "AI agent for real estate brokerages. Calls leads, books viewings, emails listing packs — all from WhatsApp. No new app. AED 250/m for an individual broker.";
 
 export const metadata = {
   title: TITLE,

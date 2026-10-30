@@ -10,15 +10,16 @@ import {
 } from "framer-motion";
 import Image from "next/image";
 import Link from "next/link";
-import Script from "next/script";
 import { useEffect, useRef, useState } from "react";
 import logo1416 from "@/app/images/1416-logo.png";
 import logoCondCity from "@/app/images/cond-city-logo.png";
 import logoMeta from "@/app/images/meta-logo-new.jpeg";
 import logoSterling from "@/app/images/sterling.jpg";
+import heroDesktop from "../../../assets/Call to WhatsApp desktop@2x.png";
+import heroMobile from "../../../assets/Mobile hero short@2x.png";
+import tuesdayDesktop from "../../../assets/A Tuesday with AgentZero desktop@2x.png";
+import tuesdayMobile from "../../../assets/A Tuesday with AgentZero mobile@2x.png";
 import { TYPEFORM_ENQUIRY_URL } from "@/lib/typeform";
-
-const WISTIA_MEDIA_ID = "z4i1d3k6sc";
 
 const CLIENT_LOGOS = [
   {
@@ -56,25 +57,34 @@ function CountUp({ to, duration = 2, format }) {
   return <span ref={ref}>{format ? format(value) : Math.round(value)}</span>;
 }
 
-function HeroVideo() {
+function Hero() {
   const ref = useRef(null);
   const reduceMotion = useReducedMotion();
+  const [isDesktop, setIsDesktop] = useState(false);
   const { scrollYProgress } = useScroll({
     target: ref,
     offset: ["start start", "end end"],
   });
 
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 1024px)");
+    const update = () => setIsDesktop(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  const animateHero = isDesktop && !reduceMotion;
   const scale = useTransform(scrollYProgress, [0, 0.7], [0.86, 1]);
-  const radius = useTransform(scrollYProgress, [0, 0.7], [28, 12]);
   const headlineOpacity = useTransform(scrollYProgress, [0, 0.45], [1, 0]);
   const headlineY = useTransform(scrollYProgress, [0, 0.45], [0, -60]);
   const glowOpacity = useTransform(scrollYProgress, [0, 0.7], [0.35, 0.8]);
 
   return (
-    <section ref={ref} className="relative h-[170vh] sm:h-[190vh]">
-      <div className="sticky top-0 flex min-h-[100svh] flex-col items-center justify-center overflow-hidden px-4 py-10 sm:px-6 lg:px-8">
+    <section ref={ref} className="relative lg:h-[170vh]">
+      <div className="flex flex-col items-center px-4 py-10 sm:px-6 lg:sticky lg:top-0 lg:min-h-[100svh] lg:justify-center lg:overflow-hidden lg:px-8">
         <motion.div
-          style={reduceMotion ? undefined : { opacity: headlineOpacity, y: headlineY }}
+          style={animateHero ? { opacity: headlineOpacity, y: headlineY } : undefined}
           className="mx-auto max-w-3xl text-center"
         >
           <h1 className="text-balance text-[2rem] font-semibold leading-[1.15] tracking-tight sm:text-5xl sm:leading-[1.1]">
@@ -82,7 +92,8 @@ function HeroVideo() {
             <em className="italic text-[#ff2d55]">When did you last call one?</em>
           </h1>
           <p className="mx-auto mt-4 max-w-xl text-base leading-7 text-white/70 sm:text-lg">
-            AI calls your leads and sends the good ones to your WhatsApp.
+            AI calls your leads and sends the good ones to your WhatsApp.{" "}
+            <span className="whitespace-nowrap font-semibold text-[#ffd60a]">AED 250/m.</span>
           </p>
           <a
             href={TYPEFORM_ENQUIRY_URL}
@@ -96,30 +107,31 @@ function HeroVideo() {
           </a>
         </motion.div>
 
-        <div className="relative mt-8 w-[calc(100%+2rem)] max-w-5xl sm:mt-10 sm:w-full sm:max-w-[min(64rem,max(20rem,calc((100svh_-_24rem)*16/9)))]">
+        <div className="relative mt-8 w-full max-w-lg lg:mt-10 lg:max-w-[min(64rem,max(24rem,calc((100svh_-_22rem)*75/43)))]">
           <motion.div
             aria-hidden
-            style={reduceMotion ? undefined : { opacity: glowOpacity }}
+            style={animateHero ? { opacity: glowOpacity } : { opacity: 0.45 }}
             className="pointer-events-none absolute -inset-6 rounded-[40px] bg-[#ff2d55]/25 blur-3xl sm:-inset-10"
           />
           <motion.div
-            style={reduceMotion ? { borderRadius: 20 } : { scale, borderRadius: radius }}
-            className="relative aspect-video w-full overflow-hidden border border-white/10 bg-[#0b0b0b]"
+            style={animateHero ? { scale } : undefined}
+            className="relative w-full"
           >
-            <Script src="https://fast.wistia.com/player.js" strategy="afterInteractive" />
-            <Script
-              src={`https://fast.wistia.com/embed/${WISTIA_MEDIA_ID}.js`}
-              type="module"
-              strategy="afterInteractive"
+            <Image
+              src={heroMobile}
+              alt="AI calls the lead, then matching units land on their WhatsApp"
+              priority
+              quality={90}
+              sizes="(min-width: 1024px) 0px, 28rem"
+              className="h-auto w-full lg:hidden"
             />
-            <style>{`wistia-player[media-id=${WISTIA_MEDIA_ID}]:not(:defined) { background: center / contain no-repeat url(https://fast.wistia.com/embed/medias/${WISTIA_MEDIA_ID}/swatch); display: block; filter: blur(5px); padding-top: 56.25%; }`}</style>
-            <wistia-player
-              media-id={WISTIA_MEDIA_ID}
-              aspect="1.7777777777777777"
-              player-color="ff2d55"
-              autoplay="true"
-              silent-autoplay="allow"
-              className="block h-full w-full"
+            <Image
+              src={heroDesktop}
+              alt="AI calls the lead, then matching units are sent on WhatsApp"
+              priority
+              quality={90}
+              sizes="(min-width: 1024px) 64rem, 0px"
+              className="hidden h-auto w-full lg:block"
             />
           </motion.div>
         </div>
@@ -143,93 +155,8 @@ function HeroVideo() {
   );
 }
 
-const BROKERAGE_FEATURES = [
-  {
-    name: "Calls your leads",
-    description: "AI voice that handles objections and books viewings.",
-  },
-  {
-    name: "Never forgets",
-    description: "Every lead, chat, and deal, recalled in seconds.",
-  },
-  {
-    name: "Lives in WhatsApp",
-    description: "No new app, no login, no training.",
-  },
-  {
-    name: "Owned by you",
-    description: "Your data and your edge, never someone else's training set.",
-  },
-];
-
-const BEFORE_AFTER_ROWS = [
-  {
-    scenario: "An enquiry lands at 11pm",
-    without: {
-      headline: "9 hours later.",
-      detail: "Four agents beat you to it.",
-    },
-    with: {
-      headline: "40 seconds.",
-      detail: "Called and qualified. In your WhatsApp.",
-    },
-  },
-  {
-    scenario: "200 calls a day",
-    without: {
-      headline: "3 hours of your day.",
-      detail: "Your entire morning, on the phone.",
-    },
-    with: {
-      headline: "Zero of your time.",
-      detail: "Runs while you are in viewings.",
-    },
-  },
-  {
-    scenario: 'The lead who said "not right now"',
-    without: {
-      headline: "Never called again.",
-      detail: "Buried in a note somewhere.",
-    },
-    with: {
-      headline: "Followed up. Nurtured. Re-engaged.",
-      detail: "Brought back when the timing is right.",
-    },
-  },
-  {
-    scenario: "Two years of old contacts",
-    without: {
-      headline: "Sitting on WhatsApp.",
-      detail: "The gold buried in chats nobody has time to dig.",
-    },
-    with: {
-      headline: "Found in your chats.",
-      detail: "The right names surface — then get called back.",
-    },
-  },
-  {
-    scenario: "Where the conversation happens",
-    without: {
-      headline: "Another login.",
-      detail: "A CRM nobody updates.",
-    },
-    with: {
-      headline: "Your own number.",
-      detail: "Your own WhatsApp. Nothing to log into.",
-    },
-  },
-  {
-    scenario: "Knowing who is worth calling",
-    without: {
-      headline: "Gut feel.",
-      detail: "You call whoever you remember.",
-    },
-    with: {
-      headline: "Ranked by what they said.",
-      detail: "Budget, area and timeline, on record.",
-    },
-  },
-];
+const TUESDAY_ALT =
+  "A Tuesday with AgentZero. At 7:00 the names worth calling are already in your WhatsApp. At 11:00 you're in a viewing while the calls run. At 2:00 AM a new enquiry is qualified before you see it.";
 
 const AGENT_PLAN_SPECS = [
   { label: "Conversations per day", value: "Up to 50" },
@@ -291,7 +218,7 @@ const FAQS = [
   },
   {
     q: "What does it cost?",
-    a: "AED 750 per agent / month, which you can split into 3 payments of AED 250. For a whole brokerage it's AED 5,000 / month. 15 qualified conversations in your first month, or that month is free.",
+    a: "AED 250/m for an individual broker. Brokerage pricing is on enquiry. 15 qualified conversations in your first month, or the month is free.",
   },
 ];
 
@@ -421,7 +348,7 @@ export default function AgentZeroLandingPage() {
         </div>
       </section>
 
-      <HeroVideo />
+      <Hero />
 
       <section className="mx-auto max-w-7xl px-4 pb-14 sm:px-6 sm:pb-20 lg:px-8">
         <div className="mb-6 sm:mb-8">
@@ -491,7 +418,8 @@ export default function AgentZeroLandingPage() {
                 then handles the outreach
               </span>
               : AI voice calls, listing packs, follow-ups across every channel.
-              Your agents direct it all from WhatsApp.
+              Your agents direct it all from WhatsApp.{" "}
+              <span className="whitespace-nowrap font-semibold text-[#ffd60a]">AED 250/m.</span>
             </p>
             <div className="mt-7 flex flex-wrap gap-3 sm:mt-8">
               <a
@@ -554,7 +482,8 @@ export default function AgentZeroLandingPage() {
               AgentZero reads across your chats, emails and calls, spots the
               leads showing intent — a reply, a revisit, a timeline that just
               got real — and puts them at the top of your WhatsApp before your
-              day starts. No new app to install.
+              day starts. No new app to install.{" "}
+              <span className="whitespace-nowrap font-semibold text-[#ffd60a]">AED 250/m.</span>
             </p>
             <div className="mt-7 flex flex-wrap gap-3 sm:mt-8">
               <a
@@ -572,107 +501,22 @@ export default function AgentZeroLandingPage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 pb-14 sm:px-6 sm:pb-20 lg:px-8">
-        <div className="mb-8 sm:mb-10">
-          <div className="mono text-[11px] uppercase tracking-[0.32em] text-white">
-            Before and after
-          </div>
-          <h2 className="mt-4 text-[1.7rem] font-semibold leading-tight text-white sm:text-4xl">
-            The same working day, with and without it.
-          </h2>
-          <p className="mt-4 max-w-2xl text-base leading-7 text-white sm:text-lg sm:leading-8">
-            The work you already do, done the moment it needs doing.
-          </p>
-        </div>
-
-        <div className="overflow-hidden rounded-[24px] border border-white/10 bg-white/[0.03] sm:rounded-[28px]">
-          <div className="hidden grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)] border-b border-white/10 lg:grid">
-            <div className="px-6 py-4 text-[11px] font-semibold uppercase tracking-[0.22em] text-white">
-              Scenario
-            </div>
-            <div className="border-l border-white/10 px-6 py-4 text-[11px] font-semibold uppercase tracking-[0.22em] text-white">
-              Without AgentZero
-            </div>
-            <div className="border-l border-[#ff2d55]/25 bg-[#ff2d55]/[0.06] px-6 py-4 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#ff9ab0]">
-              With AgentZero
-            </div>
-          </div>
-
-          {BEFORE_AFTER_ROWS.map((row, index) => (
-            <div
-              key={row.scenario}
-              className={`grid gap-4 p-5 sm:p-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)] lg:gap-0 lg:p-0 ${
-                index < BEFORE_AFTER_ROWS.length - 1 ? "border-b border-white/10" : ""
-              }`}
-            >
-              <div className="lg:px-6 lg:py-6">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white lg:hidden">
-                  Scenario
-                </div>
-                <p className="mt-1 text-base font-semibold leading-snug text-white lg:mt-0">
-                  {row.scenario}
-                </p>
-              </div>
-
-              <div className="rounded-2xl border border-white/10 bg-black/40 p-4 lg:rounded-none lg:border-0 lg:border-l lg:border-white/10 lg:bg-transparent lg:px-6 lg:py-6">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white lg:hidden">
-                  Without AgentZero
-                </div>
-                <p className="mt-1 text-base font-semibold text-white lg:mt-0">
-                  {row.without.headline}
-                </p>
-                <p className="mt-1 text-sm leading-6 text-white">{row.without.detail}</p>
-              </div>
-
-              <div className="rounded-2xl border border-[#ff2d55]/25 bg-[#ff2d55]/[0.08] p-4 lg:rounded-none lg:border-0 lg:border-l lg:border-[#ff2d55]/25 lg:bg-[#ff2d55]/[0.06] lg:px-6 lg:py-6">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#ff9ab0] lg:hidden">
-                  With AgentZero
-                </div>
-                <p className="mt-1 text-base font-semibold text-[#ffd60a] lg:mt-0">
-                  {row.with.headline}
-                </p>
-                <p className="mt-1 text-sm leading-6 text-white">{row.with.detail}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-8 flex flex-wrap justify-center gap-3 sm:mt-10">
-          <a
-            href={TYPEFORM_ENQUIRY_URL}
-            target="_blank"
-            rel="noreferrer"
-            data-fast-goal="enquiry_click"
-            data-fast-goal-location="before_after"
-            className="inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
-          >
-            Get Started
-          </a>
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-7xl px-4 pb-14 sm:px-6 sm:pb-20 lg:px-8">
-        <div className="mb-6 sm:mb-8">
-          <div className="mono text-[11px] uppercase tracking-[0.32em] text-white">
-            Product stack
-          </div>
-          <h2 className="mt-4 text-[1.7rem] font-semibold text-white sm:text-3xl">
-            What brokerages get
-          </h2>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-4">
-          {BROKERAGE_FEATURES.map((item) => (
-            <article
-              key={item.name}
-              className="rounded-[24px] border border-white/10 bg-white/[0.03] p-6 sm:rounded-[28px] sm:p-7"
-            >
-              <div className="text-xs uppercase tracking-[0.22em] text-[#ffd60a] sm:text-sm sm:tracking-[0.28em]">
-                ✅ {item.name}
-              </div>
-              <p className="mt-4 text-sm leading-7 text-white sm:mt-5">{item.description}</p>
-            </article>
-          ))}
-        </div>
+      <section className="mx-auto w-full max-w-[90rem] px-4 pb-14 sm:px-6 sm:pb-20 lg:px-0">
+        <h2 className="sr-only">A Tuesday with AgentZero.</h2>
+        <Image
+          src={tuesdayMobile}
+          alt={TUESDAY_ALT}
+          quality={90}
+          sizes="(min-width: 1024px) 0px, 28rem"
+          className="mx-auto h-auto w-full max-w-md lg:hidden"
+        />
+        <Image
+          src={tuesdayDesktop}
+          alt={TUESDAY_ALT}
+          quality={90}
+          sizes="(min-width: 1024px) 90rem, 0px"
+          className="hidden h-auto w-full lg:block"
+        />
       </section>
 
       <section className="mx-auto max-w-7xl px-4 pb-14 sm:px-6 sm:pb-20 lg:px-8">
@@ -683,7 +527,9 @@ export default function AgentZeroLandingPage() {
           <p className="mt-4 text-base leading-7 text-white sm:mt-5 sm:text-lg sm:leading-8">
             Every deal trains the system — so when a new agent joins, their AgentZero
             already knows your clients, your market, and how your best people close. They
-            ramp in days, not months.
+            ramp in days, not months.{" "}
+            <span className="font-semibold text-[#ffd60a]">AED 250/m</span> for an
+            individual broker.
           </p>
         </div>
       </section>
@@ -701,22 +547,19 @@ export default function AgentZeroLandingPage() {
         <div className="grid items-stretch gap-4 sm:gap-6 lg:grid-cols-2">
           <article className="flex flex-col rounded-[28px] border border-[#ffd60a]/40 bg-white/[0.03] p-6 transition hover:-translate-y-1 sm:rounded-[32px] sm:p-10">
             <div className="flex flex-wrap items-center gap-3">
-              <h3 className="text-xl font-semibold text-white">Individual agent</h3>
+              <h3 className="text-xl font-semibold text-white">Individual broker</h3>
               <span className="rounded-full bg-[#ffd60a] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-black">
                 Most popular
               </span>
             </div>
             <div className="mt-5 flex items-baseline gap-2 sm:mt-6">
               <span className="text-4xl font-semibold leading-none text-white sm:text-5xl">
-                AED 750
+                AED 250
               </span>
             </div>
             <p className="mt-2 text-sm text-white">/ month</p>
-            <p className="mt-3 inline-flex w-fit rounded-full border border-[#ffd60a]/30 bg-[#ffd60a]/10 px-3 py-1 text-xs font-medium text-[#ffd60a]">
-              Or pay in 3 × AED 250
-            </p>
             <p className="mt-4 text-sm leading-6 text-white/70">
-              For one agent who would rather be in viewings than on the phone.
+              For one broker who would rather be in viewings than on the phone.
             </p>
 
             <dl className="mt-6 divide-y divide-white/10 rounded-2xl border border-white/10">
@@ -753,12 +596,9 @@ export default function AgentZeroLandingPage() {
 
           <article className="flex flex-col rounded-[28px] border border-[#ffd60a]/10 bg-white/[0.03] p-6 transition hover:-translate-y-1 sm:rounded-[32px] sm:p-10">
             <h3 className="text-xl font-semibold text-white">Brokerage</h3>
-            <div className="mt-5 flex items-baseline gap-2 sm:mt-6">
-              <span className="text-4xl font-semibold leading-none text-white sm:text-5xl">
-                AED 5,000
-              </span>
-            </div>
-            <p className="mt-2 text-sm text-white">/ month</p>
+            <p className="mt-5 text-4xl font-semibold leading-none text-white sm:mt-6 sm:text-5xl">
+              Enquire now
+            </p>
             <p className="mt-4 text-sm leading-6 text-white/70">
               For a team that wants its whole database worked, every working day.
             </p>
@@ -790,7 +630,7 @@ export default function AgentZeroLandingPage() {
                 data-fast-goal-location="pricing_brokerage"
                 className="inline-flex w-full justify-center rounded-full border border-[#ffd60a]/60 px-6 py-3.5 text-sm font-semibold text-[#ffd60a] transition hover:bg-[#ffd60a]/10 sm:py-3"
               >
-                Get Started
+                Enquire now
               </a>
             </div>
           </article>
@@ -798,7 +638,7 @@ export default function AgentZeroLandingPage() {
 
         <div className="mt-5 rounded-[20px] border-l-2 border-[#ffd60a] bg-[#ffd60a]/[0.06] px-5 py-4 text-center sm:mt-6 sm:px-6 sm:py-5">
           <p className="text-base leading-7 text-white sm:text-lg">
-            15 qualified conversations in your first month, or the month is free.
+            AED 250/m. 15 qualified conversations in your first month, or the month is free.
           </p>
         </div>
       </section>
@@ -820,6 +660,9 @@ export default function AgentZeroLandingPage() {
         <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-7 text-center sm:rounded-[32px] sm:p-12">
           <p className="text-xl font-semibold leading-tight text-white sm:text-4xl">
             Your best agent can&apos;t be everywhere. AgentZero can.
+          </p>
+          <p className="mt-4 text-base font-semibold text-[#ffd60a] sm:text-lg">
+            AED 250/m for an individual broker.
           </p>
           <div className="mt-7 sm:mt-8">
             <a
