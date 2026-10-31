@@ -19,6 +19,7 @@ import heroDesktop from "../../../assets/Call to WhatsApp desktop@2x.png";
 import heroMobile from "../../../assets/Mobile hero short@2x.png";
 import tuesdayDesktop from "../../../assets/A Tuesday with AgentZero desktop@2x.png";
 import tuesdayMobile from "../../../assets/A Tuesday with AgentZero mobile@2x.png";
+import LeadMagnetPopup from "@/components/landing/lead-magnet-popup";
 import { TYPEFORM_ENQUIRY_URL } from "@/lib/typeform";
 
 const GET_STARTED_HREF = "/get-started";
@@ -681,6 +682,7 @@ export default function AgentZeroLandingPage() {
           </div>
         </div>
       </section>
+      <LeadMagnetPopup />
     </main>
   );
 }
