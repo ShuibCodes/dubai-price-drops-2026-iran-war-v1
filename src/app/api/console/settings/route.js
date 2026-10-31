@@ -31,6 +31,17 @@ export async function GET(request) {
       whatsapp_healthy: whatsappHealthy(tenant),
       role: session.role,
       agent,
+      billing: {
+        plan: tenant?.billing_plan || null,
+        status: tenant?.subscription_status || null,
+        trial_started_at: tenant?.trial_started_at || null,
+        trial_ends_at: tenant?.trial_ends_at || null,
+        current_period_end: tenant?.current_period_end || null,
+        cancel_at_period_end: Boolean(tenant?.cancel_at_period_end),
+        canceled_at: tenant?.canceled_at || null,
+        dedicated_account_manager: Boolean(tenant?.dedicated_account_manager),
+        has_stripe_subscription: Boolean(tenant?.stripe_subscription_id),
+      },
     });
   } catch (error) {
     return jsonError(error.message || "Unexpected error", error.status || 500);

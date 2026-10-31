@@ -21,6 +21,8 @@ import tuesdayDesktop from "../../../assets/A Tuesday with AgentZero desktop@2x.
 import tuesdayMobile from "../../../assets/A Tuesday with AgentZero mobile@2x.png";
 import { TYPEFORM_ENQUIRY_URL } from "@/lib/typeform";
 
+const GET_STARTED_HREF = "/get-started";
+
 const CLIENT_LOGOS = [
   {
     src: logoSterling,
@@ -93,18 +95,18 @@ function Hero() {
           </h1>
           <p className="mx-auto mt-4 max-w-xl text-base leading-7 text-white/70 sm:text-lg">
             AI calls your leads and sends the good ones to your WhatsApp.{" "}
-            <span className="whitespace-nowrap font-semibold text-[#ffd60a]">AED 250/m.</span>
+            <span className="whitespace-nowrap font-semibold text-[#ffd60a]">
+              AED 250/m · next 5 brokers.
+            </span>
           </p>
-          <a
-            href={TYPEFORM_ENQUIRY_URL}
-            target="_blank"
-            rel="noreferrer"
+          <Link
+            href={GET_STARTED_HREF}
             data-fast-goal="enquiry_click"
             data-fast-goal-location="hero"
             className="mt-6 inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
           >
-            Get Started
-          </a>
+            Start 5-day free trial
+          </Link>
         </motion.div>
 
         <div className="relative mt-8 w-full max-w-lg lg:mt-10 lg:max-w-[min(64rem,max(24rem,calc((100svh_-_22rem)*75/43)))]">
@@ -167,6 +169,8 @@ const AGENT_PLAN_SPECS = [
 ];
 
 const AGENT_PLAN_FEATURES = [
+  "Dedicated account manager included (next 5 brokers only)",
+  "5-day free trial — AED 0 today, cancel from Settings anytime",
   "7–10 qualified leads a week, handed straight to you",
   "Every portal enquiry called and qualified within 60 seconds",
   "Outbound AI calling, every working day",
@@ -218,7 +222,7 @@ const FAQS = [
   },
   {
     q: "What does it cost?",
-    a: "AED 250/m for an individual broker. Brokerage pricing is on enquiry. 15 qualified conversations in your first month, or the month is free.",
+    a: "AED 250/m for the next 5 individual brokers — starting with a 5-day free trial (AED 0 today, then AED 250/month unless you cancel in Settings before day 5) and a dedicated account manager included. Brokerage pricing is on enquiry. 15 qualified conversations in your first month, or the month is free.",
   },
 ];
 
@@ -327,16 +331,14 @@ export default function AgentZeroLandingPage() {
             >
               Distressed deals
             </Link>
-            <a
-              href={TYPEFORM_ENQUIRY_URL}
-              target="_blank"
-              rel="noreferrer"
+            <Link
+              href={GET_STARTED_HREF}
               data-fast-goal="enquiry_click"
               data-fast-goal-location="nav"
               className="rounded-full border border-white/10 px-3 py-2 text-sm text-white transition hover:text-white sm:px-4"
             >
               Get Started
-            </a>
+            </Link>
             <Link
               href="/copilot"
               data-fast-goal="copilot_login_click"
@@ -419,19 +421,19 @@ export default function AgentZeroLandingPage() {
               </span>
               : AI voice calls, listing packs, follow-ups across every channel.
               Your agents direct it all from WhatsApp.{" "}
-              <span className="whitespace-nowrap font-semibold text-[#ffd60a]">AED 250/m.</span>
+              <span className="whitespace-nowrap font-semibold text-[#ffd60a]">
+                AED 250/m · next 5 brokers.
+              </span>
             </p>
             <div className="mt-7 flex flex-wrap gap-3 sm:mt-8">
-              <a
-                href={TYPEFORM_ENQUIRY_URL}
-                target="_blank"
-                rel="noreferrer"
+              <Link
+                href={GET_STARTED_HREF}
                 data-fast-goal="enquiry_click"
                 data-fast-goal-location="how_it_works"
                 className="inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
               >
-                Get Started
-              </a>
+                Start 5-day free trial
+              </Link>
             </div>
           </div>
           <div className="overflow-hidden rounded-[24px] border border-white/10 bg-black sm:rounded-[28px]">
@@ -483,19 +485,19 @@ export default function AgentZeroLandingPage() {
               leads showing intent — a reply, a revisit, a timeline that just
               got real — and puts them at the top of your WhatsApp before your
               day starts. No new app to install.{" "}
-              <span className="whitespace-nowrap font-semibold text-[#ffd60a]">AED 250/m.</span>
+              <span className="whitespace-nowrap font-semibold text-[#ffd60a]">
+                AED 250/m · next 5 brokers.
+              </span>
             </p>
             <div className="mt-7 flex flex-wrap gap-3 sm:mt-8">
-              <a
-                href={TYPEFORM_ENQUIRY_URL}
-                target="_blank"
-                rel="noreferrer"
+              <Link
+                href={GET_STARTED_HREF}
                 data-fast-goal="enquiry_click"
                 data-fast-goal-location="why_it_wins"
                 className="inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
               >
-                Get Started
-              </a>
+                Start 5-day free trial
+              </Link>
             </div>
           </div>
         </div>
@@ -528,8 +530,10 @@ export default function AgentZeroLandingPage() {
             Every deal trains the system — so when a new agent joins, their AgentZero
             already knows your clients, your market, and how your best people close. They
             ramp in days, not months.{" "}
-            <span className="font-semibold text-[#ffd60a]">AED 250/m</span> for an
-            individual broker.
+            <span className="font-semibold text-[#ffd60a]">
+              AED 250/m for the next 5 brokers
+            </span>
+            , with a dedicated account manager included.
           </p>
         </div>
       </section>
@@ -549,7 +553,7 @@ export default function AgentZeroLandingPage() {
             <div className="flex flex-wrap items-center gap-3">
               <h3 className="text-xl font-semibold text-white">Individual broker</h3>
               <span className="rounded-full bg-[#ffd60a] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-black">
-                Most popular
+                Next 5 brokers only
               </span>
             </div>
             <div className="mt-5 flex items-baseline gap-2 sm:mt-6">
@@ -557,9 +561,12 @@ export default function AgentZeroLandingPage() {
                 AED 250
               </span>
             </div>
-            <p className="mt-2 text-sm text-white">/ month</p>
+            <p className="mt-2 text-sm text-white">/ month · after 5-day free trial</p>
+            <p className="mt-3 inline-flex w-fit rounded-full border border-[#ffd60a]/30 bg-[#ffd60a]/10 px-3 py-1 text-xs font-medium text-[#ffd60a]">
+              5 days free · Dedicated account manager included
+            </p>
             <p className="mt-4 text-sm leading-6 text-white/70">
-              For one broker who would rather be in viewings than on the phone.
+              For the next 5 individual brokers. AED 0 today, then AED 250/m after 5 days unless you cancel.
             </p>
 
             <dl className="mt-6 divide-y divide-white/10 rounded-2xl border border-white/10">
@@ -581,16 +588,14 @@ export default function AgentZeroLandingPage() {
             </ul>
 
             <div className="mt-auto pt-8 sm:pt-10">
-              <a
-                href={TYPEFORM_ENQUIRY_URL}
-                target="_blank"
-                rel="noreferrer"
+              <Link
+                href={GET_STARTED_HREF}
                 data-fast-goal="enquiry_click"
                 data-fast-goal-location="pricing_individual"
                 className="inline-flex w-full justify-center rounded-full bg-[#ffd60a] px-6 py-3.5 text-sm font-semibold text-black transition hover:opacity-90 sm:py-3"
               >
-                Get Started
-              </a>
+                Start 5-day free trial
+              </Link>
             </div>
           </article>
 
@@ -638,7 +643,7 @@ export default function AgentZeroLandingPage() {
 
         <div className="mt-5 rounded-[20px] border-l-2 border-[#ffd60a] bg-[#ffd60a]/[0.06] px-5 py-4 text-center sm:mt-6 sm:px-6 sm:py-5">
           <p className="text-base leading-7 text-white sm:text-lg">
-            AED 250/m. 15 qualified conversations in your first month, or the month is free.
+            AED 250/m for the next 5 brokers · 5-day free trial · Dedicated account manager included. 15 qualified conversations in your first month, or the month is free.
           </p>
         </div>
       </section>
@@ -662,19 +667,17 @@ export default function AgentZeroLandingPage() {
             Your best agent can&apos;t be everywhere. AgentZero can.
           </p>
           <p className="mt-4 text-base font-semibold text-[#ffd60a] sm:text-lg">
-            AED 250/m for an individual broker.
+            AED 250/m for the next 5 brokers · 5-day free trial · Dedicated account manager.
           </p>
           <div className="mt-7 sm:mt-8">
-            <a
-              href={TYPEFORM_ENQUIRY_URL}
-              target="_blank"
-              rel="noreferrer"
+            <Link
+              href={GET_STARTED_HREF}
               data-fast-goal="enquiry_click"
               data-fast-goal-location="final_cta"
               className="inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-8 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
             >
-              Get Started
-            </a>
+              Start 5-day free trial
+            </Link>
           </div>
         </div>
       </section>

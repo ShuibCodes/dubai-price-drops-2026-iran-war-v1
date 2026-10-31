@@ -21,12 +21,25 @@ const LEAD_SOURCES = [
   { name: "Your website form", sub: "We can post enquiries in for you" },
 ];
 
+function formatBillingDate(iso) {
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+}
+
 export function SettingsPage({ tenant }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+  const [cancelingBilling, setCancelingBilling] = useState(false);
+  const [confirmCancelBilling, setConfirmCancelBilling] = useState(false);
   const [briefSending, setBriefSending] = useState(false);
   const [briefSent, setBriefSent] = useState(false);
   const [draft, setDraft] = useState(null);
@@ -108,7 +121,32 @@ export function SettingsPage({ tenant }) {
     }
   }
 
+  async function cancelBilling() {
+    setCancelingBilling(true);
+    setError("");
+    try {
+      await consoleJson(base, "/api/console/settings/billing/cancel", {
+        method: "POST",
+        fallback: "Could not cancel billing.",
+      });
+      setConfirmCancelBilling(false);
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCancelingBilling(false);
+    }
+  }
+
   const agent = data?.agent || {};
+  const billing = data?.billing || {};
+  const billingStatus = billing.status || null;
+  const trialEndLabel = formatBillingDate(billing.trial_ends_at);
+  const periodEndLabel = formatBillingDate(billing.current_period_end);
+  const canCancelBilling =
+    data?.role === "admin" &&
+    billingStatus !== "canceled" &&
+    !billing.cancel_at_period_end;
   const healthy = Boolean(data?.whatsapp_healthy);
   const waLink = tenantWhatsAppLink({
     connected: healthy,
@@ -314,6 +352,77 @@ export function SettingsPage({ tenant }) {
           </Button>
         )}
       </div>
+
+      {data?.role === "admin" ? (
+        <>
+          <div className="az-eyebrow mb-4 block">BILLING</div>
+          <div className="az-card mb-12 flex flex-wrap items-center justify-between gap-5 px-6.5 py-6">
+            <div>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <span className="text-lg font-medium text-fg">
+                  Individual broker · AED 250/m
+                </span>
+                {billingStatus === "trialing" ? (
+                  <Pill tone="live">5-day free trial</Pill>
+                ) : billingStatus === "canceled" ||
+                  billing.cancel_at_period_end ? (
+                  <Pill tone="warn">Cancelled</Pill>
+                ) : billingStatus === "active" ? (
+                  <Pill tone="live">Active</Pill>
+                ) : null}
+              </div>
+              <div className="mt-1.5 text-sm text-dim">
+                {billingStatus === "canceled"
+                  ? "Your trial or subscription has been cancelled. Your card will not be charged."
+                  : billing.cancel_at_period_end
+                    ? `Cancelled — no further charges${
+                        periodEndLabel ? ` after ${periodEndLabel}` : ""
+                      }.`
+                    : billingStatus === "trialing"
+                      ? `${
+                          trialEndLabel
+                            ? `Trial ends ${trialEndLabel}. `
+                            : "5-day free trial active. "
+                        }Cancel before day 5 and your card will not be charged AED 250/m.`
+                      : periodEndLabel
+                        ? `Next charge ${periodEndLabel} · AED 250/month. Dedicated account manager included.`
+                        : "5-day free trial, then AED 250/month unless cancelled before day 5."}
+              </div>
+            </div>
+
+            {canCancelBilling && !confirmCancelBilling ? (
+              <button
+                className="rounded-lg border border-line-2 px-4.5 py-2.5 text-sm text-dim hover:border-[#4a2a2a] hover:text-[#e08b8b]"
+                onClick={() => setConfirmCancelBilling(true)}
+                type="button"
+              >
+                Cancel billing
+              </button>
+            ) : null}
+          </div>
+
+          {confirmCancelBilling ? (
+            <Strip className="-mt-8 mb-12" tone="markup">
+              <span>
+                {billingStatus === "trialing" || !billingStatus
+                  ? "Cancel your 5-day trial now? Your card will not be charged AED 250/m and calling will stop."
+                  : "Cancel your AED 250/m subscription at the end of this billing period?"}
+              </span>
+              <span className="flex flex-wrap gap-2.5">
+                <Button disabled={cancelingBilling} onClick={cancelBilling}>
+                  {cancelingBilling ? "Cancelling…" : "Confirm cancel"}
+                </Button>
+                <Button
+                  onClick={() => setConfirmCancelBilling(false)}
+                  variant="quiet"
+                >
+                  Keep plan
+                </Button>
+              </span>
+            </Strip>
+          ) : null}
+        </>
+      ) : null}
 
       <div className="flex flex-wrap gap-3 border-t border-line pt-6">
         <Button

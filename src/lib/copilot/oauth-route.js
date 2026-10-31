@@ -3,6 +3,9 @@ import { COPILOT_LOGIN_PATH } from "@/lib/copilot-auth-constants";
 import { isSocialProviderConfigured } from "@/lib/copilot/social-auth";
 import { createRouteAuthClient } from "@/lib/supabase/auth-server";
 
+export const OAUTH_NEXT_COOKIE = "az_oauth_next";
+export const OAUTH_PROVIDER_COOKIE = "az_oauth_provider";
+
 export function oauthOrigin(request) {
   const configured = String(
     process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || ""
@@ -10,24 +13,38 @@ export function oauthOrigin(request) {
   return configured ? configured.replace(/\/+$/, "") : request.nextUrl.origin;
 }
 
-export function oauthLoginRedirect(request, code) {
-  const url = new URL(COPILOT_LOGIN_PATH, oauthOrigin(request));
+export function oauthLoginRedirect(request, code, nextPath = null) {
+  const basePath =
+    nextPath === "/get-started" ? "/get-started" : COPILOT_LOGIN_PATH;
+  const url = new URL(basePath, oauthOrigin(request));
   if (code) url.searchParams.set("error", code);
   return NextResponse.redirect(url);
 }
 
+function isAllowedNextPath(next) {
+  return (
+    typeof next === "string" &&
+    !next.startsWith("//") &&
+    (next.startsWith("/copilot/") || next === "/get-started")
+  );
+}
+
 export function createOAuthHandler(provider) {
   return async function GET(request) {
+    const rawNext = request.nextUrl.searchParams.get("next");
+    const nextPath = isAllowedNextPath(rawNext) ? rawNext : null;
+
     if (!isSocialProviderConfigured(provider)) {
-      return oauthLoginRedirect(request, `${provider}_unavailable`);
+      return oauthLoginRedirect(request, `${provider}_unavailable`, nextPath);
     }
 
     try {
-      const callback = new URL("/api/copilot/auth/callback", oauthOrigin(request));
-      callback.searchParams.set("provider", provider);
-      const next = request.nextUrl.searchParams.get("next");
-      if (next && next.startsWith("/copilot/") && !next.startsWith("//")) {
-        callback.searchParams.set("next", next);
+      const origin = oauthOrigin(request);
+      const callback = new URL("/api/copilot/auth/callback", origin);
+      // Localhost allowlist in Supabase is exact (`http://localhost:3000/api/copilot/auth/callback`
+      // without query params); production allowlists `?provider=google`.
+      if (!/^http:\/\/localhost(?::\d+)?$/i.test(origin)) {
+        callback.searchParams.set("provider", provider);
       }
 
       const { supabase, applyTo } = createRouteAuthClient(request);
@@ -49,14 +66,29 @@ export function createOAuthHandler(provider) {
       });
       if (error || !data?.url) {
         console.error(`[copilot/auth/${provider}] authorize failed`, error?.message);
-        return oauthLoginRedirect(request, `${provider}_unavailable`);
+        return oauthLoginRedirect(request, `${provider}_unavailable`, nextPath);
+      }
+
+      const response = NextResponse.redirect(data.url);
+      const cookieOpts = {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        path: "/",
+        maxAge: 600,
+      };
+      response.cookies.set(OAUTH_PROVIDER_COOKIE, provider, cookieOpts);
+      if (nextPath) {
+        response.cookies.set(OAUTH_NEXT_COOKIE, nextPath, cookieOpts);
+      } else {
+        response.cookies.set(OAUTH_NEXT_COOKIE, "", { ...cookieOpts, maxAge: 0 });
       }
 
       // Carries the HttpOnly PKCE verifier cookie into the eventual callback.
-      return applyTo(NextResponse.redirect(data.url));
+      return applyTo(response);
     } catch (error) {
       console.error(`[copilot/auth/${provider}]`, error?.message);
-      return oauthLoginRedirect(request, `${provider}_unavailable`);
+      return oauthLoginRedirect(request, `${provider}_unavailable`, nextPath);
     }
   };
 }
