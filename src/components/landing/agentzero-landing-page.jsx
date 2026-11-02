@@ -15,14 +15,16 @@ import logo1416 from "@/app/images/1416-logo.png";
 import logoCondCity from "@/app/images/cond-city-logo.png";
 import logoMeta from "@/app/images/meta-logo-new.jpeg";
 import logoSterling from "@/app/images/sterling.jpg";
-import heroDesktop from "../../../assets/Call to WhatsApp desktop@2x.png";
-import heroMobile from "../../../assets/Mobile hero short@2x.png";
+import callToWhatsAppDesktop from "../../../assets/Call to WhatsApp desktop@2x.png";
+import callToWhatsAppMobile from "../../../assets/Mobile hero short@2x.png";
 import tuesdayDesktop from "../../../assets/A Tuesday with AgentZero desktop@2x.png";
 import tuesdayMobile from "../../../assets/A Tuesday with AgentZero mobile@2x.png";
 import LeadMagnetPopup from "@/components/landing/lead-magnet-popup";
 import { TYPEFORM_ENQUIRY_URL } from "@/lib/typeform";
 
 const GET_STARTED_HREF = "/get-started";
+const HERO_WISTIA_ID = "fdi2189sjs";
+const HERO_WISTIA_EMBED = `https://fast.wistia.net/embed/iframe/${HERO_WISTIA_ID}?autoPlay=true&muted=true&playsinline=true&endVideoBehavior=loop&seo=false&videoFoam=true`;
 
 const CLIENT_LOGOS = [
   {
@@ -110,7 +112,7 @@ function Hero() {
           </Link>
         </motion.div>
 
-        <div className="relative mt-8 w-full max-w-lg lg:mt-10 lg:max-w-[min(64rem,max(24rem,calc((100svh_-_22rem)*75/43)))]">
+        <div className="relative mt-8 w-full max-w-xl lg:mt-10 lg:max-w-[min(56rem,calc((100svh_-_20rem)*16/9))]">
           <motion.div
             aria-hidden
             style={animateHero ? { opacity: glowOpacity } : { opacity: 0.45 }}
@@ -118,23 +120,15 @@ function Hero() {
           />
           <motion.div
             style={animateHero ? { scale } : undefined}
-            className="relative w-full"
+            className="relative aspect-video w-full overflow-hidden rounded-[20px] border border-white/10 bg-black sm:rounded-[28px]"
           >
-            <Image
-              src={heroMobile}
-              alt="AI calls the lead, then matching units land on their WhatsApp"
-              priority
-              quality={90}
-              sizes="(min-width: 1024px) 0px, 28rem"
-              className="h-auto w-full lg:hidden"
-            />
-            <Image
-              src={heroDesktop}
-              alt="AI calls the lead, then matching units are sent on WhatsApp"
-              priority
-              quality={90}
-              sizes="(min-width: 1024px) 64rem, 0px"
-              className="hidden h-auto w-full lg:block"
+            <iframe
+              src={HERO_WISTIA_EMBED}
+              title="AgentZero — AI calls the lead, then matching units land on WhatsApp"
+              allow="autoplay; fullscreen"
+              allowFullScreen
+              loading="eager"
+              className="absolute inset-0 h-full w-full border-0"
             />
           </motion.div>
         </div>
@@ -405,9 +399,9 @@ export default function AgentZeroLandingPage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 pb-14 sm:px-6 sm:pb-20 lg:px-8">
-        <div className="grid gap-8 lg:grid-cols-2 lg:items-center lg:gap-10">
-          <div>
+      <section className="pb-14 sm:pb-20">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-3xl text-center lg:max-w-4xl">
             <div className="mono text-[11px] uppercase tracking-[0.32em] text-white">
               How it works
             </div>
@@ -426,7 +420,7 @@ export default function AgentZeroLandingPage() {
                 AED 250/m · next 5 brokers.
               </span>
             </p>
-            <div className="mt-7 flex flex-wrap gap-3 sm:mt-8">
+            <div className="mt-7 flex justify-center sm:mt-8">
               <Link
                 href={GET_STARTED_HREF}
                 data-fast-goal="enquiry_click"
@@ -437,18 +431,28 @@ export default function AgentZeroLandingPage() {
               </Link>
             </div>
           </div>
-          <div className="overflow-hidden rounded-[24px] border border-white/10 bg-black sm:rounded-[28px]">
-            <iframe
-              src="/agentzero-chat.html"
-              title="AgentZero animated demo"
-              loading="lazy"
-              scrolling="no"
-              sandbox="allow-scripts allow-same-origin"
-              className="h-[380px] w-full sm:h-[420px] lg:h-[520px]"
-            />
-          </div>
         </div>
-        <div className="mt-10 flex flex-col items-center text-center sm:mt-14">
+
+        <div className="mx-auto mt-10 w-full max-w-[90rem] px-4 sm:mt-14 sm:px-6 lg:px-8">
+          <Image
+            src={callToWhatsAppMobile}
+            alt="AI calls the lead, then matching units land on their WhatsApp"
+            quality={95}
+            sizes="(min-width: 1024px) 0px, 100vw"
+            className="mx-auto h-auto w-full max-w-md lg:hidden"
+            priority={false}
+          />
+          <Image
+            src={callToWhatsAppDesktop}
+            alt="AI calls the lead, then matching units are sent on WhatsApp"
+            quality={95}
+            sizes="(min-width: 1024px) 90rem, 0px"
+            className="hidden h-auto w-full lg:block"
+            priority={false}
+          />
+        </div>
+
+        <div className="mx-auto mt-10 flex max-w-7xl flex-col items-center px-4 text-center sm:mt-14 sm:px-6 lg:px-8">
           <div className="flex items-center justify-center rounded-xl bg-white px-3 py-2 sm:px-4 sm:py-2.5">
             <Image
               alt="Meta Tech Provider"
