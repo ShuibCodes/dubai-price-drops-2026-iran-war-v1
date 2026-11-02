@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  experimental: {
+    serverComponentsExternalPackages: ["@sparticuz/chromium", "playwright"],
+  },
   async redirects() {
     return [
       {

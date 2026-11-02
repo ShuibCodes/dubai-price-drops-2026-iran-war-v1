@@ -449,3 +449,92 @@ export async function sendLeadMagnetEmail({ name, email }) {
     mode: "fallback_email",
   };
 }
+
+/**
+ * Emails the generated one-pager PDF to a WhatsApp lead magnet user via Resend.
+ */
+export async function sendProposalPdfEmail({
+  to,
+  agentName,
+  listingTitle,
+  pdfBuffer,
+  pdfFilename = "Property_one_pager.pdf",
+  pdfUrl = "",
+}) {
+  const apiKey = getRequiredEnv("RESEND_API_KEY");
+  const from = getRequiredEnv("RESEND_FROM_EMAIL");
+  const recipient = String(to || "").trim().toLowerCase();
+  if (!recipient) {
+    throw new Error("Recipient email is required");
+  }
+
+  const firstName = String(agentName || "").trim().split(/\s+/)[0] || "there";
+  const cleanTitle = String(listingTitle || "your property listing").trim();
+  const subject = `Your branded one-pager: ${cleanTitle}`.slice(0, 120);
+
+  const text = [
+    `Hi ${firstName},`,
+    "",
+    `Attached is your branded one-pager PDF for ${cleanTitle}.`,
+    pdfUrl ? `Direct link: ${pdfUrl}` : "",
+    "",
+    "Want AgentZero to call and qualify your leads on WhatsApp automatically?",
+    "Get started here: https://www.agentzero.ae/get-started",
+    "",
+    "- AgentZero",
+  ]
+    .filter((line, idx, arr) => line !== "" || arr[idx - 1] !== "")
+    .join("\n");
+
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #111; max-width: 560px; line-height: 1.6;">
+      <p>Hi ${escapeHtml(firstName)},</p>
+      <p>Attached is your branded one-pager PDF for <strong>${escapeHtml(cleanTitle)}</strong>.</p>
+      ${
+        pdfUrl
+          ? `<p><a href="${escapeHtml(pdfUrl)}" style="color:#111;font-weight:600;">Download PDF directly</a></p>`
+          : ""
+      }
+      <hr style="border:none;border-top:1px solid #eaeaea;margin:24px 0;" />
+      <p style="font-size:14px;color:#444;">
+        Want AgentZero to run your follow-ups and qualify buyers automatically?<br/>
+        <a href="https://www.agentzero.ae/get-started" style="color:#111;font-weight:600;">Sign up at agentzero.ae/get-started</a>
+      </p>
+    </div>
+  `.trim();
+
+  const payload = {
+    from,
+    to: [recipient],
+    subject,
+    text,
+    html,
+    ...(pdfBuffer
+      ? {
+          attachments: [
+            {
+              filename: pdfFilename,
+              content: Buffer.from(pdfBuffer).toString("base64"),
+            },
+          ],
+        }
+      : {}),
+  };
+
+  const sendResp = await fetchResendJson(RESEND_API_URL, apiKey, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+  if (!sendResp.ok) {
+    const message =
+      sendResp.data?.message ||
+      sendResp.data?.error ||
+      `Resend error (${sendResp.status})`;
+    throw new Error(message);
+  }
+
+  return {
+    id: sendResp.data?.id ?? null,
+  };
+}

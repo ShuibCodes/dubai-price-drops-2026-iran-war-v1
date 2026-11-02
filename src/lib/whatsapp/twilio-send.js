@@ -74,3 +74,37 @@ export async function sendWhatsAppText({ to, from, body }) {
     body: text,
   });
 }
+
+/**
+ * Send a WhatsApp media/document message (e.g. a PDF) via Twilio REST.
+ * `mediaUrl` must be a publicly reachable HTTPS URL.
+ */
+export async function sendWhatsAppMedia({ to, from, body = "", mediaUrl }) {
+  if (!twilioRestConfigured()) {
+    throw new Error("TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN not configured");
+  }
+  if (!to || !from) {
+    throw new Error("WhatsApp to/from are required");
+  }
+  const urls = (Array.isArray(mediaUrl) ? mediaUrl : [mediaUrl])
+    .map((u) => String(u || "").trim())
+    .filter(Boolean);
+  if (urls.length === 0) {
+    throw new Error("sendWhatsAppMedia requires at least one mediaUrl");
+  }
+
+  const client = twilio(
+    process.env.TWILIO_ACCOUNT_SID,
+    process.env.TWILIO_AUTH_TOKEN
+  );
+  const payload = {
+    from,
+    to,
+    mediaUrl: urls,
+  };
+  const text = truncateWhatsAppBody(body);
+  if (text) {
+    payload.body = text;
+  }
+  return client.messages.create(payload);
+}
