@@ -1,4 +1,5 @@
 import { jsPDF } from "jspdf";
+import sharp from "sharp";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -87,7 +88,7 @@ export function buildProposalPdfFilename(listing) {
   return `${base}.pdf`;
 }
 
-async function fetchImageAsDataUrl(imageUrl) {
+async function fetchImageAsDataUrl(imageUrl, { width = 1200, height = 714 } = {}) {
   if (!imageUrl || typeof imageUrl !== "string") return null;
   if (imageUrl.startsWith("data:image/")) return imageUrl;
 
@@ -105,10 +106,21 @@ async function fetchImageAsDataUrl(imageUrl) {
       signal: controller.signal,
     });
     if (!response.ok) return null;
-    const contentType = response.headers.get("content-type") || "image/jpeg";
     const arrayBuffer = await response.arrayBuffer();
-    const base64 = Buffer.from(arrayBuffer).toString("base64");
-    return `data:${contentType.split(";")[0]};base64,${base64}`;
+    const rawBuffer = Buffer.from(arrayBuffer);
+
+    try {
+      // Convert WebP / AVIF / PNG / JPEG into a cover-cropped JPEG so both
+      // headless Chromium and jsPDF render every photo cleanly.
+      const jpegBuffer = await sharp(rawBuffer)
+        .resize(width, height, { fit: "cover", position: "centre" })
+        .jpeg({ quality: 88, mozjpeg: true })
+        .toBuffer();
+      return `data:image/jpeg;base64,${jpegBuffer.toString("base64")}`;
+    } catch {
+      const contentType = response.headers.get("content-type") || "image/jpeg";
+      return `data:${contentType.split(";")[0]};base64,${rawBuffer.toString("base64")}`;
+    }
   } catch {
     return null;
   } finally {
@@ -716,7 +728,14 @@ function renderFallbackJsPdf(listing, inlineImages = []) {
  */
 export async function renderProposalPdfBuffer(listing) {
   const rawImages = Array.isArray(listing?.images) ? listing.images.slice(0, 4) : [];
-  const fetchedImages = await Promise.all(rawImages.map(fetchImageAsDataUrl));
+  const fetchedImages = await Promise.all(
+    rawImages.map((imgUrl, idx) =>
+      fetchImageAsDataUrl(
+        imgUrl,
+        idx === 0 ? { width: 1200, height: 714 } : { width: 520, height: 260 }
+      )
+    )
+  );
   const inlineImages = rawImages.map((original, i) => fetchedImages[i] || original);
 
   try {

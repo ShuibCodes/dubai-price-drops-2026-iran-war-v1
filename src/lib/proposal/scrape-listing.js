@@ -520,10 +520,142 @@ export function validateListingUrl(rawUrl) {
   return { ok: true, url: parsed.toString() };
 }
 
+function extractBayutIdFromUrl(url) {
+  try {
+    const parsed = new URL(url);
+    if (!/bayut\.com$/i.test(parsed.hostname)) return null;
+    const match =
+      parsed.pathname.match(/details-(\d{5,12})/i) ||
+      parsed.pathname.match(/-(\d{6,12})\.html/i);
+    return match ? match[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+async function scrapeBayutWithRapidApi(bayutId, originalUrl) {
+  const rapidKey = process.env.RAPIDAPI_KEY?.trim();
+  if (!rapidKey || !bayutId) return null;
+
+  try {
+    const res = await fetch(
+      `https://uae-real-estate2.p.rapidapi.com/property/${encodeURIComponent(bayutId)}`,
+      {
+        headers: {
+          "x-rapidapi-key": rapidKey,
+          "x-rapidapi-host": "uae-real-estate2.p.rapidapi.com",
+        },
+        cache: "no-store",
+      }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data || (!data.title && !data.price)) return null;
+
+    const communityName =
+      clean(data.location?.community?.name) ||
+      clean(data.location?.city?.name) ||
+      "DUBAI";
+    const subcommunityName =
+      clean(data.location?.sub_community?.name) ||
+      clean(data.location?.cluster?.name) ||
+      "";
+    const buildingName =
+      clean(data.building_info?.name) ||
+      clean(data.location?.cluster?.name) ||
+      clean(data.project?.title) ||
+      "";
+
+    const priceNum = Number(data.price);
+    const formattedPrice = Number.isFinite(priceNum) && priceNum > 0
+      ? `AED ${Math.round(priceNum).toLocaleString()}`
+      : clean(data.price);
+
+    const flatAmenities = Array.isArray(data.amenities)
+      ? data.amenities
+          .flatMap((group) => (Array.isArray(group?.items) ? group.items : [group]))
+          .map((item) => clean(item))
+          .filter(Boolean)
+      : [];
+
+    const structuredJson = {
+      title: clean(data.title),
+      community: communityName.toUpperCase(),
+      subcommunity: subcommunityName,
+      building: buildingName,
+      price: formattedPrice,
+      bedrooms: data.details?.bedrooms ?? null,
+      bathrooms: data.details?.bathrooms ?? null,
+      sizeSqft: data.area?.built_up ? Math.round(Number(data.area.built_up)) : null,
+      propertyType: clean(data.type?.sub || data.type?.main || "Apartment").replace(/s$/i, ""),
+      furnishing:
+        data.details?.is_furnished === true
+          ? "Furnished"
+          : data.details?.is_furnished === false
+          ? "Unfurnished"
+          : "",
+      completionStatus: clean(data.details?.completion_status || data.project?.completion_status)
+        .replace(/-/g, " "),
+      developer: clean(data.project?.developer?.name),
+      reraPermit: clean(data.legal?.permit_number || data.legal?.dld_property_sk),
+      amenities: flatAmenities.slice(0, 10),
+      description: clean(data.description),
+    };
+
+    const photos = uniqueUrls([
+      data.media?.cover_photo,
+      ...(Array.isArray(data.media?.photos) ? data.media.photos : []),
+    ]).slice(0, MAX_IMAGES);
+
+    const syntheticScraped = {
+      markdown: `${structuredJson.title}\nLocation: ${communityName} - ${subcommunityName} - ${buildingName}\nPrice: ${formattedPrice}\n\n${structuredJson.description}`,
+      html: "",
+      links: [],
+      images: photos,
+      metadata: {
+        title: structuredJson.title,
+        description: structuredJson.description,
+        sourceURL: originalUrl,
+      },
+      json: structuredJson,
+    };
+
+    const extracted = await extractWithClaude(
+      syntheticScraped,
+      originalUrl,
+      structuredJson
+    );
+
+    return {
+      ...extracted,
+      images: photos,
+      metadata: {
+        pageTitle: structuredJson.title,
+        source: originalUrl,
+      },
+    };
+  } catch (err) {
+    console.warn("[scrape-listing] RapidAPI Bayut lookup failed:", err?.message);
+    return null;
+  }
+}
+
+const CAPTCHA_TITLE_RE =
+  /^(security\s*check|just\s*a\s*moment|attention\s*required|access\s*denied|robot\s*or\s*human|pardon\s*our\s*interruption)/i;
+
 export async function scrapeListingForProposal(rawUrl) {
   const validated = validateListingUrl(rawUrl);
   if (!validated.ok) {
     throw new Error(validated.error);
+  }
+
+  // 1. For Bayut listing URLs, use RapidAPI first to avoid Bayut's captcha wall.
+  const bayutId = extractBayutIdFromUrl(validated.url);
+  if (bayutId) {
+    const bayutResult = await scrapeBayutWithRapidApi(bayutId, validated.url);
+    if (bayutResult && bayutResult.images?.length > 0) {
+      return bayutResult;
+    }
   }
 
   const scraped = await scrapeWithFirecrawl(validated.url);
@@ -540,6 +672,15 @@ export async function scrapeListingForProposal(rawUrl) {
     .filter((url) => looksLikePropertyImage(url))
     .sort((a, b) => scoreUnitImage(b) - scoreUnitImage(a))
     .slice(0, MAX_IMAGES);
+
+  if (
+    CAPTCHA_TITLE_RE.test(clean(extracted.title)) ||
+    CAPTCHA_TITLE_RE.test(clean(scraped.metadata?.title))
+  ) {
+    throw new Error(
+      "The portal blocked automated access with a security check. Try a Property Finder listing link."
+    );
+  }
 
   return {
     ...extracted,
