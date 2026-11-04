@@ -19,6 +19,7 @@ import callToWhatsAppDesktop from "../../../assets/Call to WhatsApp desktop@2x.p
 import callToWhatsAppMobile from "../../../assets/Mobile hero short@2x.png";
 import tuesdayDesktop from "../../../assets/A Tuesday with AgentZero desktop@2x.png";
 import tuesdayMobile from "../../../assets/A Tuesday with AgentZero mobile@2x.png";
+import agentZeroPhone from "../../../brand/png/agentzero-phone-transparent.png";
 import LeadMagnetPopup from "@/components/landing/lead-magnet-popup";
 import { TYPEFORM_ENQUIRY_URL } from "@/lib/typeform";
 
@@ -467,6 +468,139 @@ export default function AgentZeroLandingPage() {
       </section>
 
       <section className="mx-auto max-w-7xl px-4 pb-14 sm:px-6 sm:pb-20 lg:px-8">
+        <div className="grid items-center gap-8 lg:grid-cols-2 lg:gap-10">
+          <div>
+            <div className="mono text-[11px] uppercase tracking-[0.32em] text-white">
+              Brand tone
+            </div>
+            <h2 className="mt-4 text-[1.7rem] font-semibold leading-tight text-white sm:text-4xl">
+              Matches your brand&apos;s tone and standards, consistently.
+            </h2>
+            <p className="mt-5 text-base leading-7 text-white sm:text-lg sm:leading-8">
+              The same level of expertise and service across your whole book.
+              Set the tone once — every call, message and follow-up sounds like
+              your desk.{" "}
+              <span className="whitespace-nowrap font-semibold text-[#ffd60a]">
+                AED 250/m · next 5 brokers.
+              </span>
+            </p>
+            <div className="mt-7 flex flex-wrap gap-3 sm:mt-8">
+              <Link
+                href={GET_STARTED_HREF}
+                data-fast-goal="enquiry_click"
+                data-fast-goal-location="brand_tone"
+                className="inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
+              >
+                Start 5-day free trial
+              </Link>
+            </div>
+          </div>
+
+          <div
+            aria-hidden="true"
+            className="overflow-hidden rounded-[28px] border border-white/10 bg-white/[0.03]"
+          >
+            <div className="px-6 py-8 text-center sm:px-8 sm:py-10">
+              <p className="text-sm font-medium text-white/60">Tone selected</p>
+              <p className="mt-2 text-2xl font-semibold tracking-tight text-white sm:text-[2rem]">
+                Professional and friendly
+              </p>
+              <p className="mt-3 text-sm font-medium text-[#ffd60a]">
+                Adjust AI responses or style &nbsp;&rarr;
+              </p>
+            </div>
+
+            <div className="grid bg-white/10 sm:grid-cols-[0.42fr_1fr] sm:gap-px">
+              <div className="bg-black px-5 py-6 text-left sm:rounded-tr-[22px] sm:text-right">
+                <h3 className="text-lg font-medium text-white">Knowledge</h3>
+                <div className="mt-4 inline-flex items-center gap-2 text-sm text-[#ffd60a]">
+                  Learning
+                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-[1.5px] border-[#ffd60a] border-r-transparent" />
+                </div>
+                <div className="mt-5 grid gap-3">
+                  <span className="block h-4 animate-pulse rounded bg-white/10" />
+                  <span className="block h-4 animate-pulse rounded bg-white/10 [animation-delay:200ms]" />
+                  <span className="block h-3.5 animate-pulse rounded bg-white/[0.06] sm:ml-8 [animation-delay:400ms]" />
+                </div>
+              </div>
+
+              <div className="flex flex-col justify-center gap-4 bg-[#ff2d55] px-6 py-8 text-white sm:rounded-tl-[22px] sm:px-7">
+                <div className="flex items-center gap-4 text-base sm:text-lg">
+                  <svg
+                    viewBox="0 0 40 40"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.2"
+                    strokeLinejoin="round"
+                    className="h-9 w-9 shrink-0"
+                    aria-hidden="true"
+                  >
+                    <path d="M9 18V5h15l7 7v6" />
+                    <path d="M24 5v7h7" />
+                    <text
+                      x="20"
+                      y="35"
+                      textAnchor="middle"
+                      fontFamily="inherit"
+                      fontSize="11"
+                      fontWeight="700"
+                      fill="currentColor"
+                      stroke="none"
+                    >
+                      DOC
+                    </text>
+                  </svg>
+                  Reading listing briefs
+                </div>
+                <div className="flex items-center gap-4 text-base sm:text-lg">
+                  <svg
+                    viewBox="0 0 40 40"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.2"
+                    strokeLinejoin="round"
+                    className="h-9 w-9 shrink-0"
+                    aria-hidden="true"
+                  >
+                    <path d="M9 18V5h15l7 7v6" />
+                    <path d="M24 5v7h7" />
+                    <text
+                      x="20"
+                      y="35"
+                      textAnchor="middle"
+                      fontFamily="inherit"
+                      fontSize="11"
+                      fontWeight="700"
+                      fill="currentColor"
+                      stroke="none"
+                    >
+                      PPT
+                    </text>
+                  </svg>
+                  Scanning portal enquiries
+                </div>
+                <div className="flex items-center gap-4 text-base sm:text-lg">
+                  <svg
+                    viewBox="0 0 40 40"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.2"
+                    className="h-9 w-9 shrink-0"
+                    aria-hidden="true"
+                  >
+                    <circle cx="20" cy="20" r="15" />
+                    <path d="M8 13c4 0 6 2 6 5s3 3 3 6-2 4-2 9" />
+                    <path d="M33 15c-3 0-6 1-6 4s3 4 1 7-4 2-5 5" />
+                  </svg>
+                  Matching units across Dubai
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-4 pb-14 sm:px-6 sm:pb-20 lg:px-8">
         <div className="grid gap-8 lg:grid-cols-2 lg:items-center lg:gap-10">
           <div className="order-2 overflow-hidden rounded-[24px] border border-white/10 bg-black sm:rounded-[28px] lg:order-1">
             <iframe
@@ -508,6 +642,43 @@ export default function AgentZeroLandingPage() {
         </div>
       </section>
 
+      <section className="mx-auto max-w-7xl px-4 pb-14 sm:px-6 sm:pb-20 lg:px-8">
+        <div className="grid items-center gap-8 lg:grid-cols-2 lg:gap-10">
+          <div>
+            <div className="mono text-[11px] uppercase tracking-[0.32em] text-white">
+              Every call
+            </div>
+            <h2 className="mt-4 text-[1.7rem] font-semibold leading-tight text-white sm:text-4xl">
+              AgentZero handles every call, so you don&apos;t have to.
+            </h2>
+            <p className="mt-5 text-base leading-7 text-white sm:text-lg sm:leading-8">
+              Listens to buyer patterns on WhatsApp and CRM. Emotionally aware,
+              and speaks over 10 different languages.{" "}
+              <span className="font-bold">
+                No more dealing with fake or unserious buyers.
+              </span>
+            </p>
+            <div className="mt-7 flex flex-wrap gap-3 sm:mt-8">
+              <Link
+                href={GET_STARTED_HREF}
+                data-fast-goal="enquiry_click"
+                data-fast-goal-location="every_call"
+                className="inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
+              >
+                Start 5-day free trial
+              </Link>
+            </div>
+          </div>
+          <div className="flex justify-center">
+            <Image
+              src={agentZeroPhone}
+              alt="AgentZero on a call, confirming a viewing for tomorrow at 3PM"
+              className="h-auto w-full max-w-[320px] sm:max-w-[380px]"
+            />
+          </div>
+        </div>
+      </section>
+
       <section className="mx-auto w-full max-w-[90rem] px-4 pb-14 sm:px-6 sm:pb-20 lg:px-0">
         <h2 className="sr-only">A Tuesday with AgentZero.</h2>
         <Image
@@ -530,15 +701,6 @@ export default function AgentZeroLandingPage() {
         <div className="rounded-[28px] border border-[#ff2d55]/20 bg-[#ff2d55]/[0.06] p-6 sm:rounded-[32px] sm:p-10">
           <p className="text-xl font-semibold leading-tight text-white sm:text-3xl">
             Most AI tools are built on your data but owned by someone else. This one isn&apos;t.
-          </p>
-          <p className="mt-4 text-base leading-7 text-white sm:mt-5 sm:text-lg sm:leading-8">
-            Every deal trains the system — so when a new agent joins, their AgentZero
-            already knows your clients, your market, and how your best people close. They
-            ramp in days, not months.{" "}
-            <span className="font-semibold text-[#ffd60a]">
-              AED 250/m for the next 5 brokers
-            </span>
-            , with a dedicated account manager included.
           </p>
         </div>
       </section>
