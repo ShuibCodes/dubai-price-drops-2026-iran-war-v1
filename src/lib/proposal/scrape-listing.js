@@ -520,36 +520,112 @@ export function validateListingUrl(rawUrl) {
   return { ok: true, url: parsed.toString() };
 }
 
+function portalHost(url) {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
 function extractBayutIdFromUrl(url) {
   try {
     const parsed = new URL(url);
-    if (!/bayut\.com$/i.test(parsed.hostname)) return null;
+    if (!/(^|\.)bayut\.(com|ae)$/i.test(parsed.hostname)) return null;
     const match =
       parsed.pathname.match(/details-(\d{5,12})/i) ||
-      parsed.pathname.match(/-(\d{6,12})\.html/i);
+      parsed.pathname.match(/-(\d{6,12})(?:\.html)?\/?$/i);
     return match ? match[1] : null;
   } catch {
     return null;
   }
 }
 
-async function scrapeBayutWithRapidApi(bayutId, originalUrl) {
+function extractPropertyFinderIdFromUrl(url) {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    if (!host.includes("propertyfinder.") && host !== "pf.ae" && !host.endsWith(".pf.ae")) {
+      return null;
+    }
+    const match = parsed.pathname.match(/(\d{6,12})(?:\.html)?\/?$/i);
+    return match ? match[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+async function rapidGet(host, path) {
   const rapidKey = process.env.RAPIDAPI_KEY?.trim();
-  if (!rapidKey || !bayutId) return null;
+  if (!rapidKey) return null;
+  const res = await fetch(`https://${host}${path}`, {
+    headers: {
+      "x-rapidapi-key": rapidKey,
+      "x-rapidapi-host": host,
+      accept: "application/json",
+    },
+    cache: "no-store",
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+function formatAed(value) {
+  const priceNum = Number(value);
+  if (Number.isFinite(priceNum) && priceNum > 0) {
+    return `AED ${Math.round(priceNum).toLocaleString()}`;
+  }
+  return clean(value);
+}
+
+async function listingFromStructured(structuredJson, photos, originalUrl) {
+  const seed = normalizeListingFields(structuredJson, {
+    ...emptyDeepFields(),
+    title: structuredJson.title,
+    summary: clean(structuredJson.description).slice(0, 420),
+  });
+  const syntheticScraped = {
+    markdown: `${seed.title}\n${seed.community}\n${seed.price}\n\n${structuredJson.description || ""}`,
+    html: "",
+    links: [],
+    images: photos,
+    metadata: {
+      title: seed.title,
+      description: structuredJson.description || "",
+      sourceURL: originalUrl,
+    },
+    json: structuredJson,
+  };
+
+  let extracted = seed;
+  try {
+    extracted = await Promise.race([
+      extractWithClaude(syntheticScraped, originalUrl, structuredJson),
+      new Promise((resolve) => setTimeout(() => resolve(seed), 12_000)),
+    ]);
+  } catch (err) {
+    console.warn("[scrape-listing] Claude extract skipped:", err?.message);
+  }
+
+  return {
+    ...normalizeListingFields(extracted, seed),
+    images: photos,
+    sourceUrl: originalUrl,
+    metadata: {
+      pageTitle: seed.title,
+      source: originalUrl,
+    },
+  };
+}
+
+async function scrapeBayutWithRapidApi(bayutId, originalUrl) {
+  if (!bayutId) return null;
 
   try {
-    const res = await fetch(
-      `https://uae-real-estate2.p.rapidapi.com/property/${encodeURIComponent(bayutId)}`,
-      {
-        headers: {
-          "x-rapidapi-key": rapidKey,
-          "x-rapidapi-host": "uae-real-estate2.p.rapidapi.com",
-        },
-        cache: "no-store",
-      }
+    const data = await rapidGet(
+      "uae-real-estate2.p.rapidapi.com",
+      `/property/${encodeURIComponent(bayutId)}`
     );
-    if (!res.ok) return null;
-    const data = await res.json();
     if (!data || (!data.title && !data.price)) return null;
 
     const communityName =
@@ -607,35 +683,76 @@ async function scrapeBayutWithRapidApi(bayutId, originalUrl) {
       ...(Array.isArray(data.media?.photos) ? data.media.photos : []),
     ]).slice(0, MAX_IMAGES);
 
-    const syntheticScraped = {
-      markdown: `${structuredJson.title}\nLocation: ${communityName} - ${subcommunityName} - ${buildingName}\nPrice: ${formattedPrice}\n\n${structuredJson.description}`,
-      html: "",
-      links: [],
-      images: photos,
-      metadata: {
-        title: structuredJson.title,
-        description: structuredJson.description,
-        sourceURL: originalUrl,
-      },
-      json: structuredJson,
-    };
-
-    const extracted = await extractWithClaude(
-      syntheticScraped,
-      originalUrl,
-      structuredJson
-    );
-
-    return {
-      ...extracted,
-      images: photos,
-      metadata: {
-        pageTitle: structuredJson.title,
-        source: originalUrl,
-      },
-    };
+    return listingFromStructured(structuredJson, photos, originalUrl);
   } catch (err) {
     console.warn("[scrape-listing] RapidAPI Bayut lookup failed:", err?.message);
+    return null;
+  }
+}
+
+async function scrapePropertyFinderWithRapidApi(propertyId, originalUrl) {
+  if (!propertyId) return null;
+
+  try {
+    const payload = await rapidGet(
+      "property-finder6.p.rapidapi.com",
+      `/property-details?property_id=${encodeURIComponent(propertyId)}`
+    );
+    const data = payload?.data?.property;
+    if (!data || (!data.title && !data.price?.value)) return null;
+
+    const parts = clean(data.location?.full_name)
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean);
+    const communityName = parts.length >= 2 ? parts[parts.length - 2] : parts[0] || "DUBAI";
+    const buildingName = parts.length >= 3 ? parts[0] : clean(data.project?.title);
+    const payment = data.project?.payment_plan;
+    const paymentPlan = payment
+      ? [
+          payment.down_payment_rate ? `${payment.down_payment_rate}% down` : "",
+          payment.installment_years ? `${payment.installment_years} years` : "",
+        ]
+          .filter(Boolean)
+          .join(", ")
+      : "";
+
+    const structuredJson = {
+      title: clean(data.title),
+      community: communityName.toUpperCase(),
+      subcommunity: "",
+      building: buildingName,
+      price: formatAed(data.price?.value),
+      bedrooms: data.bedrooms ?? null,
+      bathrooms: data.bathrooms ?? null,
+      sizeSqft: data.size?.value ? Math.round(Number(data.size.value)) : null,
+      propertyType: clean(data.property_type),
+      furnishing: clean(data.furnished),
+      parking: (data.amenities || []).some((item) => /parking/i.test(item?.name || ""))
+        ? "Covered parking"
+        : "",
+      completionStatus: clean(data.completion_status).replace(/_/g, " "),
+      developer: clean(
+        data.project?.developer?.name || data.location?.building_details?.developer_name
+      ),
+      yearBuilt: clean(data.location?.building_details?.completion_year),
+      ownership: clean(data.project?.ownership_type),
+      reraPermit: clean(data.rera?.number || data.licenses?.[0]?.license_number),
+      paymentPlan,
+      amenities: (Array.isArray(data.amenities) ? data.amenities : [])
+        .map((item) => clean(item?.name))
+        .filter(Boolean)
+        .slice(0, 10),
+      description: clean(data.description),
+    };
+
+    const photos = uniqueUrls(
+      (data.images?.property || []).map((image) => image?.medium || image?.small)
+    ).slice(0, MAX_IMAGES);
+
+    return listingFromStructured(structuredJson, photos, originalUrl);
+  } catch (err) {
+    console.warn("[scrape-listing] RapidAPI Property Finder lookup failed:", err?.message);
     return null;
   }
 }
@@ -649,13 +766,31 @@ export async function scrapeListingForProposal(rawUrl) {
     throw new Error(validated.error);
   }
 
-  // 1. For Bayut listing URLs, use RapidAPI first to avoid Bayut's captcha wall.
-  const bayutId = extractBayutIdFromUrl(validated.url);
-  if (bayutId) {
-    const bayutResult = await scrapeBayutWithRapidApi(bayutId, validated.url);
-    if (bayutResult && bayutResult.images?.length > 0) {
-      return bayutResult;
-    }
+  const host = portalHost(validated.url);
+  const isBayut = /(^|\.)bayut\.(com|ae)$/i.test(host);
+  const isPropertyFinder =
+    host.includes("propertyfinder.") || host === "pf.ae" || host.endsWith(".pf.ae");
+
+  if (isBayut) {
+    const bayutResult = await scrapeBayutWithRapidApi(
+      extractBayutIdFromUrl(validated.url),
+      validated.url
+    );
+    if (bayutResult?.title && bayutResult.images?.length) return bayutResult;
+    throw new Error(
+      "Couldn't load that Bayut listing. Send the full listing link (it should end in the property number)."
+    );
+  }
+
+  if (isPropertyFinder) {
+    const finderResult = await scrapePropertyFinderWithRapidApi(
+      extractPropertyFinderIdFromUrl(validated.url),
+      validated.url
+    );
+    if (finderResult?.title && finderResult.images?.length) return finderResult;
+    throw new Error(
+      "Couldn't load that Property Finder listing. Send the full listing link, not a short link."
+    );
   }
 
   const scraped = await scrapeWithFirecrawl(validated.url);
