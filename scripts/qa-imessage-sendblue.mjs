@@ -100,3 +100,4 @@ if (failures === 0) {
   console.error(`${failures} check(s) failed.\n`);
   process.exit(1);
 }
+

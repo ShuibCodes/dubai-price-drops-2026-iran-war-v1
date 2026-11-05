@@ -20,3 +20,4 @@ comment on column agents.imessage_address is
 
 comment on column agents.preferred_channel is
   'Preferred communication channel for Jarvis notifications and briefings: whatsapp or imessage.';
+
