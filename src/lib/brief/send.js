@@ -3,6 +3,7 @@ import {
   sendCloudText,
   TEMPLATE_BRIEF,
 } from "@/lib/whatsapp/cloud";
+import { sendIMessageText } from "@/lib/imessage/send";
 
 function rankScore(lead) {
   if (lead.intent_score != null && Number.isFinite(Number(lead.intent_score))) {
@@ -89,7 +90,16 @@ export async function sendMorningBriefNotification({
   sendTemplate = sendCloudTemplate,
 }) {
   const toWaId = String(agent.wa_id || "").replace(/\D/g, "");
-  if (!toWaId) return { sent: false, reason: "no_agent_wa_id" };
+  const toIMessage =
+    agent.imessage_address ||
+    (agent.preferred_channel === "imessage" && toWaId ? `+${toWaId}` : null);
+
+  if (agent.preferred_channel === "imessage" && !toIMessage) {
+    return { sent: false, reason: "no_agent_imessage_address" };
+  }
+  if (agent.preferred_channel !== "imessage" && !toWaId) {
+    return { sent: false, reason: "no_agent_wa_id" };
+  }
 
   const today = utcDate(now);
   const claimed = await claimNotificationDay(
@@ -103,6 +113,22 @@ export async function sendMorningBriefNotification({
   }
 
   try {
+    if (agent.preferred_channel === "imessage") {
+      const built = await buildMorningBrief(supabase, {
+        tenantId: tenant.id,
+        agent,
+      });
+      await sendIMessageText({
+        to: toIMessage,
+        body: built.body,
+      });
+      return {
+        sent: true,
+        via: "imessage",
+        count: built.count,
+      };
+    }
+
     // Static product copy: "Your AgentZero morning brief is ready" +
     // quick reply. Do not send body variables unless Shuayb's approved
     // template actually defines them — then set them here, not guessed.
@@ -137,12 +163,34 @@ export async function sendRequestedMorningBrief({
   sendText = sendCloudText,
 }) {
   const toWaId = String(agent.wa_id || "").replace(/\D/g, "");
-  if (!toWaId) return { sent: false, reason: "no_agent_wa_id" };
+  const toIMessage =
+    agent.imessage_address ||
+    (agent.preferred_channel === "imessage" && toWaId ? `+${toWaId}` : null);
+
+  if (agent.preferred_channel === "imessage" && !toIMessage) {
+    return { sent: false, reason: "no_agent_imessage_address" };
+  }
+  if (agent.preferred_channel !== "imessage" && !toWaId) {
+    return { sent: false, reason: "no_agent_wa_id" };
+  }
 
   const built = await buildMorningBrief(supabase, {
     tenantId: tenant.id,
     agent,
   });
+
+  if (agent.preferred_channel === "imessage") {
+    try {
+      await sendIMessageText({
+        to: toIMessage,
+        body: built.body,
+      });
+      return { sent: true, via: "imessage", count: built.count, body: built.body };
+    } catch (error) {
+      return { sent: false, reason: error.message, count: built.count };
+    }
+  }
+
   try {
     await sendText({
       phoneNumberId: tenant.phone_number_id,
