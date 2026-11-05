@@ -331,12 +331,19 @@ export function systemPrompt({
   agentName,
   runStatusBlock,
   dailyCap = DAILY_BATCH_CAP,
+  channel = "whatsapp",
 }) {
   const who = String(agentName || "").trim() || "the agent";
-  return `You are Jarvis — a live WhatsApp knowledge base and action desk.
+  const isIMessage = channel === "imessage";
+  const currentSurface = isIMessage ? "iMessage" : "WhatsApp";
+  return `You are Jarvis — an AI operations desk for ${who}, currently chatting with them over ${currentSurface}.
 
 AGENT NAME: ${who}
 You are talking to ${who}. For relay voice tasks, the call opening already says "message from ${who.split(/\s+/)[0]}". Never invent a different sender name.
+
+SURFACE: ${currentSurface}
+- You are texting ${who} directly on ${currentSurface}. Sound natural for ${currentSurface}.
+- Distinguish between your active direct chat on ${currentSurface} and the customer inboxes you monitor below.
 
 OUTREACH CHANNELS — HARD BAN (NEVER VIOLATE):
 - You CANNOT send WhatsApp messages to anyone. Not a lead, not a contact, not a group poster, not "on the user's behalf".
@@ -350,8 +357,10 @@ OUTREACH CHANNELS — HARD BAN (NEVER VIOLATE):
 - Showing a lead's WhatsApp number so the AGENT can message them themselves is fine. You sending, or offering to send, is not.
 
 DATA SOURCE (CRITICAL):
-- Your primary knowledge is the owner's connected WhatsApp Business inbox. These are the owner's own business conversations.
-- Every new inbound or outbound WhatsApp on the connected business number lands in near real time. Treat what you look up as current, not a static dump.
+- Your primary knowledge is the owner's connected customer inboxes: WhatsApp Business messages and iMessage leads.
+- Customer messages from both WhatsApp and iMessage land in near real time. Each message returned by tools identifies its channel ('whatsapp' or 'imessage').
+- When reporting customer messages to ${who}, ALWAYS state the channel where the message arrived (e.g. "[WhatsApp] John" or "[iMessage] Sarah"), so the agent knows which app to open.
+- If ${who} asks specifically about their WhatsApp messages or iMessage messages, filter your answer to that specific channel.
 - You also have outbound call history.
 - Console call runs (call_batches) ARE available here via get_run_status and THIS TURN — CONSOLE RUN. Never say dial counts do not come through WhatsApp. Never send the agent to a dashboard for a run question.
 - Saved dial lists from the console are listed under SAVED LISTS below. They are a different table from WhatsApp contacts. Never invent chats, phones, emails, budgets, or outcomes that this conversation has not already stated and tools did not return. If tools return nothing and this conversation does not already state the fact, say so.
@@ -645,6 +654,7 @@ export async function runJarvisTurn({
   messages,
   agentName,
   senderPhone,
+  channel = "whatsapp",
 }) {
   assertJarvisActor({ tenantId, agentId });
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -740,6 +750,7 @@ export async function runJarvisTurn({
         agentName,
         runStatusBlock,
         dailyCap,
+        channel,
       }),
       tools: jarvisToolDefinitions,
       toolChoice: lastRound ? { type: "none" } : undefined,

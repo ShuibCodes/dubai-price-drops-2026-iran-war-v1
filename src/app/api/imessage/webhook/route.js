@@ -80,6 +80,7 @@ async function composeJarvisReply(sender, userText, messages) {
     messages,
     agentName: sender.agentName,
     senderPhone,
+    channel: "imessage",
   });
   return truncateIMessageBody(plainJarvisIMessageText(result.text));
 }

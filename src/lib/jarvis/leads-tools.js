@@ -28,6 +28,14 @@ import {
 const JARVIS_LEAD_NAME_SELECT =
   "push_name, wa_id, inferred_name, inferred_name_confidence, inferred_name_at";
 
+export function inferMessageChannel(message) {
+  if (message?.channel) return String(message.channel).toLowerCase();
+  const service = String(message?.raw?.service || "").toLowerCase();
+  if (service === "imessage" || service === "rcs") return "imessage";
+  if (message?.jarvis_leads?.source === "imessage") return "imessage";
+  return "whatsapp";
+}
+
 function db() {
   const supabase = getSupabaseServerClient();
   if (!supabase) throw new Error("Supabase is not configured");
@@ -138,6 +146,7 @@ export async function getJarvisLatestMessages(tenantId, agentId, limit = 10) {
     return {
       leadId: message.jarvis_lead_id,
       leadName: formatted.displayName,
+      channel: inferMessageChannel(message),
       nameSource: formatted.nameSource,
       nameConfidence: formatted.nameConfidence,
       phone: fullPhone(lead.wa_id || message.jarvis_leads?.wa_id),
