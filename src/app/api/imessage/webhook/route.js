@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { waitUntil } from "@vercel/functions";
 import { defaultKbState, runKbTurn } from "@/lib/kb/engine";
 import { runJarvisTurn } from "@/lib/jarvis/engine";
@@ -29,6 +30,7 @@ const TEMPORARY_FAILURE_REPLY =
   "I hit a temporary issue. Please try again in a moment.";
 const ANTHROPIC_CREDITS_REPLY =
   "AgentZero is out of credits. Add credits in billing, then try again.";
+const MAX_INBOUND_BODY_LENGTH = 8000;
 
 function failureReply(error) {
   const message = error instanceof Error ? error.message : String(error || "");
@@ -40,6 +42,18 @@ function failureReply(error) {
     return ANTHROPIC_CREDITS_REPLY;
   }
   return TEMPORARY_FAILURE_REPLY;
+}
+
+/**
+ * Timing-safe comparison to prevent side-channel timing attacks on webhook secrets.
+ */
+function verifySigningSecret(headerSecret, expectedSecret) {
+  if (!expectedSecret) return true; // Disabled/optional when not set in env
+  if (!headerSecret) return false;
+  const a = Buffer.from(String(headerSecret).trim());
+  const b = Buffer.from(String(expectedSecret).trim());
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
 }
 
 async function composeJarvisReply(sender, userText, messages) {
@@ -142,27 +156,50 @@ export async function GET() {
     anthropicConfigured: Boolean(process.env.ANTHROPIC_API_KEY),
     sendblueConfigured: sendblueConfigured(),
     assignedNumber: process.env.SENDBLUE_NUMBER || null,
+    signingSecretConfigured: Boolean(process.env.SENDBLUE_SIGNING_SECRET),
   });
 }
 
 export async function POST(request) {
   try {
-    const payload = await request.json();
+    // 1. Cyber Security: Verify Sendblue webhook signing secret if configured
+    const expectedSecret = process.env.SENDBLUE_SIGNING_SECRET;
+    if (expectedSecret) {
+      const incomingSecret =
+        request.headers.get("sb-signing-secret") ||
+        request.headers.get("x-sendblue-signature");
+      if (!verifySigningSecret(incomingSecret, expectedSecret)) {
+        console.warn("[imessage security] Rejected unauthorized webhook: signature mismatch");
+        return Response.json(
+          { ok: false, error: "Unauthorized: Invalid webhook signature" },
+          { status: 401 }
+        );
+      }
+    }
 
-    // Ignore Sendblue echoes of outbound messages
+    const payload = await request.json().catch(() => null);
+    if (!payload || typeof payload !== "object") {
+      return Response.json({ ok: false, error: "Invalid JSON payload" }, { status: 400 });
+    }
+
+    // 2. Ignore Sendblue echoes of outbound messages
     if (payload.is_outbound) {
       return Response.json({ ok: true, status: "ignored_outbound" });
     }
 
-    const from = String(payload.from_number || payload.from || "").trim();
-    const to = String(payload.to_number || payload.to || process.env.SENDBLUE_NUMBER || "").trim();
-    const body = String(payload.content || payload.text || payload.body || "").trim();
+    const from = String(payload.from_number || payload.number || payload.from || "").trim();
+    const to = String(payload.to_number || payload.sendblue_number || payload.to || process.env.SENDBLUE_NUMBER || "").trim();
+    const rawBody = String(payload.content || payload.text || payload.body || "").trim();
     const messageSid = String(payload.message_handle || payload.id || "").trim();
+
+    // Bound body to prevent resource exhaustion attacks
+    const body = rawBody.slice(0, MAX_INBOUND_BODY_LENGTH);
 
     if (!from) {
       return Response.json({ ok: true, status: "missing_sender" });
     }
 
+    // 3. Replay attack defense: prevent duplicate processing of the same message_handle
     if (messageSid && hasProcessedMessageSid(from, messageSid)) {
       return Response.json({ ok: true, status: "duplicate" });
     }
@@ -176,6 +213,7 @@ export async function POST(request) {
     const previousMessages = Array.isArray(state.messages) ? state.messages : [];
     const nextMessages = [...previousMessages, { role: "user", content: body }].slice(-30);
 
+    // 4. Resolve sender identity (checks imessage_address, wa_id, and email)
     const sender = await resolveJarvisSender(from, { channel: "imessage" });
     const useJarvis = Boolean(sender);
 
