@@ -35,3 +35,4 @@ main().catch((error) => {
   console.error("[meeting-reminders] fatal error:", error.message);
   process.exitCode = 1;
 });
+
