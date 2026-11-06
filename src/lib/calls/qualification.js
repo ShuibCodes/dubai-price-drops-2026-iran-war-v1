@@ -30,7 +30,7 @@ function normalizeTriState(value) {
   return null;
 }
 
-function normalizeQualification(raw = {}, profile = "real_estate") {
+export function normalizeQualification(raw = {}, profile = "real_estate") {
   const intent = clean(raw.intent).toLowerCase();
   const outcome = clean(raw.outcome).toLowerCase();
   const areas = Array.isArray(raw.areas)
@@ -54,7 +54,7 @@ function normalizeQualification(raw = {}, profile = "real_estate") {
   };
 
   if (profile === "course") {
-    return {
+    const courseBase = {
       ...base,
       // Course-specific — leave real-estate fields empty unless model set them.
       intent: null,
@@ -66,6 +66,41 @@ function normalizeQualification(raw = {}, profile = "real_estate") {
       interest_track: VALID_TRACKS.has(track) ? track : null,
       preferred_contact: raw.preferred_contact != null ? clean(raw.preferred_contact) : null,
     };
+
+    // Course anti-false-positive guardrail:
+    // If outcome is qualified, the lead MUST have confirmed priority or consultant outreach.
+    if (courseBase.outcome === "qualified") {
+      const hasCourseSubstance =
+        courseBase.still_priority === true || courseBase.ok_for_consultant === true;
+      if (!hasCourseSubstance) {
+        courseBase.outcome = courseBase.callback_time ? "callback" : "not_interested";
+        courseBase.lead_engaged = false;
+        courseBase.crm_note = composeCrmNote(courseBase, raw.summary || "");
+      }
+    }
+    return courseBase;
+  }
+
+  // Real estate anti-false-positive guardrail:
+  // Merely agreeing to listen ("yes" to "hear me out?", "have 30 seconds?") without
+  // sharing ANY property criteria (intent, budget, areas, timeline) is NOT a qualified lead.
+  if (base.outcome === "qualified") {
+    const hasIntent = Boolean(base.intent && (base.intent === "live" || base.intent === "invest"));
+    const hasBudget = Boolean(base.budget_aed && clean(base.budget_aed) !== "null");
+    const hasAreas = Boolean(Array.isArray(base.areas) && base.areas.length > 0);
+    const hasTimeline = Boolean(base.timeline && clean(base.timeline) !== "null");
+
+    const hasSubstantiveCriteria = hasIntent || hasBudget || hasAreas || hasTimeline;
+
+    if (!hasSubstantiveCriteria) {
+      if (base.callback_time) {
+        base.outcome = "callback";
+      } else {
+        base.outcome = "not_interested";
+      }
+      base.lead_engaged = false;
+      base.crm_note = composeCrmNote(base, raw.summary || "");
+    }
   }
 
   return base;
@@ -184,10 +219,18 @@ Return ONLY valid JSON (no markdown, no explanation) with this exact shape:
 
 Rules:
 - intent: live = wants to move in, invest = investment buyer, browsing = early stage
-- outcome: qualified = engaged and actionable, callback = wants follow-up, not_interested = declined, voicemail = left message, no_answer = no pickup
+- outcome:
+  * qualified: MUST satisfy BOTH conditions:
+    1) The lead confirmed genuine, active interest in buying or investing in property (or requested/booked a viewing).
+    2) The lead provided at least one concrete qualification detail (e.g. confirmed intent to buy/invest, stated a budget, named a target area, or gave a purchase timeline).
+    CRITICAL ANTI-FALSE-POSITIVE: Answering "yes", "sure", "okay", "yeah", "go ahead" to an opening permission question (e.g. "do you want to hear me out?", "if I continue for 30 seconds will you hang up?", "can I continue?") is ONLY polite listening consent. It is NEVER "qualified". If the lead only agreed to listen and never stated actual property criteria or interest, or the call ended before criteria were given, outcome MUST be "not_interested" (or "no_answer" if hung up immediately).
+  * callback: lead explicitly requested to be called back at a specific or later time (e.g. "call me at 4pm", "call me tomorrow", "I'm busy, call later").
+  * not_interested: lead declined, hung up, said not interested, or only passively listened to the opener without sharing any property interest or criteria.
+  * voicemail: left message or hit an automated voicemail / IVR.
+  * no_answer: no pickup, busy, or instant hangup before speaking.
 - Use null for unknown fields
 - areas should be Dubai area names mentioned, empty array if none
-- lead_engaged: true ONLY if the lead contributed at least one substantive conversational turn beyond a greeting or an immediate rejection/hangup (e.g. answered a question, shared a preference, asked something back); false for voicemail, no answer, greeting-only, or instant hangup/rejection
+- lead_engaged: true ONLY if the lead shared actual information or preferences (e.g. answered about their budget, timeline, area, or asked a substantive question back). Answering "yes" / "sure" / "hello" to an opener or permission ask does NOT count as lead_engaged; false for voicemail, no answer, greeting-only, or instant hangup/rejection.
 - crm_note: a polished, broker-ready activity note, 3-5 short lines of plain text separated by newlines. First line exactly "AgentZero AI Call — {outcome}". Then only the qualification facts that actually exist (intent, budget, areas, timeline, callback) written as natural sentences — omit anything unknown entirely, never print empty labels like "Budget: null". End with a one-sentence summary of the conversation. No markdown, no emojis, no ISO timestamps.
 
 Call ended reason: ${clean(endedReason) || "unknown"}
@@ -225,8 +268,13 @@ Rules:
 - ok_for_consultant: true if they agree to consultant outreach; false if they decline; null if unclear
 - interest_track: freelance vs tech job vs general if mentioned; else null
 - preferred_contact: whatsapp/phone/email/etc if they said how to reach them; else null
-- outcome: qualified = engaged AND (still priority and/or open to consultant) and actionable; callback = wants follow-up later; not_interested = declined / not a priority; voicemail = voicemail; no_answer = no pickup
-- lead_engaged: true ONLY if the lead contributed at least one substantive conversational turn beyond a greeting or an immediate rejection/hangup; false for voicemail, no answer, greeting-only, or instant hangup
+- outcome:
+  * qualified: engaged AND explicitly confirmed priority (still_priority: true) or consultant outreach (ok_for_consultant: true). Simply saying "yes" to "hear me out" or "can I tell you what this is about" without confirming priority or consultant is NOT qualified.
+  * callback: requested follow-up later
+  * not_interested: declined, hung up, or not interested
+  * voicemail: voicemail
+  * no_answer: no pickup
+- lead_engaged: true ONLY if the lead contributed at least one substantive conversational turn beyond a greeting, permission opener, or an immediate rejection/hangup; false for voicemail, no answer, greeting-only, or instant hangup
 - crm_note: polished ops note, 3-5 short plain-text lines separated by newlines. First line exactly "Pivot to Tech AI Call — {outcome}". Then only facts that exist (priority, consultant yes/no, track, contact preference, callback) as natural sentences — omit unknowns, never print empty labels. End with one sentence summarizing the call. No markdown, no emojis, no ISO timestamps. Never mention real estate.
 
 Call ended reason: ${clean(endedReason) || "unknown"}
