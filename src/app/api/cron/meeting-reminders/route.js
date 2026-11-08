@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { processMeetingReminders } from "@/lib/calendar/reminders";
+import { timingSafeEqual } from "@/lib/security/timing-safe";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,7 +12,7 @@ function authorized(request) {
   const provided =
     request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
     request.headers.get("x-cron-secret");
-  return provided === expected;
+  return timingSafeEqual(provided, expected);
 }
 
 export async function POST(request) {
@@ -46,4 +47,3 @@ export async function GET(request) {
   }
   return POST(request);
 }
-
