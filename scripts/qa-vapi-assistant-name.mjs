@@ -120,11 +120,11 @@ check(
 
 const seen = [];
 const originalFetch = globalThis.fetch;
-globalThis.fetch = async (url, init) => {
+globalThis.fetch = async (url, init = {}) => {
   seen.push({
     url: String(url),
-    method: init.method,
-    name: JSON.parse(init.body).name,
+    method: init.method || "GET",
+    name: init.body ? JSON.parse(init.body).name : undefined,
   });
   const existing = String(url).includes("/assistant/asst_existing");
   return {
@@ -151,19 +151,19 @@ try {
   });
   check("create returns the assistant id", created === "asst_qa_name");
   check("update returns the existing assistant id", updated === "asst_existing");
+  const postCall = seen.find((c) => c.method === "POST");
+  const patchCall = seen.find((c) => c.method === "PATCH");
   check(
     "create POSTs a name of at most 40 characters",
-    seen[0]?.method === "POST" &&
-      seen[0].url === "https://vapi.example.test/assistant" &&
-      seen[0].name === longNamed &&
-      seen[0].name.length <= 40
+    postCall?.url === "https://vapi.example.test/assistant" &&
+      postCall.name === longNamed &&
+      postCall.name.length <= 40
   );
   check(
     "update PATCHes a name of at most 40 characters",
-    seen[1]?.method === "PATCH" &&
-      seen[1].url === "https://vapi.example.test/assistant/asst_existing" &&
-      seen[1].name === longNamed &&
-      seen[1].name.length <= 40
+    patchCall?.url === "https://vapi.example.test/assistant/asst_existing" &&
+      patchCall.name === longNamed &&
+      patchCall.name.length <= 40
   );
 } finally {
   globalThis.fetch = originalFetch;

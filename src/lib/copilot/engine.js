@@ -355,7 +355,7 @@ function hasScriptBatchConfirmation(messages, displayName) {
   );
 }
 
-async function executeTool({ name, input, tenantId, agentName, messages, dailyCap }) {
+async function executeTool({ name, input, tenantId, agentName, agentId, messages, dailyCap }) {
   switch (name) {
     case "count_calls_since":
       return countCallsSince(tenantId, input.sinceIso);
@@ -412,11 +412,12 @@ async function executeTool({ name, input, tenantId, agentName, messages, dailyCa
         agentName,
         input.country,
         input.source,
-        phrase
+        phrase,
+        agentId
       );
     }
     case "start_target_call":
-      return startTargetCall(tenantId, input.leadId, agentName);
+      return startTargetCall(tenantId, input.leadId, agentName, agentId);
     case "schedule_batch":
       if (Number(input.count) > 100 && !hasLargeBatchConfirmation(messages, input.count)) {
         return {
@@ -432,7 +433,8 @@ async function executeTool({ name, input, tenantId, agentName, messages, dailyCa
         agentName,
         input.spreadDays,
         input.country,
-        input.source
+        input.source,
+        agentId
       );
     case "pause_tenant":
       return pauseTenant(tenantId, agentName);
@@ -448,6 +450,7 @@ export async function runCopilotTurn({
   tenantName,
   messages,
   agentName,
+  agentId = null,
 }) {
   if (!tenantId) throw new Error("Resolved tenant ID is required");
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -520,6 +523,7 @@ export async function runCopilotTurn({
           input: toolUse.input || {},
           tenantId,
           agentName,
+          agentId,
           messages,
           dailyCap,
         });

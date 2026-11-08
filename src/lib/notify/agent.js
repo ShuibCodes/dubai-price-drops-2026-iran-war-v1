@@ -1,5 +1,6 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { maskPhone, phoneToWaId } from "@/lib/leads/normalize";
+import { sendIMessageText } from "@/lib/imessage/send";
 
 const GRAPH_VERSION = process.env.META_GRAPH_VERSION || "v25.0";
 
@@ -9,9 +10,9 @@ function truncate(text, max = 300) {
   return `${value.slice(0, max - 1)}…`;
 }
 
-function composeAgentMessage(call, lead, qualification) {
-  const leadName = lead.push_name || "Lead";
-  const phone = lead.wa_id ? `+${lead.wa_id}` : "unknown";
+export function composeAgentMessage(call, lead, qualification) {
+  const leadName = lead?.push_name || "Lead";
+  const phone = lead?.wa_id ? `+${lead.wa_id}` : "unknown";
   const outcome = qualification?.outcome || "unknown";
   const intent = qualification?.intent || "unknown";
   const budget = qualification?.budget_aed || "not stated";
@@ -21,7 +22,7 @@ function composeAgentMessage(call, lead, qualification) {
       : "not stated";
   const timeline = qualification?.timeline || "not stated";
   const callback = qualification?.callback_time || "not requested";
-  const summary = truncate(call.summary, 300);
+  const summary = truncate(call?.summary, 300);
 
   return (
     `AgentZero call summary — ${leadName} (${phone}): ${outcome}. ` +
@@ -53,12 +54,87 @@ async function sendWhatsAppText({ phoneNumberId, businessToken, toWaId, body }) 
   return result;
 }
 
-export async function sendAgentSummary(call, lead, qualification, tenant = null) {
+export async function sendAgentSummary(
+  call,
+  lead,
+  qualification,
+  tenant = null,
+  { supabase = null, sendIMessage = sendIMessageText } = {}
+) {
   const outcome = qualification?.outcome;
-  if (!["qualified", "callback"].includes(outcome)) return { sent: false, reason: "outcome_not_notifiable" };
-  if (!lead?.assigned_agent_phone) return { sent: false, reason: "no_agent_phone" };
+  if (!["qualified", "callback"].includes(outcome)) {
+    return { sent: false, reason: "outcome_not_notifiable" };
+  }
+  if (!lead?.assigned_agent_phone && !lead?.assigned_agent_id) {
+    return { sent: false, reason: "no_agent_phone" };
+  }
 
   const message = composeAgentMessage(call, lead, qualification);
+  const dbClient = supabase || getSupabaseServerClient();
+
+  let agent = null;
+  if (dbClient) {
+    if (lead?.assigned_agent_id) {
+      try {
+        const { data } = await dbClient
+          .from("agents")
+          .select("id, name, wa_id, imessage_address, preferred_channel, tenant_id")
+          .eq("id", lead.assigned_agent_id)
+          .maybeSingle();
+        if (data) agent = data;
+      } catch {
+        // ignore lookup error
+      }
+    }
+    if (!agent && lead?.assigned_agent_phone) {
+      const waId = phoneToWaId(lead.assigned_agent_phone);
+      if (waId) {
+        try {
+          const { data } = await dbClient
+            .from("agents")
+            .select("id, name, wa_id, imessage_address, preferred_channel, tenant_id")
+            .eq("wa_id", waId)
+            .maybeSingle();
+          if (data) agent = data;
+        } catch {
+          // ignore lookup error
+        }
+      }
+    }
+  }
+
+  // Channel: iMessage for agents with preferred_channel === 'imessage'
+  if (agent?.preferred_channel === "imessage") {
+    const rawAddress =
+      agent.imessage_address ||
+      (agent.wa_id
+        ? `+${agent.wa_id}`
+        : lead.assigned_agent_phone?.startsWith("+")
+          ? lead.assigned_agent_phone
+          : `+${phoneToWaId(lead.assigned_agent_phone)}`);
+    const toIMessage = String(rawAddress || "").trim();
+    if (!toIMessage || toIMessage === "+") {
+      return { sent: false, reason: "no_agent_imessage_address" };
+    }
+
+    try {
+      const result = await sendIMessage({
+        to: toIMessage,
+        body: message,
+      });
+      console.log(
+        `[notify/agent] sent iMessage to ${maskPhone(toIMessage)} for call ${call?.vapi_call_id}`
+      );
+      return { sent: true, via: "imessage", result };
+    } catch (error) {
+      console.error(`[notify/agent] iMessage send failed: ${error.message}`);
+      return { sent: false, reason: error.message, message, via: "imessage" };
+    }
+  }
+
+  // Default / WhatsApp Channel: preserved exactly as-is
+  if (!lead?.assigned_agent_phone) return { sent: false, reason: "no_agent_phone" };
+
   const agentWaId = phoneToWaId(lead.assigned_agent_phone);
   if (!agentWaId) {
     console.log(`[notify/agent] invalid agent phone for lead ${lead.id}`);
@@ -66,16 +142,13 @@ export async function sendAgentSummary(call, lead, qualification, tenant = null)
   }
 
   let resolvedTenant = tenant;
-  if (!resolvedTenant && call.tenant_id) {
-    const supabase = getSupabaseServerClient();
-    if (supabase) {
-      const { data } = await supabase
-        .from("tenants")
-        .select("id, phone_number_id, business_token")
-        .eq("id", call.tenant_id)
-        .maybeSingle();
-      resolvedTenant = data;
-    }
+  if (!resolvedTenant && call?.tenant_id && dbClient) {
+    const { data } = await dbClient
+      .from("tenants")
+      .select("id, phone_number_id, business_token")
+      .eq("id", call.tenant_id)
+      .maybeSingle();
+    resolvedTenant = data;
   }
 
   if (!resolvedTenant?.phone_number_id || !resolvedTenant?.business_token) {
@@ -92,8 +165,8 @@ export async function sendAgentSummary(call, lead, qualification, tenant = null)
       toWaId: agentWaId,
       body: message,
     });
-    console.log(`[notify/agent] sent to ${maskPhone(lead.assigned_agent_phone)} for call ${call.vapi_call_id}`);
-    return { sent: true };
+    console.log(`[notify/agent] sent to ${maskPhone(lead.assigned_agent_phone)} for call ${call?.vapi_call_id}`);
+    return { sent: true, via: "whatsapp" };
   } catch (error) {
     console.error(`[notify/agent] send failed: ${error.message}`);
     return { sent: false, reason: error.message, message };

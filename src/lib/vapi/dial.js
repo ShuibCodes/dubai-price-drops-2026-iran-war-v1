@@ -4,6 +4,12 @@ import {
   DEFAULT_FIRST_MESSAGE,
   VOICE_ALLOWLIST,
 } from "../scripts/schema.js";
+import {
+  calendarToolsForAssistant,
+  mergeAssistantModelTools,
+  mergeServerMessages,
+  preservedToolIds,
+} from "./assistant-calendar.js";
 
 /** Vapi rejects assistant names longer than this (`name must be shorter than or equal to 40 characters`). */
 export const VAPI_ASSISTANT_NAME_MAX = 40;
@@ -154,7 +160,7 @@ function platformAppOrigin() {
   );
 }
 
-function getAssistantServerUrl() {
+export function getAssistantServerUrl() {
   const explicit = String(process.env.VAPI_SERVER_URL || "").trim();
   const origin = String(
     process.env.APP_URL ||
@@ -171,6 +177,21 @@ function getAssistantServerUrl() {
   const trimmed = raw.replace(/\/$/, "");
   if (trimmed.includes("/api/vapi/webhook")) return trimmed;
   return `${trimmed}/api/vapi/webhook`;
+}
+
+function calendarToolsOnModel() {
+  try {
+    return calendarToolsForAssistant(getAssistantServerUrl());
+  } catch (err) {
+    // P2: Surface missing server URL — an empty serverUrl means Vapi will
+    // silently drop calendar tool calls without any error on this side.
+    console.warn(
+      "[vapi/dial] calendarToolsOnModel: server URL is not configured —",
+      err?.message,
+      "— calendar tools will have no webhook endpoint. Set VAPI_SERVER_URL or APP_URL."
+    );
+    return calendarToolsForAssistant("");
+  }
 }
 
 function resolveVoice(voiceId) {
@@ -198,6 +219,7 @@ export function buildVapiAssistantWriteBody({
   prompt,
   voiceId,
   firstMessage,
+  existingAssistant = null,
 }) {
   const displayName = vapiAssistantName(name);
   const systemPrompt = String(prompt || "");
@@ -211,11 +233,23 @@ export function buildVapiAssistantWriteBody({
   ).trim();
   if (!spokenFirst) throw new Error("Assistant firstMessage is required");
 
+  const serverUrl = getAssistantServerUrl();
+  const tools = mergeAssistantModelTools(
+    existingAssistant?.model?.tools || existingAssistant?.tools,
+    calendarToolsForAssistant(serverUrl)
+  );
+  const toolIds = preservedToolIds(existingAssistant);
+  const serverMessages = mergeServerMessages(existingAssistant?.serverMessages, {
+    includeDefaults: !existingAssistant,
+  });
+
   return {
     name: displayName,
     model: {
       ...VAPI_ASSISTANT_LOCK.model,
       messages: [{ role: "system", content: systemPrompt }],
+      tools,
+      ...(toolIds.length ? { toolIds } : {}),
     },
     voice: resolveVoice(voiceId),
     transcriber: VAPI_ASSISTANT_LOCK.transcriber,
@@ -228,10 +262,33 @@ export function buildVapiAssistantWriteBody({
     firstMessage: spokenFirst,
     firstMessageMode: VAPI_ASSISTANT_LOCK.firstMessageMode,
     server: {
-      url: getAssistantServerUrl(),
+      url: serverUrl,
       timeoutSeconds: 20,
     },
+    serverMessages,
   };
+}
+
+export async function fetchVapiAssistant(assistantId) {
+  const { apiKey, baseUrl } = getVapiApi();
+  const id = String(assistantId || "").trim();
+  if (!id) return null;
+  const response = await fetch(
+    `${String(baseUrl).replace(/\/$/, "")}/assistant/${encodeURIComponent(id)}`,
+    { headers: getAuthHeaders(apiKey) }
+  );
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(
+      `Vapi assistant GET failed (${response.status}): ${
+        body?.message || JSON.stringify(body) || "Unknown error"
+      }`
+    );
+    error.status = response.status;
+    error.body = body;
+    throw error;
+  }
+  return body;
 }
 
 /**
@@ -254,11 +311,17 @@ export async function upsertVapiAssistant({
     ? `${String(baseUrl).replace(/\/$/, "")}/assistant/${encodeURIComponent(existingId)}`
     : `${String(baseUrl).replace(/\/$/, "")}/assistant`;
 
+  let existingAssistant = null;
+  if (existingId) {
+    existingAssistant = await fetchVapiAssistant(existingId);
+  }
+
   const payload = buildVapiAssistantWriteBody({
     name,
     prompt,
     voiceId,
     firstMessage,
+    existingAssistant,
   });
 
   const response = await fetch(url, {
@@ -288,7 +351,7 @@ export async function upsertVapiAssistant({
   return id;
 }
 
-function buildAssistantOverrides({
+export function buildAssistantOverrides({
   name,
   variableValues = {},
   prompt,
@@ -312,6 +375,8 @@ function buildAssistantOverrides({
     assistantOverrides.model = {
       ...VAPI_ASSISTANT_LOCK.model,
       messages: [{ role: "system", content: systemPrompt }],
+      // Prompt override replaces model; keep published calendar tools on the call.
+      tools: calendarToolsOnModel(),
     };
   }
   if (voiceId) {
@@ -426,6 +491,7 @@ export async function startWebCall({
   const payload = {
     assistantId: resolvedAssistantId,
     assistantOverrides,
+    metadata: { ...metadata },
   };
 
   // /call is phone-only on this org (requires phoneNumberId). /call/web is

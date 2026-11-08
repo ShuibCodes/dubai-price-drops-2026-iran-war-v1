@@ -45,6 +45,7 @@ export async function POST(request, { params }) {
       tenantName: tenant.name || tenant.slug,
       messages: body.messages,
       agentName: String(body.agentName || "").trim() || "Team member",
+      agentId: session.agentId,
     });
 
     return Response.json({ message: result.text });

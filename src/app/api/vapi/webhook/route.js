@@ -18,6 +18,7 @@ import {
   markLeadOptedOut,
   qualificationLooksLikeOptOut,
 } from "@/lib/console/opt-out";
+import { handleVapiCalendarToolCalls } from "@/lib/calendar/tools";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { verifyConfiguredWebhookSecret } from "@/lib/security/webhook-secret";
 import { resolveCompletedCallContext } from "@/lib/vapi/webhook-leads";
@@ -27,10 +28,20 @@ import {
 } from "@/lib/leads/inbound-sources";
 import { agentZeroWhatsAppFromAddress } from "@/lib/jarvis/self-chat";
 import {
+  extractVapiToolCalls,
+  isVapiToolCallsMessage,
+  vapiToolCallsResponse,
+  vapiToolError,
+} from "@/lib/vapi/tool-calls";
+import {
   sendWhatsAppText,
   truncateWhatsAppBody,
   twilioRestConfigured,
 } from "@/lib/whatsapp/twilio-send";
+import {
+  sendIMessageText,
+  sendblueConfigured,
+} from "@/lib/imessage/send";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -207,25 +218,55 @@ async function processRelayCallEnd(details) {
     console.error("[vapi/webhook] relay→calls upsert failed:", error.message);
   }
 
-  if (twilioRestConfigured() && relay.sender_phone) {
-    const from = agentZeroWhatsAppFromAddress();
-    const to = `whatsapp:+${String(relay.sender_phone).replace(/\D/g, "")}`;
-    if (from && to) {
-      const summaryLine =
-        details.summary ||
-        details.transcript ||
-        "Call ended with no summary yet — ask me again in a minute if you need the recap.";
-      const body = truncateWhatsAppBody(
-        [
-          `Relay to ${relay.customer_name} (${relay.phone_e164}) finished.`,
-          `Task: "${relay.task}"`,
-          `Summary: ${summaryLine}`.slice(0, 900),
-        ].join("\n")
-      );
+  if (relay.sender_phone) {
+    const summaryLine =
+      details.summary ||
+      details.transcript ||
+      "Call ended with no summary yet — ask me again in a minute if you need the recap.";
+    const summaryText = [
+      `Relay to ${relay.customer_name} (${relay.phone_e164}) finished.`,
+      `Task: "${relay.task}"`,
+      `Summary: ${summaryLine}`.slice(0, 900),
+    ].join("\n");
+
+    const supabase = getSupabaseServerClient();
+    let agent = null;
+    if (supabase) {
       try {
-        await sendWhatsAppText({ to, from, body });
+        const cleanDigits = String(relay.sender_phone).replace(/\D/g, "");
+        const { data } = await supabase
+          .from("agents")
+          .select("id, name, wa_id, imessage_address, preferred_channel")
+          .or(`wa_id.eq.${cleanDigits},imessage_address.eq.${relay.sender_phone}`)
+          .maybeSingle();
+        if (data) agent = data;
+      } catch {
+        // ignore lookup error
+      }
+    }
+
+    if (agent?.preferred_channel === "imessage" && sendblueConfigured()) {
+      const to =
+        agent.imessage_address ||
+        (relay.sender_phone.startsWith("+")
+          ? relay.sender_phone
+          : `+${String(relay.sender_phone).replace(/\D/g, "")}`);
+      try {
+        await sendIMessageText({ to, body: summaryText });
+        console.log(`[vapi/webhook] relay iMessage summary sent to ${to}`);
       } catch (error) {
-        console.error("[vapi/webhook] relay WhatsApp summary failed:", error.message);
+        console.error("[vapi/webhook] relay iMessage summary failed:", error.message);
+      }
+    } else if (twilioRestConfigured()) {
+      const from = agentZeroWhatsAppFromAddress();
+      const to = `whatsapp:+${String(relay.sender_phone).replace(/\D/g, "")}`;
+      if (from && to) {
+        const body = truncateWhatsAppBody(summaryText);
+        try {
+          await sendWhatsAppText({ to, from, body });
+        } catch (error) {
+          console.error("[vapi/webhook] relay WhatsApp summary failed:", error.message);
+        }
       }
     }
   }
@@ -363,6 +404,30 @@ export async function POST(request) {
     }
 
     const payload = await request.json().catch(() => ({}));
+
+    // Official Vapi tool-calls must respond { results: [{ toolCallId, result|error }] }
+    // HTTP 200. Do not fall through to the persist filter — that returns the wrong shape.
+    if (isVapiToolCallsMessage(payload)) {
+      try {
+        const results = await handleVapiCalendarToolCalls(payload, {
+          supabase: getSupabaseServerClient(),
+        });
+        return Response.json(vapiToolCallsResponse(results));
+      } catch (toolError) {
+        console.error("[vapi/webhook] tool-calls error:", toolError.message);
+        const calls = extractVapiToolCalls(payload);
+        return Response.json(
+          vapiToolCallsResponse(
+            calls.length
+              ? calls.map((call) =>
+                  vapiToolError(call.id, "Calendar is unavailable right now.")
+                )
+              : []
+          )
+        );
+      }
+    }
+
     const eventType =
       payload?.message?.type ||
       payload?.type ||

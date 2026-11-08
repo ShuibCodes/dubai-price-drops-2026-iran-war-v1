@@ -28,6 +28,14 @@ import {
 const JARVIS_LEAD_NAME_SELECT =
   "push_name, wa_id, inferred_name, inferred_name_confidence, inferred_name_at";
 
+export function inferMessageChannel(message) {
+  if (message?.channel) return String(message.channel).toLowerCase();
+  const service = String(message?.raw?.service || "").toLowerCase();
+  if (service === "imessage" || service === "rcs") return "imessage";
+  if (message?.jarvis_leads?.source === "imessage") return "imessage";
+  return "whatsapp";
+}
+
 function db() {
   const supabase = getSupabaseServerClient();
   if (!supabase) throw new Error("Supabase is not configured");
@@ -138,6 +146,7 @@ export async function getJarvisLatestMessages(tenantId, agentId, limit = 10) {
     return {
       leadId: message.jarvis_lead_id,
       leadName: formatted.displayName,
+      channel: inferMessageChannel(message),
       nameSource: formatted.nameSource,
       nameConfidence: formatted.nameConfidence,
       phone: fullPhone(lead.wa_id || message.jarvis_leads?.wa_id),
@@ -774,13 +783,14 @@ export async function setJarvisLeadName(
   };
 }
 
-async function dialJarvisLeadNow({ supabase, tenant, lead, source }) {
+async function dialJarvisLeadNow({ supabase, tenant, lead, source, agentId = null }) {
   return dialLeadNow({
     supabase,
     tenant,
     lead,
     source,
     jarvisLead: true,
+    agentId,
   });
 }
 
@@ -815,7 +825,7 @@ export async function startJarvisTargetCall(
       scheduled_for: scheduledFor,
       processed: false,
       source: "jarvis-target-call",
-      requested_by: requestedBy || null,
+      requested_by: agentId || requestedBy || null,
       script_id: pointer.script_id,
       script_version_id: pointer.script_version_id,
     });
@@ -828,6 +838,7 @@ export async function startJarvisTargetCall(
     tenant,
     lead,
     source: "jarvis-target-call",
+    agentId,
   });
   return { ok: true, callId: result.callId };
 }
