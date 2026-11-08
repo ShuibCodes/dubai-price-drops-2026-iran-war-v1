@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const PROFILE_COLS =
-  "id, name, team, areas, ticket_min, ticket_max, languages, brief_enabled, brief_time, tz, onboarded_at, wa_id";
+  "id, name, team, areas, ticket_min, ticket_max, languages, brief_enabled, brief_time, tz, onboarded_at, wa_id, lead_sources, monthly_lead_volume, callback_speed, quiz_completed_at";
 
 function parseList(value) {
   if (Array.isArray(value)) {
@@ -61,6 +61,12 @@ export async function GET(request) {
       tenant: {
         display_phone: tenant?.display_phone || null,
         whatsapp_connected: whatsappHealthy(tenant),
+        billing_plan: tenant?.billing_plan || null,
+        subscription_status: tenant?.subscription_status || null,
+        trial_ends_at: tenant?.trial_ends_at || null,
+        current_period_end: tenant?.current_period_end || null,
+        cancel_at_period_end: Boolean(tenant?.cancel_at_period_end),
+        dedicated_account_manager: Boolean(tenant?.dedicated_account_manager),
       },
       inherited_docs: (docs || []).map((doc) => ({
         ...doc,
@@ -93,6 +99,16 @@ export async function PATCH(request) {
     }
     if (body.tz != null) patch.tz = String(body.tz).trim() || "Asia/Dubai";
     if (body.onboarded === true) patch.onboarded_at = new Date().toISOString();
+    if (body.lead_sources != null) patch.lead_sources = parseList(body.lead_sources);
+    if (body.monthly_lead_volume != null) {
+      patch.monthly_lead_volume = String(body.monthly_lead_volume).trim() || null;
+    }
+    if (body.callback_speed != null) {
+      patch.callback_speed = String(body.callback_speed).trim() || null;
+    }
+    if (body.quiz_completed === true) {
+      patch.quiz_completed_at = new Date().toISOString();
+    }
 
     if (body.wa_id !== undefined || body.phone !== undefined) {
       const rawPhone = body.wa_id !== undefined ? body.wa_id : body.phone;

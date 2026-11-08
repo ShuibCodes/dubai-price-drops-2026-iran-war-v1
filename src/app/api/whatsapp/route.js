@@ -1,6 +1,7 @@
 import twilio from "twilio";
 import { waitUntil } from "@vercel/functions";
-import { defaultKbState, runKbTurn } from "@/lib/kb/engine";
+import { defaultKbState } from "@/lib/kb/engine";
+import { handleLeadMagnetInbound } from "@/lib/proposal/whatsapp-lead-magnet";
 import { runJarvisTurn } from "@/lib/jarvis/engine";
 import { handleContactConfirmationMessage } from "@/lib/jarvis/contacts";
 import { getPendingContact } from "@/lib/jarvis/pending-contact";
@@ -204,6 +205,32 @@ export async function POST(request) {
       );
     }
 
+    // Check One-Pager PDF flow first (handles all non-account messages, and intercepts
+    // registered agents when they send a Property Finder / Bayut link or reply with the prospect's name).
+    const leadMagnet = await handleLeadMagnetInbound({
+      from,
+      to,
+      body,
+      callerWaId: callerWaId || null,
+      sender,
+    });
+
+    if (leadMagnet.handled) {
+      if (leadMagnet.backgroundPromise) {
+        waitUntil(leadMagnet.backgroundPromise);
+      }
+      const replyText = truncateWhatsAppBody(leadMagnet.replyText);
+      const nextState = {
+        ...state,
+        messages: [...nextMessages, { role: "assistant", content: replyText }].slice(
+          -30
+        ),
+      };
+      setSenderState(from, nextState);
+      if (messageSid) markProcessedMessageSid(from, messageSid);
+      return xmlResponse(makeTwiml(replyText));
+    }
+
     if (useJarvis && twilioRestConfigured() && to) {
       // Known Jarvis duplicates are decided by the durable MessageSid row.
       // Marking the sid here would drop a same-process retry of an unsent turn.
@@ -227,41 +254,19 @@ export async function POST(request) {
     }
 
     let replyText = "";
-    let nextState = state;
-
-    if (useJarvis) {
-      const outcome = await replyWithDurableHistory({
-        from,
-        to,
-        sender,
-        userText: body,
-        messageSid,
-        state,
-        deliver: async (text) => {
-          replyText = text;
-        },
-      });
-      if (!replyText && outcome?.text && !outcome.duplicate && !outcome.abandoned) {
-        replyText = outcome.text;
-      }
-    } else {
-      const result = await runKbTurn({
-        messages: nextMessages,
-        state,
-        callerWaId: callerWaId || null,
-      });
-      replyText = truncateWhatsAppBody(result.text);
-      nextState = {
-        ...(result.nextState ?? state),
-        messages: [...nextMessages, { role: "assistant", content: replyText }].slice(
-          -30
-        ),
-      };
-    }
-
-    if (!useJarvis) {
-      setSenderState(from, nextState);
-      if (messageSid) markProcessedMessageSid(from, messageSid);
+    const outcome = await replyWithDurableHistory({
+      from,
+      to,
+      sender,
+      userText: body,
+      messageSid,
+      state,
+      deliver: async (text) => {
+        replyText = text;
+      },
+    });
+    if (!replyText && outcome?.text && !outcome.duplicate && !outcome.abandoned) {
+      replyText = outcome.text;
     }
 
     return xmlResponse(makeTwiml(replyText));

@@ -7,7 +7,12 @@ import {
   socialAuthErrorCode,
   verifiedSocialIdentity,
 } from "@/lib/copilot/social-auth";
-import { oauthLoginRedirect, oauthOrigin } from "@/lib/copilot/oauth-route";
+import {
+  OAUTH_NEXT_COOKIE,
+  OAUTH_PROVIDER_COOKIE,
+  oauthLoginRedirect,
+  oauthOrigin,
+} from "@/lib/copilot/oauth-route";
 import {
   COPILOT_SESSION_COOKIE,
   copilotSessionCookieOptions,
@@ -28,9 +33,14 @@ export async function GET(request) {
   }
 
   const params = request.nextUrl.searchParams;
+  const cookieNext = request.cookies.get(OAUTH_NEXT_COOKIE)?.value || null;
+  const cookieProvider = request.cookies.get(OAUTH_PROVIDER_COOKIE)?.value || null;
+  const rawNext = params.get("next") || cookieNext;
+  const expectedProvider = params.get("provider") || cookieProvider;
+
   const code = params.get("code");
   if (params.get("error") || !code) {
-    return oauthLoginRedirect(request, "social_failed");
+    return oauthLoginRedirect(request, "social_failed", rawNext);
   }
 
   const { supabase, applyTo } = createRouteAuthClient(request);
@@ -38,7 +48,9 @@ export async function GET(request) {
   // Any rejection past this point must drop the half-built session, otherwise an
   // rejected social account keeps a valid Supabase cookie.
   async function deny(code) {
-    const response = oauthLoginRedirect(request, code);
+    const response = oauthLoginRedirect(request, code, rawNext);
+    response.cookies.set(OAUTH_NEXT_COOKIE, "", { path: "/", maxAge: 0 });
+    response.cookies.set(OAUTH_PROVIDER_COOKIE, "", { path: "/", maxAge: 0 });
     try {
       const { error } = await supabase.auth.signOut();
       if (!error) return applyTo(response);
@@ -67,7 +79,7 @@ export async function GET(request) {
       return deny("social_failed");
     }
 
-    const identity = verifiedSocialIdentity(user, params.get("provider"));
+    const identity = verifiedSocialIdentity(user, expectedProvider);
     if (!identity) {
       return deny("social_unverified");
     }
@@ -113,12 +125,15 @@ export async function GET(request) {
       });
     }
 
-    // A newly-created owner always enters setup. Client-controlled next is only
-    // considered for identities that already belonged to an AgentZero agent.
-    const target = agent.was_created
-      ? `/copilot/${encodeURIComponent(tenantSlug)}/join`
-      : safeNextPath(params.get("next"), tenantSlug);
+    const target =
+      rawNext === "/get-started"
+        ? "/get-started"
+        : agent.was_created
+          ? `/copilot/${encodeURIComponent(tenantSlug)}/join`
+          : safeNextPath(rawNext, tenantSlug);
     const response = NextResponse.redirect(new URL(target, oauthOrigin(request)));
+    response.cookies.set(OAUTH_NEXT_COOKIE, "", { path: "/", maxAge: 0 });
+    response.cookies.set(OAUTH_PROVIDER_COOKIE, "", { path: "/", maxAge: 0 });
 
     // The Supabase session now owns this browser's identity; a leftover legacy
     // cookie for a different agent would only sow confusion after logout.

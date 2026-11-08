@@ -9,6 +9,8 @@ export {
 } from "./format";
 
 const TENANT_COLS =
+  "id, slug, name, waba_id, phone_number_id, business_token, display_phone, daily_dial_cap, stripe_customer_id, stripe_subscription_id, stripe_price_id, billing_plan, subscription_status, trial_started_at, trial_ends_at, current_period_end, cancel_at_period_end, canceled_at, dedicated_account_manager";
+const TENANT_COLS_NO_BILLING =
   "id, slug, name, waba_id, phone_number_id, business_token, display_phone, daily_dial_cap";
 const TENANT_COLS_NO_CAP =
   "id, slug, name, waba_id, phone_number_id, business_token, display_phone";
@@ -28,6 +30,14 @@ export async function loadConsoleTenant(supabase, tenantId) {
   if (!first.error) return first.data;
 
   const message = String(first.error.message || "");
+  if (/stripe_|billing_plan|subscription_status|trial_|current_period_end|cancel_at_period_end|canceled_at|dedicated_account_manager/i.test(message)) {
+    const withoutBilling = await supabase
+      .from("tenants")
+      .select(TENANT_COLS_NO_BILLING)
+      .eq("id", tenantId)
+      .maybeSingle();
+    if (!withoutBilling.error) return withoutBilling.data;
+  }
   if (/daily_dial_cap/i.test(message)) {
     const withoutCap = await supabase
       .from("tenants")

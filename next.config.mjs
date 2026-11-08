@@ -1,5 +1,15 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  experimental: {
+    serverComponentsExternalPackages: [
+      "@sparticuz/chromium",
+      "playwright",
+      "sharp",
+    ],
+    outputFileTracingIncludes: {
+      "/api/whatsapp": ["./node_modules/@sparticuz/chromium/bin/**/*"],
+    },
+  },
   async redirects() {
     return [
       {

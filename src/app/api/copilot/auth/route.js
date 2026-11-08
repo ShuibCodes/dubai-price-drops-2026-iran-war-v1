@@ -18,12 +18,22 @@ export const runtime = "nodejs";
 async function findAgentByUsername(supabase, username) {
   const name = String(username || "").trim();
   if (!name) return null;
-  const { data, error } = await supabase
+  const escaped = name.replace(/[%_\\]/g, "\\$&");
+  let { data, error } = await supabase
     .from("agents")
-    .select("id, tenant_id, username, role, password_hash")
-    .ilike("username", name.replace(/[%_\\]/g, "\\$&"))
+    .select("id, tenant_id, username, email, role, password_hash")
+    .ilike("username", escaped)
     .maybeSingle();
   if (error) throw new Error(`Agent lookup failed: ${error.message}`);
+  if (!data && name.includes("@")) {
+    const byEmail = await supabase
+      .from("agents")
+      .select("id, tenant_id, username, email, role, password_hash")
+      .ilike("email", escaped)
+      .maybeSingle();
+    if (byEmail.error) throw new Error(`Agent lookup failed: ${byEmail.error.message}`);
+    data = byEmail.data;
+  }
   if (!data?.tenant_id) return null;
   const { data: tenant, error: tenantError } = await supabase
     .from("tenants")
