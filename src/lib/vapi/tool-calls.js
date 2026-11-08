@@ -81,6 +81,11 @@ export function extractVapiToolCallContext(payload) {
   const call = message.call || payload?.call || {};
   return {
     callId: String(call.id || message.callId || payload?.callId || "").trim() || null,
+    customerPhone:
+      call.customer?.number ||
+      message.customer?.number ||
+      payload?.customer?.number ||
+      null,
     metadata:
       call.metadata && typeof call.metadata === "object" ? call.metadata : {},
   };

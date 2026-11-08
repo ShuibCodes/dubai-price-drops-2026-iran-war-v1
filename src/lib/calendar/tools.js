@@ -29,6 +29,7 @@ import {
   vapiToolError,
   vapiToolSuccess,
 } from "../vapi/tool-calls.js";
+import { notifyAgentAppointmentBooked } from "./reminders.js";
 
 export const CALENDAR_TOOL_NAMES = new Set([
   "check_availability",
@@ -483,7 +484,7 @@ async function handleBookAppointment({
   ]);
 
   try {
-    await insertAppointment(supabase, {
+    const savedAppointment = await insertAppointment(supabase, {
       tenant_id: context.tenantId,
       agent_id: context.agentId,
       calendar_connection_id: connection.id,
@@ -502,15 +503,32 @@ async function handleBookAppointment({
         googleStatus: event.status || null,
       },
     });
+
+    // Proactively notify agent on iMessage immediately
+    try {
+      await notifyAgentAppointmentBooked({
+        supabase,
+        appointment: savedAppointment,
+        agentId: context.agentId,
+        leadId,
+        jarvisLeadId,
+        customerPhone: context.customerPhone,
+      });
+    } catch (notifyErr) {
+      console.error("[calendar/tools] instant booking notification failed:", notifyErr.message);
+    }
   } catch (error) {
-    console.error("[calendar/tools] appointment persist failed:", error.message);
-    const compensation = await deleteCreatedEvent({
-      connection,
-      eventId: event.eventId,
-      google,
-      supabase,
-    });
-    throw persistFailureError(compensation.deleted);
+    if (error?.message?.includes("Appointment save failed")) {
+      console.error("[calendar/tools] appointment persist failed:", error.message);
+      const compensation = await deleteCreatedEvent({
+        connection,
+        eventId: event.eventId,
+        google,
+        supabase,
+      });
+      throw persistFailureError(compensation.deleted);
+    }
+    throw error;
   }
 
   return assertNoSecrets(
@@ -555,7 +573,10 @@ export async function executeCalendarTool({
         ? await handleBookAppointment({
             supabase,
             connection: owned.connection,
-            context: trusted.data,
+            context: {
+              ...trusted.data,
+              customerPhone: context?.customerPhone,
+            },
             args: args.data,
             vapiCallId: context?.callId || null,
             google,
