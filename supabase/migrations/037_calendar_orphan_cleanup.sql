@@ -1,4 +1,4 @@
--- Migration 034: Automated orphan Google Calendar event cleanup.
+-- Migration 037: Automated orphan Google Calendar event cleanup.
 --
 -- Problem: When both insertAppointment AND the compensating
 -- deleteGoogleCalendarEvent fail, an orphan event remains on the

@@ -1,4 +1,4 @@
--- Migration 035: iMessage / Sendblue support for agent identity and preferences.
+-- Migration 038: iMessage / Sendblue support for agent identity and preferences.
 --
 -- Enables agents to chat with Jarvis over iMessage as well as WhatsApp.
 -- Agents can configure their iMessage address (phone number or Apple ID email).

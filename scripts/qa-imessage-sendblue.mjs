@@ -50,7 +50,7 @@ console.log("\nIMESSAGE WEBHOOK GET ENDPOINT");
   check("GET reports sendblueConfigured status", typeof body?.sendblueConfigured === "boolean");
 }
 
-console.log("\nIMESSAGE WEBHOOK POST PAYLOAD INGESTION");
+console.log("\nIMESSAGE WEBHOOK POST PAYLOAD INGESTION & SECURITY");
 {
   // 1. Ignored outbound echo
   const outboundReq = new Request("http://localhost/api/imessage/webhook", {
@@ -91,6 +91,69 @@ console.log("\nIMESSAGE WEBHOOK POST PAYLOAD INGESTION");
   const emptyBodyRes = await POST(emptyBodyReq);
   const emptyBodyData = await emptyBodyRes.json();
   check("empty body message is handled cleanly", emptyBodyData?.status === "empty_body");
+
+  // 3. Security: Webhook signing secret verification
+  process.env.SENDBLUE_SIGNING_SECRET = "test-secret-12345";
+  const invalidSigReq = new Request("http://localhost/api/imessage/webhook", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "sb-signing-secret": "wrong-secret",
+    },
+    body: JSON.stringify({
+      is_outbound: false,
+      from_number: "+15551234567",
+      content: "Hello",
+    }),
+  });
+  const invalidSigRes = await POST(invalidSigReq);
+  check("invalid webhook signature is rejected with 401", invalidSigRes.status === 401);
+
+  const validSigReq = new Request("http://localhost/api/imessage/webhook", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "sb-signing-secret": "test-secret-12345",
+    },
+    body: JSON.stringify({
+      is_outbound: false,
+      from_number: "+15551234567",
+      content: "", // empty body so it returns 200 without executing full turn
+    }),
+  });
+  const validSigRes = await POST(validSigReq);
+  check("valid webhook signature is accepted with 200", validSigRes.status === 200);
+  delete process.env.SENDBLUE_SIGNING_SECRET;
+
+  // 4. Replay attack protection
+  const testSid = "msg-handle-replay-test-001";
+  const firstReq = new Request("http://localhost/api/imessage/webhook", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      is_outbound: false,
+      from_number: "+15559998888",
+      content: "",
+      message_handle: testSid,
+    }),
+  });
+  const firstRes = await POST(firstReq);
+  const firstBody = await firstRes.json();
+  check("first message with handle is processed", firstBody?.status === "empty_body");
+
+  const replayReq = new Request("http://localhost/api/imessage/webhook", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      is_outbound: false,
+      from_number: "+15559998888",
+      content: "duplicate text",
+      message_handle: testSid,
+    }),
+  });
+  const replayRes = await POST(replayReq);
+  const replayBody = await replayRes.json();
+  check("replayed message handle is dropped with duplicate status", replayBody?.status === "duplicate");
 }
 
 console.log("\nSUMMARY");
@@ -100,4 +163,3 @@ if (failures === 0) {
   console.error(`${failures} check(s) failed.\n`);
   process.exit(1);
 }
-

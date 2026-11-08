@@ -86,6 +86,7 @@ export async function sendIMessageText({ to, from, body }) {
       "sb-api-secret-key": process.env.SENDBLUE_API_SECRET_KEY,
     },
     body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(15000),
   });
 
   if (!response.ok) {
@@ -95,4 +96,3 @@ export async function sendIMessageText({ to, from, body }) {
 
   return response.json();
 }
-

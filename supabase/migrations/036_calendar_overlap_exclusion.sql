@@ -1,4 +1,4 @@
--- Migration 033: Replace simple unique index with GiST range exclusion constraint.
+-- Migration 036: Replace simple unique index with GiST range exclusion constraint.
 --
 -- Problem: The B2 unique index on (agent_id, start_at) only prevents two
 -- bookings with the EXACT same start time. Overlapping-but-offset bookings
