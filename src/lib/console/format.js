@@ -55,3 +55,16 @@ export function runIsInFlight(run) {
   const status = String(run?.status || "");
   return status === "queued" || status === "running";
 }
+
+/** `counts.queued` is the run's original size, so derive what is left from it. */
+export function runProgressLabel(run) {
+  const counts = run?.counts || {};
+  const total = Math.max(0, Number(counts.queued) || 0);
+  const dialed = Math.max(0, Number(counts.dialed) || 0);
+  const failed = Math.max(0, Number(counts.failed) || 0);
+  const left = Math.max(0, total - dialed - failed);
+  const calls = `${dialed} ${dialed === 1 ? "call" : "calls"}`;
+  if (dialed === 0) return `${total} queued`;
+  if (left === 0 || !runIsInFlight(run)) return calls;
+  return `${calls} · ${left} queued`;
+}

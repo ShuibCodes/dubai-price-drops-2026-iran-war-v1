@@ -8,6 +8,7 @@ import { consoleBase, consoleJson } from "@/lib/console/client";
 import {
   runIsInFlight,
   runIsScheduled,
+  runProgressLabel,
   tenantWhatsAppLink,
 } from "@/lib/console/format";
 
@@ -34,6 +35,8 @@ function runMeta(run, tz) {
 export function ConsoleRuns({ tenant }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
+  const [pausing, setPausing] = useState(false);
+  const [pausedOverride, setPausedOverride] = useState(null);
   const base = consoleBase(tenant);
 
   useEffect(() => {
@@ -43,6 +46,25 @@ export function ConsoleRuns({ tenant }) {
   }, [base]);
 
   const tz = data?.agent?.tz || "Asia/Dubai";
+  const paused = pausedOverride ?? Boolean(data?.tenant?.outbound_paused);
+
+  async function setCallsPaused(next) {
+    setPausing(true);
+    setError("");
+    try {
+      const body = await consoleJson(base, "/api/console/calls/pause", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        fallback: next ? "Could not pause calls." : "Could not resume calls.",
+        body: JSON.stringify({ paused: next }),
+      });
+      setPausedOverride(Boolean(body.paused));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setPausing(false);
+    }
+  }
   const waLink = tenantWhatsAppLink({
     connected: Boolean(data?.tenant?.whatsapp_healthy),
     displayPhone: data?.tenant?.display_phone,
@@ -57,7 +79,7 @@ export function ConsoleRuns({ tenant }) {
         </Strip>
       ) : null}
 
-      <div className="mb-4.5 flex items-center justify-between gap-4">
+      <div className="mb-4.5 flex flex-wrap items-center justify-between gap-4">
         <div>
           <div className="az-eyebrow">RECENT RUNS</div>
           {Number(data?.tenant?.daily_dial_cap) > 0 &&
@@ -67,10 +89,29 @@ export function ConsoleRuns({ tenant }) {
             </p>
           ) : null}
         </div>
-        <Link className="az-btn-white" href={`${base}/runs/new`}>
-          New call run
-        </Link>
+        <div className="flex shrink-0 items-center gap-3">
+          <button
+            className={
+              paused
+                ? "az-btn-ghost"
+                : "az-btn border border-transparent bg-markup font-semibold text-white hover:opacity-90"
+            }
+            disabled={pausing}
+            onClick={() => setCallsPaused(!paused)}
+            type="button"
+          >
+            {pausing ? "Saving…" : paused ? "Resume calls" : "Pause calls"}
+          </button>
+          <Link className="az-btn-white" href={`${base}/runs/new`}>
+            New call run
+          </Link>
+        </div>
       </div>
+      {paused ? (
+        <Strip className="mb-4" tone="warn">
+          <span>Calls are paused. Queued numbers stay queued and will not dial.</span>
+        </Strip>
+      ) : null}
       <div className="border-t border-line">
         {data == null ? (
           <>
@@ -101,7 +142,7 @@ export function ConsoleRuns({ tenant }) {
                   {run.counts?.qualified ?? 0} qualified
                 </div>
                 <div className="mt-1 text-[13px] text-faint">
-                  {run.counts?.queued ?? 0} queued
+                  {runProgressLabel(run)}
                 </div>
               </div>
               <span className="text-lg text-ghost">→</span>

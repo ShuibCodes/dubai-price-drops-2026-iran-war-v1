@@ -9,6 +9,7 @@ import { consoleBase, consoleJson } from "@/lib/console/client";
 import {
   runIsInFlight,
   runIsScheduled,
+  runProgressLabel,
   tenantWhatsAppLink,
 } from "@/lib/console/format";
 
@@ -320,7 +321,7 @@ export function ConsoleHome({ tenant }) {
                   {run.counts?.qualified ?? 0} qualified
                 </div>
                 <div className="mt-1 text-[13px] text-faint">
-                  {run.counts?.queued ?? 0} queued
+                  {runProgressLabel(run)}
                 </div>
               </div>
               <span className="text-lg text-ghost">→</span>
