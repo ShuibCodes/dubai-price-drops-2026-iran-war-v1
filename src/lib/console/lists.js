@@ -81,36 +81,88 @@ export async function upsertListContacts(
 
   const listName = normalizeListName(name);
   const rows = Array.isArray(contacts) ? contacts : [];
-  const ids = [];
+  if (!rows.length) {
+    return { name: listName, saved: 0, skipped: 0, leadIds: [] };
+  }
+
+  const now = new Date().toISOString();
   let skipped = 0;
 
+  // Step 1: Normalize phone numbers and collect unique valid contacts in memory
+  const validContacts = [];
+  const allWaIds = new Set();
+
   for (const contact of rows) {
-    const phone = normalizePhone(contact.phone || contact.wa_id);
+    const phone = normalizePhone(contact?.phone || contact?.wa_id);
     const waId = phoneToWaId(phone);
     if (!waId) {
       skipped += 1;
       continue;
     }
-    const now = new Date().toISOString();
-    const pushName = String(contact.name || "").trim() || null;
-    const { data: existing } = await supabase
-      .from("leads")
-      .select("id, opted_out, push_name, assigned_agent_id")
-      .eq("tenant_id", tenantId)
-      .eq("wa_id", waId)
-      .maybeSingle();
-    if (existing?.opted_out) {
+    const pushName = String(contact?.name || "").trim() || null;
+    validContacts.push({ waId, pushName });
+    allWaIds.add(waId);
+  }
+
+  if (!validContacts.length) {
+    return { name: listName, saved: 0, skipped, leadIds: [] };
+  }
+
+  // Step 2: Bulk query existing leads for all waIds in chunks (to stay well within query/URL limits)
+  const existingMap = new Map();
+  const LOOKUP_CHUNK_SIZE = 100;
+  const waIdArray = Array.from(allWaIds);
+  const lookupChunks = [];
+  for (let i = 0; i < waIdArray.length; i += LOOKUP_CHUNK_SIZE) {
+    lookupChunks.push(waIdArray.slice(i, i + LOOKUP_CHUNK_SIZE));
+  }
+
+  await Promise.all(
+    lookupChunks.map(async (chunk) => {
+      const { data, error } = await supabase
+        .from("leads")
+        .select("id, wa_id, opted_out, push_name, assigned_agent_id")
+        .eq("tenant_id", tenantId)
+        .in("wa_id", chunk);
+      if (error) throw new Error(`Lead lookup failed: ${error.message}`);
+      for (const lead of data || []) {
+        existingMap.set(lead.wa_id, lead);
+      }
+    })
+  );
+
+  // Step 3: Classify each contact into insert, update, or skip
+  const toInsert = [];
+  const toUpdate = [];
+  const statusByWaId = new Map(); // waId -> { leadId: string | null, skipped: boolean }
+
+  for (const contact of validContacts) {
+    const { waId, pushName } = contact;
+
+    if (statusByWaId.has(waId)) {
+      // Duplicate entry within this CSV file
       skipped += 1;
       continue;
     }
+
+    const existing = existingMap.get(waId);
+
+    if (existing?.opted_out) {
+      skipped += 1;
+      statusByWaId.set(waId, { leadId: null, skipped: true });
+      continue;
+    }
+
     if (existing) {
       if (
         existing.assigned_agent_id &&
         existing.assigned_agent_id !== ownerId
       ) {
         skipped += 1;
+        statusByWaId.set(waId, { leadId: null, skipped: true });
         continue;
       }
+
       const patch = {
         source: listName,
         push_name: pushName || existing.push_name || null,
@@ -120,17 +172,11 @@ export async function upsertListContacts(
       if (nextOwner && nextOwner !== existing.assigned_agent_id) {
         patch.assigned_agent_id = nextOwner;
       }
-      const { error } = await supabase
-        .from("leads")
-        .update(patch)
-        .eq("id", existing.id);
-      if (error) throw new Error(`Lead update failed: ${error.message}`);
-      ids.push(existing.id);
-      continue;
-    }
-    const { data, error } = await supabase
-      .from("leads")
-      .insert({
+
+      toUpdate.push({ id: existing.id, patch });
+      statusByWaId.set(waId, { leadId: existing.id, skipped: false });
+    } else {
+      toInsert.push({
         tenant_id: tenantId,
         wa_id: waId,
         push_name: pushName,
@@ -138,11 +184,50 @@ export async function upsertListContacts(
         first_seen: now,
         last_message_at: now,
         assigned_agent_id: ownerId,
-      })
-      .select("id")
-      .single();
+      });
+      statusByWaId.set(waId, { leadId: null, skipped: false });
+    }
+  }
+
+  // Step 4: Bulk insert new leads in chunks (e.g. 100 per insert batch)
+  const INSERT_CHUNK_SIZE = 100;
+  for (let i = 0; i < toInsert.length; i += INSERT_CHUNK_SIZE) {
+    const chunk = toInsert.slice(i, i + INSERT_CHUNK_SIZE);
+    const { data, error } = await supabase
+      .from("leads")
+      .insert(chunk)
+      .select("id, wa_id");
     if (error) throw new Error(`Lead insert failed: ${error.message}`);
-    ids.push(data.id);
+    for (const row of Array.isArray(data) ? data : data ? [data] : []) {
+      const status = statusByWaId.get(row.wa_id);
+      if (status) status.leadId = row.id;
+    }
+  }
+
+  // Step 5: Perform updates in parallel chunks
+  const UPDATE_CONCURRENCY = 25;
+  for (let i = 0; i < toUpdate.length; i += UPDATE_CONCURRENCY) {
+    const chunk = toUpdate.slice(i, i + UPDATE_CONCURRENCY);
+    await Promise.all(
+      chunk.map(async ({ id, patch }) => {
+        const { error } = await supabase
+          .from("leads")
+          .update(patch)
+          .eq("id", id);
+        if (error) throw new Error(`Lead update failed: ${error.message}`);
+      })
+    );
+  }
+
+  // Step 6: Assemble leadIds preserving order
+  const ids = [];
+  const seenIds = new Set();
+  for (const contact of validContacts) {
+    const status = statusByWaId.get(contact.waId);
+    if (status?.leadId && !status.skipped && !seenIds.has(status.leadId)) {
+      seenIds.add(status.leadId);
+      ids.push(status.leadId);
+    }
   }
 
   return { name: listName, saved: ids.length, skipped, leadIds: ids };
