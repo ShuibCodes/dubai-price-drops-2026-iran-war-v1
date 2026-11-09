@@ -430,7 +430,8 @@ export async function startLeadCall({
     phoneNumberId: resolvedPhoneNumberId,
     customer: {
       number: phoneNumber,
-      name: leadName,
+      // Vapi rejects the whole call when customer.name exceeds 40 chars.
+      name: leadName ? String(leadName).slice(0, 40).trim() : leadName,
     },
     metadata: {
       leadName,
