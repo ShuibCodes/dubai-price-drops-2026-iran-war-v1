@@ -12,6 +12,7 @@ import { scriptPointerForScript } from "@/lib/scripts/pointers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 async function requireLiveScript(supabase, tenantId, scriptId) {
   if (!scriptId) return { response: jsonError("Pick a live script.", 400) };

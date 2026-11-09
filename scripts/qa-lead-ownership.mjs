@@ -64,6 +64,19 @@ function createMemorySupabase(seed = {}) {
 
     async function exec(single) {
       if (state.op === "insert") {
+        if (Array.isArray(state.ins)) {
+          const inserted = state.ins.map((item) => {
+            seq += 1;
+            const r = {
+              assigned_agent_id: null,
+              ...item,
+              id: item.id || `gen-${seq}`,
+            };
+            store[table].push(r);
+            return pick(r, state.cols);
+          });
+          return { data: single ? inserted[0] || null : inserted, error: null };
+        }
         seq += 1;
         const row = {
           assigned_agent_id: null,
