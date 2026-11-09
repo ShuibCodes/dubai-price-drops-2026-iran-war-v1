@@ -1,4 +1,4 @@
-import { sendIMessageText } from "@/lib/imessage/send";
+import { sendIMessageText } from "../imessage/send.js";
 
 export const DEFAULT_REMINDER_WINDOW_MINUTES = 30;
 export const DEFAULT_TIMEZONE = "Asia/Dubai";
