@@ -20,12 +20,10 @@ export const VOICE_ALLOWLIST = [
   },
   { id: "Elliot", label: "Elliot", provider: "vapi" },
   { id: "Savannah", label: "Savannah", provider: "vapi" },
-  { id: "Hana", label: "Hana", provider: "vapi" },
-  { id: "Cole", label: "Cole", provider: "vapi" },
-  { id: "Harry", label: "Harry", provider: "vapi" },
-  { id: "Paige", label: "Paige", provider: "vapi" },
-  { id: "Spencer", label: "Spencer", provider: "vapi" },
-  { id: "Neha", label: "Neha", provider: "vapi" },
+  { id: "Clara", label: "Clara", provider: "vapi" },
+  { id: "Emma", label: "Emma", provider: "vapi" },
+  { id: "Kai", label: "Kai", provider: "vapi" },
+  { id: "Layla", label: "Layla", provider: "vapi" },
 ];
 
 /**
@@ -43,8 +41,7 @@ export const RULES = [
   {
     key: "ai_disclosure",
     locked: true,
-    label:
-      "Also say yes plainly if asked whether you are AI, then continue.",
+    label: "Also say yes plainly if asked whether you are AI, then continue.",
     sentence:
       "If asked whether you are AI, say yes plainly and continue. Do not hide it.",
   },
@@ -76,7 +73,8 @@ export const RULES = [
     key: "voicemail_end",
     locked: false,
     label: "Also hang up immediately on voicemail — do not leave a message.",
-    sentence: "If you reach voicemail or an answering machine, end the call immediately. Do not leave a message.",
+    sentence:
+      "If you reach voicemail or an answering machine, end the call immediately. Do not leave a message.",
   },
 ];
 
@@ -94,11 +92,10 @@ export function spokenFirstMessage(config) {
   return text || DEFAULT_FIRST_MESSAGE;
 }
 
-const findOutItemSchema = z
-  .strictObject({
-    label: z.string().trim().min(1),
-    type: z.enum(["number", "choice", "text"]),
-  });
+const findOutItemSchema = z.strictObject({
+  label: z.string().trim().min(1),
+  type: z.enum(["number", "choice", "text"]),
+});
 
 export const scriptConfigSchema = z
   .strictObject({
