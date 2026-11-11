@@ -75,6 +75,7 @@ export const VAPI_ASSISTANT_LOCK = {
   model: {
     provider: "groq",
     model: "openai/gpt-oss-120b",
+    maxTokens: 1000,
   },
   transcriber: {
     provider: "deepgram",
