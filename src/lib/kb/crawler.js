@@ -75,11 +75,25 @@ const HIGH_PRIORITY_KEYWORDS = [
 export function normalizeUrl(input) {
   if (!input || typeof input !== "string") return null;
   let raw = input.trim();
+  if (!raw) return null;
+
+  // Reject unsupported protocols like file:, mailto:, tel:, javascript:, data:
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(raw) && !/^https?:/i.test(raw)) {
+    return null;
+  }
+
   if (!/^https?:\/\//i.test(raw)) {
     raw = `https://${raw}`;
   }
   try {
     const u = new URL(raw);
+    if (u.protocol !== "http:" && u.protocol !== "https:") {
+      return null;
+    }
+    // Hostname must be valid and contain at least one dot (domain.tld) or localhost
+    if (!u.hostname || (!u.hostname.includes(".") && u.hostname !== "localhost")) {
+      return null;
+    }
     u.hash = "";
     // Remove analytics / session search params
     const deleteParams = [];
