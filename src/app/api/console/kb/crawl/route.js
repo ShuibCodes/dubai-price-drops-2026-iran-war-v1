@@ -129,3 +129,4 @@ export async function GET(request) {
     return jsonError(error.message || "Failed to get crawl status", error.status || 500);
   }
 }
+

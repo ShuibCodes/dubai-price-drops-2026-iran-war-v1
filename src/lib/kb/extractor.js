@@ -100,3 +100,4 @@ Generate the structured Brokerage Knowledge Base block adhering to the guideline
     charCount: cleanedKb.length,
   };
 }
+

@@ -75,3 +75,4 @@ export async function PATCH(request) {
     return jsonError(error.message || "Failed to update knowledge text", error.status || 500);
   }
 }
+

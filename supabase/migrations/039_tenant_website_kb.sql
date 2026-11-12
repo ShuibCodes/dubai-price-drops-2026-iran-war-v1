@@ -25,3 +25,4 @@ CREATE TABLE IF NOT EXISTS tenant_kb_sources (
 -- Index for querying tenant's KB sources fast
 CREATE INDEX IF NOT EXISTS idx_tenant_kb_sources_tenant_id ON tenant_kb_sources(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_tenant_kb_sources_status ON tenant_kb_sources(status);
+
