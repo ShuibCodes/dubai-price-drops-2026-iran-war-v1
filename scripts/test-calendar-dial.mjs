@@ -369,7 +369,7 @@ await test("serverMessages merge never drops existing events", () => {
 });
 
 await test("composed prompt mentions calendarConnected true/false without hard-coded ids", () => {
-  assert.equal(PREAMBLE_VERSION, 5);
+  assert.equal(PREAMBLE_VERSION, 6);
   const prompt = composePrompt({
     config: { goal: "book_viewing", find_out: [], rules: [], opening_line: "Hi." },
     tenant: { slug: "1416", name: "1416", persona_name: "Allan" },
