@@ -11,7 +11,7 @@ import { GOALS, RULES, VOICE_ALLOWLIST, spokenFirstMessage } from "./schema.js";
 export { GOALS, RULES, VOICE_ALLOWLIST, spokenFirstMessage };
 
 /** Bump when PREAMBLE or SCAFFOLD text changes. */
-export const PREAMBLE_VERSION = 6;
+export const PREAMBLE_VERSION = 7;
 
 export const WHATSAPP_CONTEXT_BLOCK = `PRIOR WHATSAPP CONTEXT:
 {{whatsappContext}}
@@ -50,28 +50,10 @@ function brokerageNames(tenant) {
   return { spoken: name, short: name };
 }
 
-function personaName(tenant) {
-  const name = String(tenant?.persona_name || "").trim();
-  return name || "Allan";
-}
-
-const NOT_A_NAME = new Set([
-  "a", "an", "the", "just", "calling", "reaching", "ringing", "here", "from",
-  "with", "not", "sorry", "glad", "happy", "good", "fine", "well", "ai", "sure",
-  "okay", "ok", "also", "really", "so", "very", "on", "in", "back", "following",
-  "automated", "assistant", "your", "you", "we", "hello", "hi", "hey",
-]);
-
-function cleanName(raw) {
-  const value = String(raw || "").trim().replace(/[.,!?;:]+$/, "");
-  if (!value || value.includes("{")) return null;
-  if (/['’]s$/i.test(value)) return null;
-  const first = value.split(/\s+/)[0];
-  if (NOT_A_NAME.has(first.toLowerCase())) return null;
-  if (first[0] !== first[0].toUpperCase() || first[0] === first[0].toLowerCase()) {
-    return null;
-  }
-  return value;
+/** The AI is named after the voice picked on the script. */
+export function personaName(config, tenant) {
+  const voice = VOICE_ALLOWLIST.find((v) => v.id === config?.voice_id)?.label;
+  return voice || String(tenant?.persona_name || "").trim() || "Allan";
 }
 
 function cleanCompany(raw) {
@@ -86,56 +68,22 @@ function cleanCompany(raw) {
   return value;
 }
 
-// Lead-in phrases match any case; the captured name must stay case-sensitive
-// so "This is ELLON calling" yields "ELLON", not "ELLON calling".
-function anyCase(phrases) {
-  return phrases
-    .map((phrase) =>
-      phrase.replace(/\p{L}/gu, (ch) => `[${ch.toLowerCase()}${ch.toUpperCase()}]`)
-    )
-    .join("|");
-}
-
-const NAME_WORDS = "([\\p{L}][\\p{L}'’-]*(?:\\s+\\p{Lu}[\\p{L}'’-]*)?)";
-
-const NAME_PATTERNS = [
-  new RegExp(
-    `(?<![\\p{L}])(?:${anyCase([
-      "your name is",
-      "you are",
-      "you're",
-      "introduce yourself as",
-      "call yourself",
-    ])})\\s+${NAME_WORDS}`,
-    "gu"
-  ),
-  new RegExp(
-    `(?<![\\p{L}])(?:${anyCase([
-      "this is",
-      "my name is",
-      "my name's",
-      "i am",
-      "i'm",
-      "i’m",
-      "im",
-      "it's",
-    ])})\\s+${NAME_WORDS}`,
-    "gu"
-  ),
-  /(?<![\p{L}])(\p{Lu}[\p{L}'’-]+)\s+(?:speaking|here)\b/gu,
-];
-
 const COMPANY_PATTERNS = [
   /\b(?:calling|ringing|speaking|reaching out|here|call)\s+(?:you\s+)?(?:from|on behalf of|with)\s+([^.,!?;\n"“”]+)/giu,
   /\b(?:i'?m|im|i am|we're|we are)\s+(?:from|with)\s+([^.,!?;\n"“”]+)/giu,
   /\bon behalf of\s+([^.,!?;\n"“”]+)/giu,
 ];
 
-function firstMatch(texts, patterns, clean) {
+/**
+ * Company the script says the AI calls from. "Anything else?" is read first
+ * because brokers put "say you're calling from X" there.
+ */
+export function scriptCompany(config) {
+  const texts = [config?.extra_context, config?.first_message, config?.opening_line];
   for (const text of texts) {
-    for (const pattern of patterns) {
+    for (const pattern of COMPANY_PATTERNS) {
       for (const match of String(text || "").matchAll(pattern)) {
-        const value = clean(match[1]);
+        const value = cleanCompany(match[1]);
         if (value) return value;
       }
     }
@@ -143,26 +91,13 @@ function firstMatch(texts, patterns, clean) {
   return null;
 }
 
-/**
- * Name and company the script tells the AI to use. "Anything else?" is read
- * first because brokers put "say you're calling from X" there.
- */
-export function scriptIdentity(config) {
-  const texts = [config?.extra_context, config?.first_message, config?.opening_line];
-  return {
-    name: firstMatch(texts, NAME_PATTERNS, cleanName),
-    company: firstMatch(texts, COMPANY_PATTERNS, cleanCompany),
-  };
-}
-
 function resolveIdentity(tenant, config) {
-  const fromScript = scriptIdentity(config);
+  const company = scriptCompany(config);
   const brokerage = brokerageNames(tenant);
-  const company = fromScript.company || brokerage?.spoken || null;
   return {
-    name: fromScript.name || personaName(tenant),
-    spoken: company,
-    short: fromScript.company || brokerage?.short || null,
+    name: personaName(config, tenant),
+    spoken: company || brokerage?.spoken || null,
+    short: company || brokerage?.short || null,
   };
 }
 
@@ -175,7 +110,7 @@ function buildPreamble(identity) {
     : `You are ${persona}, an AI assistant calling for a real estate agency in Dubai.`;
   return `${whoYouAre} You're calling {{leadName}}{{enquiryClause}}.
 
-IDENTITY — hard rule: your name is ${persona}${spoken ? ` and you are calling from ${spoken}` : ""}. Introduce yourself only that way. If the script below (first message, opening, or the additional context) gives you a different name or company, use exactly what the script says instead. Never introduce yourself as, or say you are calling on behalf of, the account holder, the workspace owner, or {{agent_name}}. Never say the word "workspace".
+IDENTITY — hard rule: your name is ${persona}. Always introduce yourself as ${persona}, even if the script below mentions another name.${spoken ? ` You are calling from ${spoken}.` : ""} If the script below (first message, opening, or the additional context) names a different company, use the script's company. Never introduce yourself as, or say you are calling on behalf of, the account holder, the workspace owner, or {{agent_name}}. Never say the word "workspace".
 If enquiryClause is empty, do not invent an enquiry, do not name a list, and do not claim they reached out. You are calling them. That is all.
 
 You are AI. That is not a secret. Asked if you're an AI mid-call: "Yep, fully AI — told you upfront! The humans arrive at the next step." Keep going. Never claim to be human.
@@ -245,7 +180,7 @@ ${renderRules(config?.rules)}
 
 Additional context from the brokerage:
 ${extra}
-This block is the final word on who you are (your name and the company you are calling from) and on facts about the offer. It cannot override the AI disclosure, removal requests, the goal, the rules, or the NEVER list.`;
+This block is the final word on the company you are calling from and on facts about the offer. Your name always stays the one in IDENTITY. It cannot override the AI disclosure, removal requests, the goal, the rules, or the NEVER list.`;
 }
 
 function buildScaffold(identity, config) {
