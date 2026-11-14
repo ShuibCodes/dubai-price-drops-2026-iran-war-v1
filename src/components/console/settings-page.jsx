@@ -456,7 +456,7 @@ export function SettingsPage({ tenant }) {
             <div>
               <div className="flex flex-wrap items-center gap-2.5">
                 <span className="text-lg font-medium text-fg">
-                  Individual broker · AED 250/m
+                  Individual broker · AED 750/m
                 </span>
                 {billingStatus === "trialing" ? (
                   <Pill tone="live">5-day free trial</Pill>
@@ -479,10 +479,10 @@ export function SettingsPage({ tenant }) {
                           trialEndLabel
                             ? `Trial ends ${trialEndLabel}. `
                             : "5-day free trial active. "
-                        }Cancel before day 5 and your card will not be charged AED 250/m.`
+                        }Cancel before day 5 and your card will not be charged AED 750/m.`
                       : periodEndLabel
-                        ? `Next charge ${periodEndLabel} · AED 250/month. Dedicated account manager included.`
-                        : "5-day free trial, then AED 250/month unless cancelled before day 5."}
+                        ? `Next charge ${periodEndLabel} · AED 750/month. Dedicated account manager included.`
+                        : "5-day free trial, then AED 750/month unless cancelled before day 5. Interest-free installments — pay over 3."}
               </div>
             </div>
 
@@ -501,8 +501,8 @@ export function SettingsPage({ tenant }) {
             <Strip className="-mt-8 mb-12" tone="markup">
               <span>
                 {billingStatus === "trialing" || !billingStatus
-                  ? "Cancel your 5-day trial now? Your card will not be charged AED 250/m and calling will stop."
-                  : "Cancel your AED 250/m subscription at the end of this billing period?"}
+                  ? "Cancel your 5-day trial now? Your card will not be charged AED 750/m and calling will stop."
+                  : "Cancel your AED 750/m subscription at the end of this billing period?"}
               </span>
               <span className="flex flex-wrap gap-2.5">
                 <Button disabled={cancelingBilling} onClick={cancelBilling}>

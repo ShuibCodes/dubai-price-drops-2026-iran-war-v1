@@ -76,7 +76,7 @@ export async function GET(request) {
     return NextResponse.json({
       offer,
       trialDays: INDIVIDUAL_BROKER_TRIAL_DAYS,
-      priceAed: 250,
+      priceAed: 750,
       stripeConfigured: isStripeConfigured(),
       account,
     });
@@ -150,7 +150,7 @@ export async function POST(request) {
       return NextResponse.json(
         {
           error:
-            "All 5 spots for the AED 250/m offer have been claimed. Enquire for current availability.",
+            "All 5 spots for the AED 750/m offer have been claimed. Enquire for current availability.",
           soldOut: true,
         },
         { status: 409 }

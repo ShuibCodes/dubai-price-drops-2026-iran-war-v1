@@ -100,7 +100,7 @@ function Hero() {
           <p className="mx-auto mt-4 max-w-xl text-base leading-7 text-white/70 sm:text-lg">
             AI calls your leads and sends the good ones to your WhatsApp.{" "}
             <span className="whitespace-nowrap font-semibold text-[#ffd60a]">
-              AED 250/m · next 5 brokers.
+              AED 750/m · pay over 3, interest-free.
             </span>
           </p>
           <Link
@@ -109,7 +109,7 @@ function Hero() {
             data-fast-goal-location="hero"
             className="mt-6 inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
           >
-            Start 5-day free trial
+            Get started now
           </Link>
         </motion.div>
 
@@ -218,7 +218,7 @@ const FAQS = [
   },
   {
     q: "What does it cost?",
-    a: "AED 250/m for the next 5 individual brokers — starting with a 5-day free trial (AED 0 today, then AED 250/month unless you cancel in Settings before day 5) and a dedicated account manager included. Brokerage pricing is on enquiry. 15 qualified conversations in your first month, or the month is free.",
+    a: "AED 750/m for the next 5 individual brokers — starting with a 5-day free trial (AED 0 today, then AED 750/month unless you cancel in Settings before day 5). Interest-free installments — pay over 3 (AED 250 × 3). A dedicated account manager is included. Brokerage pricing is on enquiry. 15 qualified conversations in your first month, or the month is free.",
   },
 ];
 
@@ -418,7 +418,7 @@ export default function AgentZeroLandingPage() {
               : AI voice calls, listing packs, follow-ups across every channel.
               Your agents direct it all from WhatsApp.{" "}
               <span className="whitespace-nowrap font-semibold text-[#ffd60a]">
-                AED 250/m · next 5 brokers.
+                AED 750/m · pay over 3, interest-free.
               </span>
             </p>
             <div className="mt-7 flex justify-center sm:mt-8">
@@ -428,7 +428,7 @@ export default function AgentZeroLandingPage() {
                 data-fast-goal-location="how_it_works"
                 className="inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
               >
-                Start 5-day free trial
+                Get started now
               </Link>
             </div>
           </div>
@@ -481,7 +481,7 @@ export default function AgentZeroLandingPage() {
               Set the tone once — every call, message and follow-up sounds like
               your desk.{" "}
               <span className="whitespace-nowrap font-semibold text-[#ffd60a]">
-                AED 250/m · next 5 brokers.
+                AED 750/m · pay over 3, interest-free.
               </span>
             </p>
             <div className="mt-7 flex flex-wrap gap-3 sm:mt-8">
@@ -491,7 +491,7 @@ export default function AgentZeroLandingPage() {
                 data-fast-goal-location="brand_tone"
                 className="inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
               >
-                Start 5-day free trial
+                Get started now
               </Link>
             </div>
           </div>
@@ -625,7 +625,7 @@ export default function AgentZeroLandingPage() {
               got real — and puts them at the top of your WhatsApp before your
               day starts. No new app to install.{" "}
               <span className="whitespace-nowrap font-semibold text-[#ffd60a]">
-                AED 250/m · next 5 brokers.
+                AED 750/m · pay over 3, interest-free.
               </span>
             </p>
             <div className="mt-7 flex flex-wrap gap-3 sm:mt-8">
@@ -635,7 +635,7 @@ export default function AgentZeroLandingPage() {
                 data-fast-goal-location="why_it_wins"
                 className="inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
               >
-                Start 5-day free trial
+                Get started now
               </Link>
             </div>
           </div>
@@ -665,7 +665,7 @@ export default function AgentZeroLandingPage() {
                 data-fast-goal-location="every_call"
                 className="inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
               >
-                Start 5-day free trial
+                Get started now
               </Link>
             </div>
           </div>
@@ -725,15 +725,24 @@ export default function AgentZeroLandingPage() {
             </div>
             <div className="mt-5 flex items-baseline gap-2 sm:mt-6">
               <span className="text-4xl font-semibold leading-none text-white sm:text-5xl">
-                AED 250
+                AED 750
               </span>
+              <span className="text-base text-white/70">/ month</span>
             </div>
-            <p className="mt-2 text-sm text-white">/ month · after 5-day free trial</p>
+            <p className="mt-2 text-sm text-white">After a 5-day free trial · AED 0 today</p>
+            <div className="mt-4 rounded-2xl border border-[#ffd60a]/50 bg-[#ffd60a]/15 px-4 py-3.5">
+              <p className="text-sm font-semibold text-[#ffd60a] sm:text-base">
+                Interest-free installments — pay over 3
+              </p>
+              <p className="mt-1 text-xs leading-5 text-white/85 sm:text-sm">
+                Split AED 750 into 3 payments of AED 250. No interest.
+              </p>
+            </div>
             <p className="mt-3 inline-flex w-fit rounded-full border border-[#ffd60a]/30 bg-[#ffd60a]/10 px-3 py-1 text-xs font-medium text-[#ffd60a]">
               5 days free · Dedicated account manager included
             </p>
             <p className="mt-4 text-sm leading-6 text-white/70">
-              For the next 5 individual brokers. AED 0 today, then AED 250/m after 5 days unless you cancel.
+              For the next 5 individual brokers. AED 0 today, then AED 750/m after 5 days unless you cancel. Or pay over 3, interest-free.
             </p>
 
             <dl className="mt-6 divide-y divide-white/10 rounded-2xl border border-white/10">
@@ -761,7 +770,7 @@ export default function AgentZeroLandingPage() {
                 data-fast-goal-location="pricing_individual"
                 className="inline-flex w-full justify-center rounded-full bg-[#ffd60a] px-6 py-3.5 text-sm font-semibold text-black transition hover:opacity-90 sm:py-3"
               >
-                Start 5-day free trial
+                Get started now
               </Link>
             </div>
           </article>
@@ -810,7 +819,7 @@ export default function AgentZeroLandingPage() {
 
         <div className="mt-5 rounded-[20px] border-l-2 border-[#ffd60a] bg-[#ffd60a]/[0.06] px-5 py-4 text-center sm:mt-6 sm:px-6 sm:py-5">
           <p className="text-base leading-7 text-white sm:text-lg">
-            AED 250/m for the next 5 brokers · 5-day free trial · Dedicated account manager included. 15 qualified conversations in your first month, or the month is free.
+            AED 750/m for the next 5 brokers · interest-free installments, pay over 3 · 5-day free trial · Dedicated account manager included. 15 qualified conversations in your first month, or the month is free.
           </p>
         </div>
       </section>
@@ -834,7 +843,7 @@ export default function AgentZeroLandingPage() {
             Your best agent can&apos;t be everywhere. AgentZero can.
           </p>
           <p className="mt-4 text-base font-semibold text-[#ffd60a] sm:text-lg">
-            AED 250/m for the next 5 brokers · 5-day free trial · Dedicated account manager.
+            AED 750/m · interest-free installments, pay over 3 · 5-day free trial · Dedicated account manager.
           </p>
           <div className="mt-7 sm:mt-8">
             <Link
@@ -843,7 +852,7 @@ export default function AgentZeroLandingPage() {
               data-fast-goal-location="final_cta"
               className="inline-flex w-full items-center justify-center rounded-full bg-[#ff2d55] px-8 py-3.5 text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto sm:py-3"
             >
-              Start 5-day free trial
+              Get started now
             </Link>
           </div>
         </div>

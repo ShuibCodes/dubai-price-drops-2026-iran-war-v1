@@ -3,7 +3,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 export const INDIVIDUAL_BROKER_PRODUCT_ID = "prod_VXM5z1TynHHX2M";
 export const INDIVIDUAL_BROKER_PRICE_ID =
   process.env.STRIPE_INDIVIDUAL_BROKER_PRICE_ID ||
-  "price_1UWHMtE05JYH4qkK8uvDT3hW";
+  "price_1UaU9mE05JYH4qkKwjeYlQxk";
 
 export const INDIVIDUAL_BROKER_PAYMENT_LINK =
   process.env.STRIPE_INDIVIDUAL_BROKER_PAYMENT_LINK ||
@@ -181,13 +181,13 @@ export async function createBrokerTrialCheckoutSession({
     subscription_data: {
       trial_period_days: INDIVIDUAL_BROKER_TRIAL_DAYS,
       description:
-        "AgentZero Individual Broker — 5-day free trial, then AED 250/month. Dedicated account manager included (next 5 brokers only).",
+        "AgentZero Individual Broker — 5-day free trial, then AED 750/month. Interest-free installments — pay over 3. Dedicated account manager included (next 5 brokers only).",
       metadata,
     },
     custom_text: {
       submit: {
         message:
-          "Due today: AED 0. In 5 days you'll be charged AED 250/month unless cancelled from Settings. Dedicated account manager included (next 5 brokers only).",
+          "Due today: AED 0. In 5 days you'll be charged AED 750/month unless cancelled from Settings. Interest-free installments — pay over 3 (AED 250 × 3). Dedicated account manager included (next 5 brokers only).",
       },
     },
     success_url: successUrl,

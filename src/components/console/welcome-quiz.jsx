@@ -219,11 +219,11 @@ export function WelcomeQuiz({ tenant }) {
         </div>
         {formattedTrialEnd ? (
           <span className="font-mono text-xs text-az">
-            AED 0 until {formattedTrialEnd} · then AED 250/m
+            AED 0 until {formattedTrialEnd} · then AED 750/m
           </span>
         ) : (
           <span className="font-mono text-xs text-az">
-            5 days free · then AED 250/m
+            5 days free · then AED 750/m · pay over 3, interest-free
           </span>
         )}
       </div>

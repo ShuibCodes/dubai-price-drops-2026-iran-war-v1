@@ -165,7 +165,7 @@ export function GetStartedFlow({
 
           <h1 className="mt-5 text-balance text-3xl font-semibold leading-tight tracking-tight sm:text-5xl">
             Start your 5-day free trial.{" "}
-            <span className="text-[#ffd60a]">Then AED 250/m.</span>
+            <span className="text-[#ffd60a]">Then AED 750/m.</span>
           </h1>
 
           <p className="mt-4 max-w-xl text-base leading-7 text-white/75 sm:text-lg">
@@ -196,8 +196,22 @@ export function GetStartedFlow({
                   Only charged if you have not cancelled
                 </div>
               </div>
-              <div className="text-xl font-semibold text-white">
-                AED 250 / month
+              <div className="text-right">
+                <div className="text-xl font-semibold text-white">
+                  AED 750 / month
+                </div>
+                <div className="mt-1 text-xs font-semibold text-[#ffd60a]">
+                  or pay over 3, interest-free
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-[#ffd60a]/50 bg-[#ffd60a]/15 px-4 py-3.5">
+              <div className="text-sm font-semibold text-[#ffd60a]">
+                Interest-free installments — pay over 3
+              </div>
+              <div className="mt-1 text-xs leading-5 text-white/80">
+                Split AED 750 into 3 payments of AED 250. No interest.
               </div>
             </div>
 
@@ -234,7 +248,7 @@ export function GetStartedFlow({
                 All 5 broker spots have been taken.
               </h2>
               <p className="mt-3 text-sm leading-6 text-white/70">
-                The AED 250/m rate with a dedicated account manager was capped
+                The AED 750/m rate with a dedicated account manager was capped
                 at the next 5 individual brokers. Enquire below and we&apos;ll
                 let you know when a spot opens.
               </p>
@@ -285,12 +299,12 @@ export function GetStartedFlow({
               >
                 {submitting
                   ? "Opening Stripe Checkout…"
-                  : "Continue to 5-day free trial →"}
+                  : "Get started now"}
               </button>
 
               <p className="mt-3 text-center text-xs text-white/55">
-                AED 0 today · AED 250/month from {chargeDate} unless you cancel
-                in Settings.
+                AED 0 today · AED 750/month from {chargeDate} unless you cancel
+                in Settings. Or interest-free installments — pay over 3.
               </p>
             </div>
           ) : (
@@ -406,11 +420,12 @@ export function GetStartedFlow({
                 >
                   {submitting
                     ? "Starting your 5-day trial…"
-                    : "Create account & start 5-day trial →"}
+                    : "Get started now"}
                 </button>
 
                 <p className="text-center text-xs leading-5 text-white/55">
-                  AED 0 today · AED 250/month after 5 days ({chargeDate}).
+                  AED 0 today · AED 750/month after 5 days ({chargeDate}).
+                  Interest-free installments — pay over 3.
                   Cancel anytime from Settings.
                 </p>
               </form>
