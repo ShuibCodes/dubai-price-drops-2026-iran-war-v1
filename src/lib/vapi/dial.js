@@ -371,7 +371,10 @@ export function buildAssistantOverrides({
     },
   };
 
-  const systemPrompt = String(prompt || "");
+  let systemPrompt = String(prompt || "");
+  if (systemPrompt && variableValues?.kb) {
+    systemPrompt = systemPrompt.replaceAll("{{kb}}", variableValues.kb);
+  }
   if (systemPrompt) {
     assistantOverrides.model = {
       ...VAPI_ASSISTANT_LOCK.model,

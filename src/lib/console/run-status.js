@@ -115,18 +115,24 @@ function pickBatch(batches, { script, list } = {}) {
   const needles = [script, list]
     .map((value) => String(value || "").trim().toLowerCase())
     .filter(Boolean);
-  if (!needles.length) return batches[0];
-  return (
-    batches.find((batch) => {
-      const hay = batchHaystack(batch);
-      return needles.every((needle) => hay.includes(needle));
-    }) ||
-    batches.find((batch) => {
-      const hay = batchHaystack(batch);
-      return needles.some((needle) => hay.includes(needle));
-    }) ||
-    null
-  );
+  if (!needles.length) {
+    return batches.find((b) => b.status === "running") || batches[0];
+  }
+  const matching = batches.filter((batch) => {
+    const hay = batchHaystack(batch);
+    return needles.every((needle) => hay.includes(needle));
+  });
+  if (matching.length) {
+    return matching.find((b) => b.status === "running") || matching[0];
+  }
+  const partial = batches.filter((batch) => {
+    const hay = batchHaystack(batch);
+    return needles.some((needle) => hay.includes(needle));
+  });
+  if (partial.length) {
+    return partial.find((b) => b.status === "running") || partial[0];
+  }
+  return null;
 }
 
 /**

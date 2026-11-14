@@ -60,16 +60,27 @@ export async function loadTenantScript(supabase, session, id) {
 }
 
 export async function loadTenant(supabase, tenantId) {
-  const { data, error } = await supabase
+  let res = await supabase
     .from("tenants")
     .select(
-      "id, name, slug, persona_name, vapi_assistant_id, vapi_phone_number_id"
+      "id, name, slug, persona_name, vapi_assistant_id, vapi_phone_number_id, kb_text"
     )
     .eq("id", tenantId)
     .maybeSingle();
-  if (error) throw new Error(`Tenant lookup failed: ${error.message}`);
-  if (!data) return { response: jsonError("Tenant not found.", 404) };
-  return { tenant: data };
+
+  if (res.error && /kb_text/i.test(res.error.message || "")) {
+    res = await supabase
+      .from("tenants")
+      .select(
+        "id, name, slug, persona_name, vapi_assistant_id, vapi_phone_number_id"
+      )
+      .eq("id", tenantId)
+      .maybeSingle();
+  }
+
+  if (res.error) throw new Error(`Tenant lookup failed: ${res.error.message}`);
+  if (!res.data) return { response: jsonError("Tenant not found.", 404) };
+  return { tenant: res.data };
 }
 
 export function publicScript(row, counts = {}) {

@@ -104,6 +104,7 @@ export async function POST(request, { params }) {
         {
           leadName: agentName,
           agent_name: agentName,
+          kb: tenant.kb_text || "",
         },
         calendar
       ),

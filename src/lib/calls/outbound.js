@@ -180,7 +180,7 @@ export function assertOutboundActive(tenant) {
 }
 
 const OUTBOUND_TENANT_COLS =
-  "id, name, slug, outbound_paused, vapi_assistant_id, vapi_assistant_id_meta, vapi_assistant_id_jarvis, vapi_phone_number_id, daily_dial_cap";
+  "id, name, slug, outbound_paused, vapi_assistant_id, vapi_assistant_id_meta, vapi_assistant_id_jarvis, vapi_phone_number_id, daily_dial_cap, kb_text";
 const OUTBOUND_TENANT_COLS_LEGACY =
   "id, name, slug, outbound_paused, vapi_assistant_id, vapi_assistant_id_meta, vapi_assistant_id_jarvis, vapi_phone_number_id";
 
@@ -191,7 +191,7 @@ export async function getOutboundTenant(supabase, tenantId) {
     .eq("id", tenantId)
     .single();
   if (!first.error) return first.data;
-  if (!/daily_dial_cap/i.test(String(first.error.message || ""))) {
+  if (!/daily_dial_cap|kb_text/i.test(String(first.error.message || ""))) {
     throw new Error(`Tenant lookup failed: ${first.error.message}`);
   }
   const retry = await supabase
@@ -506,6 +506,7 @@ export async function dialLeadNow({
         leadName,
         leadSource,
         propertyInterest,
+        kb: tenant.kb_text || "",
         campaignTopic: fields.campaignTopic || "",
         formWhen: fields.formWhen || "",
         ownsProperty: fields.ownsProperty || lead.owns_property || "",
